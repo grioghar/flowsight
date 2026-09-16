@@ -15,7 +15,7 @@ goes away with it.
 
 Interim: no L7 inspection. Suricata and DNS filtering carry the load.
 
-## Phase 1 — Visibility
+## Phase 1 — Visibility  *(in progress)*
 
 - Install `os-ntopng` (available in the OPNsense repo, 6.6).
 - Re-enable Suricata in alert-only mode (it is installed and currently disabled).
@@ -23,6 +23,14 @@ Interim: no L7 inspection. Suricata and DNS filtering carry the load.
   Prometheus-compatible TSDB and Loki.
 - Grafana dashboards reproducing Zenarmor's core reports: top talkers, per-device
   activity, app/category breakdown, blocked-domain history.
+
+Done so far: ntopng + nDPI capturing on LAN, redis loopback-only, Suricata
+running alert-only on WAN with 21 threat-focused rulesets, and the collector
+shipping normalized metrics to Mimir behind the `Flowsight — Overview`
+dashboard.
+
+Remaining: ntopng flows into the collector (its REST API needs auth), and Loki
+log shipping for Suricata alert bodies.
 
 Exit criteria: every question the Zenarmor dashboard answered can be answered
 here.

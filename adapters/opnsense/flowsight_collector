@@ -1,0 +1,29 @@
+#!/bin/sh
+#
+# PROVIDE: flowsight_collector
+# REQUIRE: NETWORKING SERVERS
+# KEYWORD: shutdown
+#
+# Flowsight collector: normalizes backend telemetry and exports it over OTLP.
+
+. /etc/rc.subr
+
+name="flowsight_collector"
+rcvar="flowsight_collector_enable"
+
+# daemon(8) supervises and restarts the collector. The pidfile holds daemon's
+# own pid, so procname must be daemon - matching the python interpreter instead
+# makes `service ... status` report "not running" while it is in fact running.
+pidfile="/var/run/${name}.pid"
+procname="/usr/sbin/daemon"
+command="/usr/sbin/daemon"
+command_args="-f -r -P ${pidfile} /usr/local/sbin/flowsight-collector"
+
+load_rc_config $name
+
+# Default to enabled. An unset _enable makes run_rc_command skip silently, which
+# would leave the collector dead with no error anywhere - the failure mode is
+# "dashboards are quietly empty", which is the hardest kind to notice.
+: ${flowsight_collector_enable:="YES"}
+
+run_rc_command "$1"
