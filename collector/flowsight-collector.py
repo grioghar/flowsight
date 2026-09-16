@@ -48,7 +48,13 @@ CAP_DNS_OBSERVE = "dns.observe"
 CAP_DNS_BLOCK = "dns.block"
 CAP_HOST_INVENTORY = "host.inventory"
 
+# The collector publishes what it is actually doing here, so the UI and any
+# operator can see per-source health without parsing logs or guessing from
+# config. Config says what was asked for; this says what is happening.
+STATE_PATH = "/var/run/flowsight-collector.json"
+
 DEFAULT_CONFIG = {
+    "state_path": STATE_PATH,
     "otlp_metrics_endpoint": "http://127.0.0.1:4318/v1/metrics",
     "otlp_logs_endpoint": "http://127.0.0.1:4318/v1/logs",
     "host_name": "",
@@ -269,7 +275,11 @@ class UnboundStats(Source):
     """Resolver counters from unbound-control."""
 
     name = "unbound"
-    capabilities = (CAP_DNS_OBSERVE, CAP_DNS_BLOCK)
+    # Observation only. Reading resolver counters does not make this module able
+    # to block anything - that is the policy provider's job. SCHEMA.md is
+    # explicit that a false capability claim produces policy which silently
+    # enforces nothing, and this source claiming dns.block was exactly that.
+    capabilities = (CAP_DNS_OBSERVE,)
 
     WANTED = {
         "total.num.queries": "dns_queries_total",
@@ -439,6 +449,30 @@ def _attrs(d):
             for k, v in d.items() if v not in (None, "")]
 
 
+def write_state(path, sources, results, exports):
+    """Publish current health atomically. Never fatal - state is a convenience."""
+    try:
+        doc = {
+            "updated": int(time.time()),
+            "sources": [{
+                "name": s.name,
+                "capabilities": list(s.capabilities),
+                "ok": results.get(s.name, {}).get("ok", False),
+                "metrics": results.get(s.name, {}).get("metrics", 0),
+                "events": results.get(s.name, {}).get("events", 0),
+                "error": results.get(s.name, {}).get("error", ""),
+            } for s in sources],
+            "capabilities": sorted({c for s in sources for c in s.capabilities}),
+            "exports": exports,
+        }
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(doc, fh)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
 class Exporter:
     def __init__(self, cfg, start_nanos):
         self.cfg = cfg
@@ -519,23 +553,32 @@ def main():
     sys.stderr.write("flowsight: sources=%s capabilities=%s interval=%ss\n" % (
         ",".join(s.name for s in sources), ",".join(caps), cfg["interval_seconds"]))
 
+    state_path = cfg.get("state_path", STATE_PATH)
+
     while True:
-        metrics, events = [], []
+        metrics, events, results = [], [], {}
         for src in sources:
             try:
                 m, e = src.collect()
                 metrics.extend(m)
                 events.extend(e)
+                results[src.name] = {"ok": True, "metrics": len(m), "events": len(e)}
             except Exception as exc:
                 sys.stderr.write("flowsight: source %s failed: %s\n" % (src.name, exc))
+                results[src.name] = {"ok": False, "metrics": 0, "events": 0,
+                                     "error": str(exc)[:300]}
 
+        exports = {}
         for kind, fn, data in (("metrics", exporter.metrics, metrics),
                                ("events", exporter.events, events)):
             try:
                 fn(data)
+                exports[kind] = {"ok": True, "count": len(data)}
             except Exception as exc:
                 sys.stderr.write("flowsight: export %s failed: %s\n" % (kind, exc))
+                exports[kind] = {"ok": False, "count": len(data), "error": str(exc)[:300]}
 
+        write_state(state_path, sources, results, exports)
         time.sleep(cfg["interval_seconds"])
 
 

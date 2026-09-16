@@ -53,9 +53,14 @@ first provider — per-group DNS blocking via Unbound views, validated with
 Next: a category feed so `deny.categories` works, firewall and Suricata
 providers, and periodic reconciliation to correct drift.
 
-## Phase 4 — UI
+## Phase 4 — UI  *(working)*
 
-Single pane over the schema and the policy model.
+Single pane over the schema and the policy model. Read-only, loopback-bound,
+no build step and no CDN. Shows module health and observe-vs-enforce
+capabilities, a live summary, recent normalized alerts, and the current policy
+plan with its diff.
+
+Next: authentication, so it can safely be exposed beyond loopback.
 
 ## Phase 5 — rulehygiene module
 
