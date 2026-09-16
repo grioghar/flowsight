@@ -16,10 +16,14 @@ require_once("guiconfig.inc");
 
 $FLOWSIGHT_BASE = "http://127.0.0.1:8080";
 $ALLOWED_API = array("status", "summary", "alerts", "policy", "hosts", "flows",
-                     "apps", "devices", "policy_source", "config", "timeseries", "setup");
+                     "apps", "devices", "policy_source", "config", "timeseries", "setup",
+                     "dns", "dns/recent", "dns/resolutions", "dns/lookup",
+                     "enroll", "enroll/zones", "enroll/rules", "enroll/plan");
 /* Endpoints that accept a POST body. Kept separate from the read list so a
    read-only endpoint can never be written to by accident. */
-$ALLOWED_WRITE = array("policy_source", "policy_apply", "config");
+$ALLOWED_WRITE = array("policy_source", "policy_apply", "config",
+                       "enroll/assign", "enroll/reconcile", "enroll/apply",
+                       "enroll/zones", "enroll/rules");
 
 function flowsight_fetch($url, $post_body = null)
 {
@@ -115,14 +119,18 @@ if ($html === false || $code !== 200) {
 } else {
     /* The proxied page fetches '/api/x'; rewrite so those calls come back
        through this authenticated page rather than hitting the GUI root. */
-    $html = str_replace("fetch(p)", "fetch(p)", $html);
     $html = str_replace("'/api/", "'flowsight.php?api=", $html);
     /* Strip the standalone document scaffolding - we are embedding it. */
     $html = preg_replace('#<!doctype html>#i', '', $html);
     $html = preg_replace('#<meta[^>]*>#i', '', $html);
     $html = preg_replace('#<title>.*?</title>#is', '', $html);
+    /* Tell the page it is embedded, so it drops its own navigation: the views
+       are children of the Flowsight entry in this GUI's left menu, and a
+       second copy inside the content would duplicate them. */
     echo '<section class="page-content-main"><div class="content-box" '
-       . 'style="padding:0 8px">' . $html . '</div></section>';
+       . 'style="padding:0 8px">'
+       . '<script>window.FS_EMBEDDED=1;</script>'
+       . $html . '</div></section>';
 }
 
 include("foot.inc");

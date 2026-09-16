@@ -89,6 +89,11 @@ DEFAULT_CONFIG = {
     "otlp_logs_endpoint": "http://127.0.0.1:4318/v1/logs",
     "host_name": "",
     "interval_seconds": 30,
+    # Snapshot the resolver cache into the stored address-to-name map on this
+    # cadence. CDN answers carry short TTLs and vanish from the cache quickly,
+    # so a flow seen a minute later has nothing left to name it unless the map
+    # was refreshed while the answer was still live. 0 disables.
+    "dns_name_refresh_seconds": 60,
     "sources": {
         "suricata": {"enabled": True, "eve_path": _P["eve_path"]},
         "unbound": {
@@ -723,6 +728,38 @@ SOURCE_TYPES = {
 }
 
 
+DNSVIEW_BIN = "/usr/local/sbin/flowsight-dnsview"
+_dns_names_at = [0.0]
+
+
+def refresh_dns_names(cfg):
+    """Fold the resolver cache into the stored address-to-name map.
+
+    Kept here because the collector is the one component already running all
+    the time. Names are what make a flow readable, and the cache entry that
+    supplies a name may only exist for a few seconds - nobody has the UI open
+    for most of them.
+
+    Entirely optional: absent the DNS module, or on a platform without it, this
+    does nothing and the collector carries on.
+    """
+    every = cfg.get("dns_name_refresh_seconds", 0)
+    if not every or not os.path.exists(DNSVIEW_BIN):
+        return
+    now = time.monotonic()
+    if _dns_names_at[0] and now - _dns_names_at[0] < every:
+        return
+    _dns_names_at[0] = now
+    try:
+        r = subprocess.run([sys.executable, DNSVIEW_BIN, "names"],
+                           capture_output=True, text=True, timeout=90)
+        if r.returncode != 0:
+            sys.stderr.write("flowsight: dns name refresh failed: %s\n"
+                             % (r.stderr or "").strip()[:200])
+    except Exception as exc:
+        sys.stderr.write("flowsight: dns name refresh error: %s\n" % exc)
+
+
 def main():
     cfg = load_config()
     exporter = Exporter(cfg, int(time.time() * 1e9))
@@ -770,6 +807,7 @@ def main():
                 sys.stderr.write("flowsight: export %s failed: %s\n" % (kind, exc))
                 exports[kind] = {"ok": False, "count": len(data), "error": str(exc)[:300]}
 
+        refresh_dns_names(cfg)
         write_state(state_path, sources, results, exports)
         time.sleep(cfg["interval_seconds"])
 

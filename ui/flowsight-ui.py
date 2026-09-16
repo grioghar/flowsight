@@ -233,16 +233,77 @@ def _ntopng(path):
         return json.loads(resp.read().decode("utf-8", "replace"))
 
 
+def _lease_names():
+    """Address -> local device name, from DHCP and static reservations."""
+    out = {}
+    try:
+        with open("/var/db/dnsmasq.leases") as fh:
+            for line in fh:
+                p = line.split()
+                if len(p) >= 4 and p[3] != "*":
+                    out[p[2]] = p[3]
+    except Exception:
+        pass
+    try:
+        import glob as _glob
+        for conf in ["/usr/local/etc/dnsmasq.conf"] + sorted(
+                _glob.glob("/usr/local/etc/dnsmasq.conf.d/*.conf")):
+            try:
+                with open(conf) as fh:
+                    for line in fh:
+                        if not line.startswith("dhcp-host="):
+                            continue
+                        parts = line.strip().split("=", 1)[1].split(",")
+                        ip = next((x for x in parts if x.count(".") == 3), "")
+                        label = parts[-1]
+                        if ip and label and "." not in label and ":" not in label:
+                            out.setdefault(ip, label)
+            except OSError:
+                continue
+    except Exception:
+        pass
+    return out
+
+
+_DNS_NAMES = {"data": {}, "at": 0.0}
+
+
+def _dns_names():
+    """Address -> name, cached.
+
+    Refreshing means re-reading the resolver cache and merging it into the
+    stored map, which costs about a second; the pages that use it re-render
+    every fifteen. A failure keeps the previous map rather than blanking every
+    name on the page.
+    """
+    now = time.time()
+    if _DNS_NAMES["data"] and now - _DNS_NAMES["at"] < 120:
+        return _DNS_NAMES["data"]
+    out = _dnsview("names")
+    names = out.get("names") if isinstance(out, dict) else None
+    if names:
+        _DNS_NAMES["data"] = names
+        _DNS_NAMES["at"] = now
+    return _DNS_NAMES["data"]
+
+
 def api_hosts():
     """Per-device report: who is on the network and what they are doing."""
     try:
         rsp = _ntopng("host/active.lua?ifid=0&perPage=100").get("rsp", {})
+        names = _dns_names()
+        local = _lease_names()
         rows = []
         for h in rsp.get("data", []):
             b = h.get("bytes", {}) or {}
+            ip = h.get("ip", "")
             rows.append({
-                "ip": h.get("ip", ""),
+                "ip": ip,
                 "name": (h.get("name") or "") if h.get("name") != h.get("ip") else "",
+                # A local address is best named by what the device calls itself;
+                # a remote one by the name it was resolved from. Consulting DHCP
+                # first means our own hosts stop showing as bare addresses.
+                "dns_name": local.get(ip, "") or names.get(ip, ""),
                 "mac": h.get("mac", ""),
                 "country": h.get("country", ""),
                 "sent": b.get("sent", 0),
@@ -268,15 +329,24 @@ def api_flows():
     try:
         rsp = _ntopng("flow/active.lua?ifid=0&perPage=100").get("rsp", {})
         raw = rsp.get("data", rsp) if isinstance(rsp, dict) else rsp
+        names = _dns_names()
+        local = _lease_names()
         rows = []
         for f in raw or []:
             cli = f.get("client", {}) or {}
             srv = f.get("server", {}) or {}
             proto = f.get("protocol", {}) or {}
             b = f.get("bytes", {}) or {}
+            cip = cli.get("ip") or cli.get("name", "")
+            sip = srv.get("ip") or srv.get("name", "")
             rows.append({
-                "client": cli.get("ip") or cli.get("name", ""),
-                "server": srv.get("ip") or srv.get("name", ""),
+                "client": cip,
+                "server": sip,
+                # The client is usually ours, so a device name fits it; the
+                # server is usually not, and the name it was resolved from is
+                # the only thing that says what it actually is.
+                "client_name": local.get(cip, "") or names.get(cip, ""),
+                "server_name": names.get(sip, "") or local.get(sip, ""),
                 "app": proto.get("l7") or proto.get("l7_proto") or
                        proto.get("l4") or "",
                 "l4": proto.get("l4", ""),
@@ -910,12 +980,32 @@ PAGE = """<!doctype html>
 .fs{color:var(--fg);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
 .fs h1{font-size:19px;margin:0 0 2px}
 .fs .sub{color:var(--mut);font-size:12px;margin-bottom:14px}
-.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap}
-.tab{padding:7px 14px;cursor:pointer;border:0;background:none;color:var(--mut);
+.fslayout{display:flex;gap:20px;align-items:flex-start}
+.fsnav{flex:0 0 172px;display:flex;flex-direction:column;gap:1px;
+       position:sticky;top:12px;border-right:1px solid var(--line);
+       padding-right:12px;margin-bottom:16px}
+.fsmain{flex:1;min-width:0}
+.tab{padding:7px 11px;cursor:pointer;border:0;background:none;color:var(--mut);
      font:600 12px/1.4 inherit;text-transform:uppercase;letter-spacing:.05em;
-     border-bottom:2px solid transparent}
-.tab:hover{color:var(--fg)}
-.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+     text-align:left;border-radius:6px;border-left:2px solid transparent}
+.tab:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}
+.tab.on{color:var(--accent);border-left-color:var(--accent);
+        background:color-mix(in srgb,var(--accent) 12%,transparent)}
+/* Inside the OPNsense GUI the navigation lives in that page's own left menu,
+   so carrying a second copy here would just duplicate it. */
+.fs.embedded .fsnav{display:none}
+.fs.embedded .fslayout{display:block}
+/* Time-range selectors sit inside the content, not the navigation, so they
+   keep a horizontal pill styling rather than the sidebar's list styling. */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tabs .tab{border-left:0;border:1px solid var(--line);text-transform:none;
+           letter-spacing:0;padding:5px 12px;background:var(--card)}
+.tabs .tab.on{border-color:var(--accent);color:var(--accent)}
+@media(max-width:820px){
+  .fslayout{display:block}
+  .fsnav{flex-direction:row;flex-wrap:wrap;position:static;border-right:0;
+         border-bottom:1px solid var(--line);padding-right:0;padding-bottom:6px}
+}
 .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:18px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
 .card .k{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
@@ -945,22 +1035,56 @@ PAGE = """<!doctype html>
 .btn:hover{filter:brightness(1.1)}
 .editor{width:100%;height:280px;font:12px/1.5 ui-monospace,Menlo,monospace;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:6px}
 </style>
-<div class="fs">
-  <h1>Flowsight</h1>
-  <div class="sub" id="sub">read-only &middot; policy is applied from the CLI, never here</div>
-  <div class="tabs" id="tabs"></div>
-  <div id="view"></div>
+<div class="fs" id="fsroot">
+  <div class="fslayout">
+    <nav class="fsnav" id="tabs"></nav>
+    <main class="fsmain">
+      <h1>Flowsight</h1>
+      <div class="sub" id="sub">read-only &middot; policy is applied from the CLI, never here</div>
+      <div id="view"></div>
+    </main>
+  </div>
 </div>
 <script>
 (function(){
 const $=id=>document.getElementById(id);
+// The OPNsense page proxies this UI and rewrites the literal '/api/ to
+// 'flowsight.php?api=, which already carries a query string. Appending
+// parameters with a bare "?" produced a second one and every parameterised
+// call 404'd behind the GUI while working perfectly when reached directly.
+// Building URLs here keeps both forms correct.
+const API='/api/';
+function apiUrl(name, params){
+  let u=API+name;
+  const qs=params?new URLSearchParams(params).toString():'';
+  if(!qs) return u;
+  return u+(u.indexOf('?')>=0?'&':'?')+qs;
+}
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const num=v=>v==null?'&mdash;':(v>=1e9?(v/1e9).toFixed(1)+'G':v>=1e6?(v/1e6).toFixed(1)+'M':
   v>=1e3?(v/1e3).toFixed(1)+'k':(Number.isInteger(v)?v:(+v).toFixed(1)));
 const bytes=v=>v==null?'&mdash;':(v>=1073741824?(v/1073741824).toFixed(2)+' GB':
   v>=1048576?(v/1048576).toFixed(1)+' MB':v>=1024?(v/1024).toFixed(1)+' KB':v+' B');
 const dur=s=>s==null?'':(s>=3600?Math.floor(s/3600)+'h':s>=60?Math.floor(s/60)+'m':s+'s');
-async function get(p){try{const r=await fetch(p);return await r.json()}catch(e){return null}}
+// Returns an object always. Callers read .error straight off the result, and a
+// null here - which happens whenever the UI service is restarting - turned a
+// transient fetch failure into a TypeError that blanked the whole page.
+async function get(p){
+  try{
+    const r=await fetch(p);
+    const j=await r.json();
+    return (j&&typeof j==='object')?j:{error:'unexpected response'};
+  }catch(e){return {error:String(e&&e.message||e)};}
+}
+function shortName(n){
+  // Hosting and CDN answers carry long per-session or per-shard prefixes. The
+  // tail is the part that identifies the service, and the full name is on the
+  // element's title for anyone who needs it.
+  if(!n) return '';
+  if(n.length<=34) return n;
+  const p=n.split('.');
+  return p.length>3 ? '\u2026'+p.slice(-3).join('.') : n.slice(0,33)+'\u2026';
+}
 function chart(pts){
   if(!pts||!pts.length) return '<div class="note">no data in this window</div>';
   const W=320,H=90,P=4;
@@ -1109,7 +1233,7 @@ function pctBar(rows,total){
 }
 
 async function renderDns(v){
-  const d=await get('/api/dns?hours='+dnsHours+'&limit=25');
+  const d=await get(apiUrl('dns',{hours:dnsHours,limit:25}));
   if(d.error){v.innerHTML=`<div class="note">${esc(d.error)}</div>
     <div class="note">DNS reporting is an Unbound setting - it must be on for
     this page to have anything to read.</div>`;return;}
@@ -1120,7 +1244,7 @@ async function renderDns(v){
     `<button class="tab ${h===dnsHours?'on':''}" data-h="${h}">${h<24?h+'h':(h/24)+'d'}</button>`).join('');
 
   v.innerHTML=
-    `<div class="row" style="margin-bottom:8px">${win}</div>
+    `<div class="tabs">${win}</div>
      <div class="row">
        <div class="card"><h3>Queries</h3><div class="big">${num(tot)}</div>
          ${chart(ts)}</div>
@@ -1201,12 +1325,15 @@ async function renderDns(v){
     render();});
 
   async function loadLog(){
-    const q=new URLSearchParams({limit:'200'});
-    if(dnsFilter.client)q.set('client',dnsFilter.client);
-    if(dnsFilter.domain)q.set('domain',dnsFilter.domain);
-    if(dnsFilter.blocked)q.set('blocked','1');
-    const r=await get('/api/dns/recent?'+q.toString());
-    $('qlog').innerHTML=r.error?`<div class="note">${esc(r.error)}</div>`:
+    const q={limit:'200'};
+    if(dnsFilter.client)q.client=dnsFilter.client;
+    if(dnsFilter.domain)q.domain=dnsFilter.domain;
+    if(dnsFilter.blocked)q.blocked='1';
+    const r=await get(apiUrl('dns/recent',q));
+    // The tab may have changed while this was in flight, in which case the
+    // element it was going to fill no longer exists.
+    const box=$('qlog'); if(!box) return;
+    box.innerHTML=r.error?`<div class="note">${esc(r.error)}</div>`:
       table('dnslog',[
         {k:'time',t:'Time',f:x=>new Date(x.time*1000).toLocaleTimeString()},
         {k:'hostname',t:'Device',f:x=>esc(x.hostname||x.client)},
@@ -1227,7 +1354,7 @@ async function renderDns(v){
   $('rgo').onclick=async()=>{
     const a=$('raddr').value.trim(); if(!a)return;
     $('rout').textContent='...';
-    const r=await get('/api/dns/lookup?address='+encodeURIComponent(a));
+    const r=await get(apiUrl('dns/lookup',{address:a}));
     $('rout').textContent=r.error?r.error:
       (r.names&&r.names.length?r.names.join(', '):'no name in the resolver cache');
   };
@@ -1266,7 +1393,10 @@ async function render(){
     v.innerHTML=`<h2>Devices seen on the network</h2>`+table('hosts',[
       {k:'ip',t:'Address'},
       {k:'local',t:'Scope',f:r=>r.local?'<span class="pill ok">local</span>':'<span class="pill warn">remote</span>'},
-      {k:'name',t:'Name'},{k:'mac',t:'MAC'},{k:'country',t:'CC'},
+      {k:'name',t:'Name'},
+      {k:'dns_name',t:'Resolved name',f:r=>r.dns_name?
+        `<span title="${esc(r.dns_name)}">${esc(shortName(r.dns_name))}</span>`:''},
+      {k:'mac',t:'MAC'},{k:'country',t:'CC'},
       {k:'total',t:'Total',n:1,f:r=>bytes(r.total)},
       {k:'sent',t:'Sent',n:1,f:r=>bytes(r.sent)},
       {k:'recvd',t:'Received',n:1,f:r=>bytes(r.recvd)},
@@ -1275,18 +1405,21 @@ async function render(){
       {k:'blacklisted',t:'Flagged',f:r=>r.blacklisted?'<span class="pill bad">yes</span>':''}],
       d.hosts,'No devices reported. Is ntopng running?')+
       (d.error?`<div class="err">${esc(d.error)}</div>`:'')+
-      `<div class="note">From ntopng. Includes remote peers as well as local devices &mdash; the Scope column distinguishes them. Sorted by traffic; click a column to re-sort.</div>`;
+      `<div class="note">From ntopng. Includes remote peers as well as local devices &mdash; the Scope column distinguishes them. Resolved name comes from the names the resolver handed out, so a remote address is shown as what a device asked for rather than as a number. Sorted by traffic; click a column to re-sort.</div>`;
   }
   else if(cur==='flows'){
     const d=await get('/api/flows')||{flows:[]};
     v.innerHTML=`<h2>Active sessions</h2>`+table('flows',[
-      {k:'client',t:'Client'},{k:'server',t:'Server'},
+      {k:'client',t:'Client',f:r=>r.client_name?
+        `<span title="${esc(r.client)}">${esc(r.client_name)}</span>`:esc(r.client)},
+      {k:'server',t:'Server',f:r=>r.server_name?
+        `<span title="${esc(r.server)}">${esc(shortName(r.server_name))}</span>`:esc(r.server)},
       {k:'app',t:'Application'},{k:'l4',t:'Proto'},
       {k:'bytes',t:'Bytes',n:1,f:r=>bytes(r.bytes)},
       {k:'duration',t:'Duration',n:1,f:r=>dur(r.duration)}],
       d.flows,'No active flows reported.')+
       (d.error?`<div class="err">${esc(d.error)}</div>`:'')+
-      `<div class="note">Application is identified by nDPI, the same engine ntopng uses for L7 classification.</div>`;
+      `<div class="note">Application is identified by nDPI, the same engine ntopng uses for L7 classification. Where a name is shown instead of an address, hover to see the address it stands for.</div>`;
   }
   else if(cur==='alerts'){
     const d=await get('/api/alerts')||{alerts:[]};
@@ -1299,7 +1432,7 @@ async function render(){
       d.alerts,'No alerts in the query window. On a quiet WAN that is expected, not a fault.');
   }
   else if(cur==='reports'){
-    const d=await get('/api/timeseries?range='+encodeURIComponent(range));
+    const d=await get(apiUrl('timeseries',{range:range}));
     const btns=['1h','6h','24h','7d'].map(r=>
       `<button class="tab ${r===range?'on':''}" data-r="${r}">${r}</button>`).join('');
     v.innerHTML=`<div class="tabs" style="border:0;margin-bottom:10px">${btns}</div>`+
@@ -1413,7 +1546,14 @@ function autoRefresh(){
   if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT') return;
   render();
 }
+if(window.FS_EMBEDDED) document.getElementById('fsroot').classList.add('embedded');
 tabs(); render(); setInterval(autoRefresh, 15000);
+// The OPNsense menu navigates by changing the fragment on the same page, so
+// the view has to follow the hash rather than only the in-page buttons.
+window.addEventListener('hashchange',()=>{
+  const h=location.hash.replace('#','');
+  if(h&&h!==cur){cur=h; tabs(); render();}
+});
 })();
 </script>
 """

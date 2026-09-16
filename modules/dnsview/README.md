@@ -40,6 +40,25 @@ Where several names map to one address, all are kept — that is genuinely what 
 shared address means, and collapsing it to one invents precision. A single Plex
 address on this network resolves to fourteen names.
 
+## The name store accumulates
+
+`dump_cache` is a snapshot of what is still live in the resolver cache, so the
+answer naming the far end of a flow disappears the moment its TTL lapses - and
+short TTLs are exactly what CDNs use. Each snapshot is merged into a stored map
+at `/var/db/flowsight/dns-names.json`, so a flow can still be named from an
+answer given an hour ago. Entries are kept for 14 days after they were last
+seen, capped at 60k addresses, oldest dropped first.
+
+The collector refreshes it every 60 seconds (`dns_name_refresh_seconds`, 0 to
+disable). It lives there because the collector is the one component already
+running all the time: the cache entry that supplies a name may exist for only a
+few seconds, and nobody has the UI open for most of them.
+
+Where an address has several names, `best_name` picks one for display -
+underscore-prefixed service records are skipped, then the shortest wins, since
+hosting and CDN answers pile on per-session prefixes and the short form is the
+one a person recognises. The full list stays available from `lookup`.
+
 ## Naming a client
 
 Unbound keeps a client table, but it is sparse — it holds only what the resolver

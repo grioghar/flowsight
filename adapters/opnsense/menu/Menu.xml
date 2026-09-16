@@ -7,8 +7,24 @@
          Icon class is "fa fa-eye" with no fa-fw: every other top-level entry
          (fa-fire, fa-server, fa-globe) omits the fixed-width modifier, and
          including it butts the glyph against the label instead of matching
-         the spacing of its neighbours. -->
+         the spacing of its neighbours.
+
+         Each view is a child entry here rather than a tab strip inside the
+         page: this is the navigation the rest of the GUI uses, and a second
+         row of tabs above the content duplicates it. The page selects its view
+         from the URL fragment, so these are all the same proxied page. -->
     <Flowsight VisibleName="Flowsight" cssClass="fa fa-eye" order="45">
-        <Overview url="/flowsight.php" order="10"/>
+        <Overview     VisibleName="Overview"     url="/flowsight.php"          order="10"/>
+        <Reports      VisibleName="Reports"      url="/flowsight.php#reports"  order="20"/>
+        <Devices      VisibleName="Devices"      url="/flowsight.php#devices"  order="30"/>
+        <Enrollment   VisibleName="Enrollment"   url="/flowsight.php#enroll"   order="40"/>
+        <DNS          VisibleName="DNS"          url="/flowsight.php#dns"      order="50"/>
+        <Hosts        VisibleName="Hosts"        url="/flowsight.php#hosts"    order="60"/>
+        <Applications VisibleName="Applications" url="/flowsight.php#apps"     order="70"/>
+        <LiveFlows    VisibleName="Live flows"   url="/flowsight.php#flows"    order="80"/>
+        <Alerts       VisibleName="Alerts"       url="/flowsight.php#alerts"   order="90"/>
+        <Policy       VisibleName="Policy"       url="/flowsight.php#policy"   order="100"/>
+        <Configuration VisibleName="Configuration" url="/flowsight.php#config" order="110"/>
+        <Setup        VisibleName="Setup"        url="/flowsight.php#setup"    order="120"/>
     </Flowsight>
 </menu>

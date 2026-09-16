@@ -292,6 +292,84 @@ def resolutions():
 # commands
 
 
+NAME_STORE = "/var/db/flowsight/dns-names.json"
+NAME_MAX_AGE = 14 * 86400
+NAME_MAX_ENTRIES = 60000
+
+
+def best_name(names):
+    """The one name worth showing for an address.
+
+    Underscore-prefixed names are service records (_https._tcp and friends),
+    which label a protocol on a host rather than the host - never the right
+    thing to show. Among the rest the shortest is almost always the canonical
+    service name: CDN and hosting answers pile on per-session and per-shard
+    prefixes, and the short form is the one a person recognises.
+    """
+    real = [n for n in names if not n.startswith("_")] or list(names)
+    if not real:
+        return ""
+    return sorted(real, key=lambda n: (len(n), n))[0]
+
+
+def name_store(refresh=False):
+    """Address to names, accumulated across resolver cache expiries.
+
+    dump_cache is a snapshot of what is still live in the cache, so an answer
+    naming the far end of a flow disappears the moment its TTL lapses - and
+    short TTLs are exactly what CDNs use. Merging each snapshot into a stored
+    map means a flow can still be named from an answer given an hour ago.
+    Entries are kept for NAME_MAX_AGE after they were last seen.
+    """
+    store = {"addresses": {}}
+    try:
+        with open(NAME_STORE) as fh:
+            store = json.load(fh)
+    except Exception:
+        pass
+    addresses = store.setdefault("addresses", {})
+
+    if refresh:
+        now = int(time.time())
+        fresh = resolutions().get("map", {})
+        for addr, names in fresh.items():
+            rec = addresses.setdefault(addr, {"names": [], "seen": now})
+            for n in names:
+                if n not in rec["names"]:
+                    rec["names"].append(n)
+            rec["seen"] = now
+        cutoff = now - NAME_MAX_AGE
+        for addr in [a for a, r in addresses.items()
+                     if r.get("seen", 0) < cutoff]:
+            del addresses[addr]
+        if len(addresses) > NAME_MAX_ENTRIES:
+            keep = sorted(addresses.items(), key=lambda kv: -kv[1].get("seen", 0))
+            addresses = dict(keep[:NAME_MAX_ENTRIES])
+        store["addresses"] = addresses
+        store["updated"] = now
+        try:
+            os.makedirs(os.path.dirname(NAME_STORE), exist_ok=True)
+            tmp = NAME_STORE + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(store, fh)
+            os.replace(tmp, NAME_STORE)
+        except Exception:
+            pass
+    return store
+
+
+def cmd_names(args):
+    store = name_store(refresh=not args.no_refresh)
+    addresses = store.get("addresses", {})
+    print(json.dumps({
+        "names": {a: best_name(r.get("names", []))
+                  for a, r in addresses.items() if r.get("names")},
+        "addresses": len(addresses),
+        "updated": store.get("updated", 0),
+    }))
+    return 0
+
+
 def cmd_overview(args):
     """Everything the DNS page needs, in one process start.
 
@@ -328,10 +406,11 @@ def cmd_resolutions(args):
 
 
 def cmd_lookup(args):
-    """Name an address from the resolver cache."""
-    table = resolutions().get("map", {})
-    print(json.dumps({"address": args.address,
-                      "names": table.get(args.address, [])}))
+    """Name an address, from the accumulated store and the live cache."""
+    names = list(name_store(refresh=True).get("addresses", {})
+                 .get(args.address, {}).get("names", []))
+    print(json.dumps({"address": args.address, "names": names,
+                      "best": best_name(names)}))
     return 0
 
 
@@ -353,6 +432,11 @@ def main():
     p.set_defaults(fn=cmd_recent)
 
     sub.add_parser("resolutions").set_defaults(fn=cmd_resolutions)
+
+    p = sub.add_parser("names")
+    p.add_argument("--no-refresh", action="store_true",
+                   help="read the stored map without re-reading the resolver")
+    p.set_defaults(fn=cmd_names)
 
     p = sub.add_parser("lookup")
     p.add_argument("address")
