@@ -40,11 +40,18 @@ here.
 The `collector/` service and a stable event schema. Until this exists, each
 source has its own field names and the dashboards are bespoke per source.
 
-## Phase 3 — Policy engine
+## Phase 3 — Policy engine  *(first backend working)*
 
 The declarative model and the compiler to DNS blocklists, Suricata rules and
 firewall rules, with continuous reconciliation. This is the part that does not
 exist anywhere else and is the reason the project is worth building.
+
+Done: the policy model, capability resolution, plan/apply with diffing, and the
+first provider — per-group DNS blocking via Unbound views, validated with
+`unbound-checkconf` before any reload.
+
+Next: a category feed so `deny.categories` works, firewall and Suricata
+providers, and periodic reconciliation to correct drift.
 
 ## Phase 4 — UI
 
