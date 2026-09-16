@@ -15,9 +15,18 @@ rcvar="flowsight_collector_enable"
 # own pid, so procname must be daemon - matching the python interpreter instead
 # makes `service ... status` report "not running" while it is in fact running.
 pidfile="/var/run/${name}.pid"
+logfile="/var/log/flowsight-collector.log"
+python_bin="/usr/local/bin/python3"
 procname="/usr/sbin/daemon"
 command="/usr/sbin/daemon"
-command_args="-f -r -P ${pidfile} /usr/local/sbin/flowsight-collector"
+# -o captures the collector's own stderr. Without it daemon(8) discards output
+# and source/export failures are invisible - you only notice via empty panels.
+# Invoke the interpreter explicitly. daemon(8) runs with a minimal PATH that
+# excludes /usr/local/bin, so the collector's portable "#!/usr/bin/env python3"
+# shebang fails with "env: python3: No such file or directory" and daemon -r
+# crash-loops it forever. Platform-specific paths belong here in the adapter,
+# not in the collector.
+command_args="-r -P ${pidfile} -o ${logfile} ${python_bin} /usr/local/sbin/flowsight-collector"
 
 load_rc_config $name
 
