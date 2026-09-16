@@ -238,7 +238,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 25
       },
       "fieldConfig": {
         "defaults": {
@@ -266,7 +266,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 25
       },
       "fieldConfig": {
         "defaults": {
@@ -296,6 +296,34 @@
           "refId": "A",
           "expr": "host_sensor_temperature_celsius",
           "legendFormat": "{{sensor}}"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "IDS alerts (live)",
+      "description": "Suricata alerts shipped by the collector. Each field is a Loki label, so you can filter by signature, category or host.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{source=\"suricata\", service_name=\"flowsight-collector\"}",
+          "queryType": "range"
         }
       ]
     }

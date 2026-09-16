@@ -18,6 +18,7 @@ Design notes:
     counter reset rather than an enormous negative spike.
 """
 
+import calendar
 import json
 import os
 import re
@@ -53,6 +54,10 @@ DEFAULT_CONFIG = {
 }
 
 METRIC_PREFIX = "flowsight"
+
+# Beyond this, a record's timestamp is treated as untrustworthy and replaced
+# with "now" - log backends drop far-future entries silently.
+MAX_TIMESTAMP_SKEW_NS = 3600 * 1_000_000_000
 
 
 def load_config():
@@ -310,18 +315,54 @@ class UnboundStats(Source):
 
 
 def _iso_to_nanos(stamp):
-    """Suricata timestamps look like 2026-09-16T14:03:30.123456-0500."""
+    """Convert a Suricata eve timestamp to UTC epoch nanoseconds.
+
+    Suricata writes e.g. 2026-09-16T14:03:30.123456-0500. The offset is
+    significant: parsing the naive part with mktime() and letting the local
+    timezone decide silently skews every record whenever the host's zone and
+    the stamp's offset disagree - and Loki DROPS future-dated entries without
+    an error, so the symptom is logs that vanish while metrics arrive fine.
+    """
+    now_ns = int(time.time() * 1e9)
     if not stamp:
-        return int(time.time() * 1e9)
-    m = re.match(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?", str(stamp))
+        return now_ns
+
+    m = re.match(
+        r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?\s*"
+        r"(Z|[+-]\d{2}:?\d{2})?$",
+        str(stamp).strip())
     if not m:
-        return int(time.time() * 1e9)
+        return now_ns
+
     try:
-        base = time.mktime(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S"))
+        tm = time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")
     except ValueError:
-        return int(time.time() * 1e9)
+        return now_ns
+
+    # timegm treats the struct as UTC, so the offset can be applied explicitly
+    epoch = calendar.timegm(tm)
     frac = float("0." + m.group(2)) if m.group(2) else 0.0
-    return int((base + frac) * 1e9)
+
+    tz = m.group(3)
+    if tz and tz != "Z":
+        tz = tz.replace(":", "")
+        sign = -1 if tz[0] == "-" else 1
+        epoch -= sign * (int(tz[1:3]) * 3600 + int(tz[3:5]) * 60)
+    elif not tz:
+        # No offset given: fall back to interpreting it as host-local time.
+        try:
+            epoch = int(time.mktime(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")))
+        except (ValueError, OverflowError):
+            return now_ns
+
+    ns = int((epoch + frac) * 1e9)
+
+    # A wildly wrong stamp would be silently discarded by the log backend.
+    # Clamp instead, so a bad clock degrades to "slightly wrong time" rather
+    # than "the alert never appears anywhere".
+    if abs(ns - now_ns) > MAX_TIMESTAMP_SKEW_NS:
+        return now_ns
+    return ns
 
 
 def _attrs(d):
