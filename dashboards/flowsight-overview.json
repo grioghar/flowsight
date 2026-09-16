@@ -250,7 +250,7 @@
         {
           "refId": "A",
           "expr": "flowsight_ids_alerts_by_severity",
-          "legendFormat": "severity {{severity}}"
+          "legendFormat": "{{severity}}"
         }
       ]
     },
@@ -302,7 +302,7 @@
     {
       "type": "logs",
       "title": "IDS alerts (live)",
-      "description": "Suricata alerts shipped by the collector. Each field is a Loki label, so you can filter by signature, category or host.",
+      "description": "Suricata alerts normalized onto the Flowsight event schema. Loki indexes only host_name/os_type/service_name; every other field is structured metadata, so it must be filtered after the stream selector with | rather than inside {}.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -322,7 +322,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{source=\"suricata\", service_name=\"flowsight-collector\"}",
+          "expr": "{service_name=\"flowsight-collector\"} | source=\"suricata\"",
           "queryType": "range"
         }
       ]
