@@ -56,15 +56,35 @@ the reflection that made it work — the connection still fails, and the rule
 looks innocent because a matching `no rdr` translates nothing and so never
 increments pf's packet counter.
 
-## Known gaps
+## IPv6
 
-**IPv6 is not intercepted.** Squid listens on `[::1]:3128/3129`, but pf cannot
-usefully redirect cross-interface traffic to an IPv6 loopback address the way
-it can to `127.0.0.1`, so rules written against `::1` load and match nothing.
-Closing this needs squid listening on the LAN's own IPv6 address in intercept
-mode, which is template-managed by the plugin. Until then, clients egressing
-over IPv6 are invisible to the proxy — on the network this was built for, that
-was on the order of a hundred concurrent connections.
+IPv6 is intercepted too, and it needs three things the IPv4 path does not.
+
+**A listener that is not `::1`.** Squid's generated ports bind `[::1]`, and pf
+cannot usefully redirect traffic arriving on a LAN interface to an IPv6
+loopback address — rules written against `::1` load cleanly and match nothing,
+which is the worst kind of failure. The redirect target must be an ordinary
+address the firewall owns on that interface.
+
+**A stable one.** The LAN's global address is tracked from the WAN delegation
+and carries a one hour lifetime; squid cannot rebind when it changes. So the
+listener is a **unique local address** assigned as a virtual IP on the LAN, and
+squid binds it via `/usr/local/etc/squid/pre-auth/10-flowsight-v6.conf`. The
+proxy plugin owns only its own files in that directory, so this survives a
+reconfigure, and the `include` sits at a point where an `http_port` is still
+accepted.
+
+**The global prefix in `localnet`.** The generated ACL carries the LAN's IPv4
+subnet plus `fc00::/7` and `fe80::/10`, but not the global IPv6 prefix, so
+intercepted v6 clients are answered `TCP_DENIED` and nothing says why. Because
+the prefix changes, `flowsight-squid-v6acl` derives the current one and
+rewrites the ACL only when it differs, reconfiguring squid at that point and
+not otherwise. The collector runs it every five minutes, so a re-delegation
+does not quietly start denying every IPv6 client days later.
+
+The `pre-auth` include is read after `localnet` is defined and before it is
+used, so an extra `acl localnet src <prefix>` line there accumulates into the
+existing ACL rather than replacing it.
 
 **QUIC bypasses it.** HTTP/3 runs over UDP 443 and is never redirected, so
 browsers that negotiate it leave no record here. Forcing TCP means blocking
@@ -78,9 +98,13 @@ an ISP router shares the LAN segment, some clients may use it as their gateway
 and never traverse OPNsense at all — those cannot be intercepted and their
 absence from the log is not a fault.
 
-Check all of: plain HTTP, HTTPS with SNI, HTTPS to a bare IP (no SNI), and an
-internal service reached by its **public** name. That last one is the case that
+Check all of: plain HTTP, HTTPS with SNI, HTTPS to a bare IP (no SNI), an
+internal service reached by its **public** name, and the same set over IPv6. That last one is the case that
 ordering breaks, and it is the one most likely to be missed.
+
+Pick live targets, and for IPv6 pick ones that actually have AAAA records —
+`api.github.com` and `httpbin.org` do not, so `curl -6` against them fails with
+no proxy involved at all.
 
 Pick live targets. An earlier attempt at this was rolled back on the conclusion
 that origin servers were rejecting SNI-less handshakes; the real cause was

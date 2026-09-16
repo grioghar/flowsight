@@ -94,6 +94,8 @@ DEFAULT_CONFIG = {
     # so a flow seen a minute later has nothing left to name it unless the map
     # was refreshed while the answer was still live. 0 disables.
     "dns_name_refresh_seconds": 60,
+    # Re-derive squid's IPv6 localnet ACL from the current delegated prefix.
+    "squid_v6_acl_refresh_seconds": 300,
     "sources": {
         "suricata": {"enabled": True, "eve_path": _P["eve_path"]},
         "unbound": {
@@ -760,6 +762,33 @@ def refresh_dns_names(cfg):
         sys.stderr.write("flowsight: dns name refresh error: %s\n" % exc)
 
 
+SQUID_V6ACL_BIN = "/usr/local/sbin/flowsight-squid-v6acl"
+_v6acl_at = [0.0]
+
+
+def refresh_squid_v6_acl(cfg):
+    """Keep squid's IPv6 local-network ACL in step with the delegated prefix.
+
+    The prefix is tracked from the WAN delegation and carries a short lifetime,
+    so it changes without warning. When it does, intercepted IPv6 clients start
+    getting TCP_DENIED and nothing on the firewall explains why. The script is
+    cheap and rewrites only on an actual change, so running it on the collector
+    loop costs nothing and removes a failure that would otherwise appear days
+    later with no obvious cause.
+    """
+    every = cfg.get("squid_v6_acl_refresh_seconds", 300)
+    if not every or not os.path.exists(SQUID_V6ACL_BIN):
+        return
+    now = time.monotonic()
+    if _v6acl_at[0] and now - _v6acl_at[0] < every:
+        return
+    _v6acl_at[0] = now
+    try:
+        subprocess.run([SQUID_V6ACL_BIN], capture_output=True, text=True, timeout=60)
+    except Exception as exc:
+        sys.stderr.write("flowsight: squid v6 acl refresh failed: %s\n" % exc)
+
+
 def main():
     cfg = load_config()
     exporter = Exporter(cfg, int(time.time() * 1e9))
@@ -808,6 +837,7 @@ def main():
                 exports[kind] = {"ok": False, "count": len(data), "error": str(exc)[:300]}
 
         refresh_dns_names(cfg)
+        refresh_squid_v6_acl(cfg)
         write_state(state_path, sources, results, exports)
         time.sleep(cfg["interval_seconds"])
 
