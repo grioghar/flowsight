@@ -791,6 +791,77 @@ def enroll_assign(body):
     return _enroll_run("assign", mac, zone)
 
 
+DNSVIEW_BIN = "/usr/local/sbin/flowsight-dnsview"
+
+
+def _qint(name, default, low, high):
+    """A bounded integer from the query string.
+
+    Bounded rather than merely parsed: these become row limits and time windows
+    on a store holding millions of queries, and an unbounded value turns a page
+    load into a scan that blocks the resolver's own writer.
+    """
+    try:
+        v = int((_QUERY.get(name) or [default])[0])
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, v))
+
+
+def _qstr(name, maxlen=253):
+    return (_QUERY.get(name) or [""])[0][:maxlen]
+
+
+def _dnsview(*args):
+    """Run the DNS module and return its JSON.
+
+    Arguments are passed as a list, never a shell string, and the module itself
+    binds them as SQL parameters - a client filter is a value, never fragments
+    of a query.
+    """
+    try:
+        r = subprocess.run(py_cmd(DNSVIEW_BIN, *args), capture_output=True,
+                           text=True, timeout=180)
+    except Exception as exc:
+        return {"error": str(exc)}
+    if r.stdout.strip():
+        try:
+            return json.loads(r.stdout)
+        except ValueError:
+            pass
+    return {"error": (r.stderr or "no output from flowsight-dnsview").strip()[:400]}
+
+
+def api_dns():
+    return _dnsview("overview",
+                    "--hours", str(_qint("hours", 24, 1, 720)),
+                    "--limit", str(_qint("limit", 25, 1, 200)),
+                    "--interval", str(_qint("interval", 10, 1, 10)))
+
+
+def api_dns_recent():
+    args = ["recent", "--limit", str(_qint("limit", 200, 1, 1000))]
+    client, domain = _qstr("client", 64), _qstr("domain")
+    if client:
+        args += ["--client", client]
+    if domain:
+        args += ["--domain", domain]
+    if _qstr("blocked", 8) in ("1", "true", "yes"):
+        args.append("--blocked")
+    return _dnsview(*args)
+
+
+def api_dns_resolutions():
+    return _dnsview("resolutions")
+
+
+def api_dns_lookup():
+    addr = _qstr("address", 64)
+    if not addr:
+        return {"error": "no address given"}
+    return _dnsview("lookup", addr)
+
+
 WRITE_ROUTES = {
     "/api/policy_source": lambda body: save_policy(body.get("text", "")),
     "/api/policy_apply": lambda body: apply_policy(),
@@ -817,6 +888,10 @@ ROUTES = {
     "/api/devices": api_devices,
     "/api/policy_source": lambda: api_policy_source(),
     "/api/config": lambda: api_config(),
+    "/api/dns": api_dns,
+    "/api/dns/recent": api_dns_recent,
+    "/api/dns/resolutions": api_dns_resolutions,
+    "/api/dns/lookup": api_dns_lookup,
     "/api/enroll": api_enroll,
     "/api/enroll/zones": api_enroll_zones,
     "/api/enroll/rules": api_enroll_rules,
@@ -908,9 +983,9 @@ async function post(p,b){try{const r=await fetch(p,{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return await r.json()}catch(e){return {ok:false,error:String(e)}}}
 
 const TABS=[['overview','Overview'],['reports','Reports'],['devices','Devices'],
-            ['enroll','Enrollment'],['hosts','Hosts'],['apps','Applications'],
-            ['flows','Live flows'],['alerts','Alerts'],['policy','Policy'],
-            ['config','Configuration'],['setup','Setup']];
+            ['enroll','Enrollment'],['dns','DNS'],['hosts','Hosts'],
+            ['apps','Applications'],['flows','Live flows'],['alerts','Alerts'],
+            ['policy','Policy'],['config','Configuration'],['setup','Setup']];
 let range=localStorage.getItem('fs_range')||'24h';
 let cur=location.hash.replace('#','')||'overview';
 let sortKey={}, sortDir={};
@@ -1020,8 +1095,147 @@ async function renderEnroll(v){
   }
 }
 
+let dnsHours=parseInt(localStorage.getItem('fs_dns_hours')||'24',10);
+let dnsFilter={client:'',domain:'',blocked:false};
+
+function pctBar(rows,total){
+  return rows.map(r=>{const w=total?(100*r.queries/total):0;
+    return `<div style="display:flex;align-items:center;gap:8px;margin:2px 0">
+      <div style="flex:0 0 118px;font-size:12px">${esc(r.label)}</div>
+      <div style="flex:1;background:var(--line);height:9px;border-radius:5px;overflow:hidden">
+        <div style="width:${w.toFixed(1)}%;background:var(--accent);height:100%"></div></div>
+      <div style="flex:0 0 74px;text-align:right;font-size:12px">${num(r.queries)}</div>
+    </div>`;}).join('');
+}
+
+async function renderDns(v){
+  const d=await get('/api/dns?hours='+dnsHours+'&limit=25');
+  if(d.error){v.innerHTML=`<div class="note">${esc(d.error)}</div>
+    <div class="note">DNS reporting is an Unbound setting - it must be on for
+    this page to have anything to read.</div>`;return;}
+  const s=d.summary, ts=(d.timeseries||[]).map(p=>[p.t,p.total]);
+  const tot=s.total||0;
+
+  const win=[1,6,24,72,168].map(h=>
+    `<button class="tab ${h===dnsHours?'on':''}" data-h="${h}">${h<24?h+'h':(h/24)+'d'}</button>`).join('');
+
+  v.innerHTML=
+    `<div class="row" style="margin-bottom:8px">${win}</div>
+     <div class="row">
+       <div class="card"><h3>Queries</h3><div class="big">${num(tot)}</div>
+         ${chart(ts)}</div>
+       <div class="card"><h3>Blocked</h3><div class="big">${num(s.blocked)}</div>
+         <div class="sub">${s.blocked_pct}% of queries${s.dropped?(', '+num(s.dropped)+' dropped'):''}</div></div>
+       <div class="card"><h3>Answered from cache</h3><div class="big">${s.cache_pct}%</div>
+         <div class="sub">${num(s.recursed)} needed recursion, ${s.avg_resolve_ms} ms average</div></div>
+       <div class="card"><h3>Asking</h3><div class="big">${num(s.clients)}</div>
+         <div class="sub">clients, ${num(s.domains)} distinct domains</div></div>
+       <div class="card"><h3>Failures</h3><div class="big">${num(s.nxdomain)}</div>
+         <div class="sub">NXDOMAIN, ${num(s.servfail)} SERVFAIL</div></div>
+     </div>
+
+     <div class="row">
+       <div class="card" style="flex:1"><h3>Query type</h3>${pctBar(d.types,tot)}</div>
+       <div class="card" style="flex:1"><h3>Answer source</h3>${pctBar(d.sources,tot)}</div>
+       <div class="card" style="flex:1"><h3>Response code</h3>${pctBar(d.rcodes,tot)}</div>
+       <div class="card" style="flex:1"><h3>DNSSEC</h3>${pctBar(d.dnssec,tot)}</div>
+     </div>
+
+     <h3>Top domains</h3>
+     ${table('dnsdom',[{k:'domain',t:'Domain',f:r=>
+         `<a href="#" class="dq" data-d="${esc(r.domain)}">${esc(r.domain)}</a>`},
+       {k:'queries',t:'Queries',n:1,f:r=>num(r.queries)},
+       {k:'clients',t:'Clients',n:1}],d.top_domains,'No queries in this window.')}
+
+     <h3>Most blocked</h3>
+     ${table('dnsblk',[{k:'domain',t:'Domain',f:r=>
+         `<a href="#" class="dq" data-d="${esc(r.domain)}">${esc(r.domain)}</a>`},
+       {k:'queries',t:'Blocked',n:1,f:r=>num(r.queries)},
+       {k:'clients',t:'Clients',n:1},{k:'blocklist',t:'List'}],
+       d.top_blocked,'Nothing blocked in this window.')}
+
+     <h3>Who is asking</h3>
+     ${table('dnscli',[
+       {k:'hostname',t:'Device',f:r=>esc(r.hostname||'(unnamed)')},
+       {k:'client',t:'Address',f:r=>
+         `<a href="#" class="cq" data-c="${esc(r.client)}">${esc(r.client)}</a>`},
+       {k:'queries',t:'Queries',n:1,f:r=>num(r.queries)},
+       {k:'blocked',t:'Blocked',n:1,f:r=>r.blocked?
+         `<b style="color:#c2410c">${num(r.blocked)}</b>`:'0'},
+       {k:'domains',t:'Domains',n:1}],d.top_clients,'No clients.')}
+
+     ${d.blocklists&&d.blocklists.length?`<h3>By blocklist</h3>`+
+       table('dnsbl',[{k:'blocklist',t:'List'},
+         {k:'queries',t:'Blocked',n:1,f:r=>num(r.queries)}],d.blocklists,''):''}
+
+     <h3>Query log</h3>
+     <div class="row" style="gap:6px;margin-bottom:6px">
+       <input id="fcli" placeholder="client address" value="${esc(dnsFilter.client)}"
+         style="padding:6px;min-width:150px">
+       <input id="fdom" placeholder="domain contains" value="${esc(dnsFilter.domain)}"
+         style="padding:6px;min-width:180px">
+       <label style="font-size:13px"><input type="checkbox" id="fblk"
+         ${dnsFilter.blocked?'checked':''}> blocked only</label>
+       <button id="fgo">Filter</button><button id="fclr">Clear</button>
+     </div>
+     <div id="qlog" class="note">loading...</div>
+
+     <h3>Name an address</h3>
+     <p class="sub">Answered from the resolver's cache - the names clients were
+       actually given. A reverse PTR lookup often has no record, or names the
+       hosting provider instead of the service.</p>
+     <div class="row" style="gap:6px">
+       <input id="raddr" placeholder="e.g. 104.200.30.183" style="padding:6px;min-width:190px">
+       <button id="rgo">Look up</button><span id="rout" class="sub"></span>
+     </div>`;
+  wireSort();
+
+  [...document.querySelectorAll('[data-h]')].forEach(b=>b.onclick=()=>{
+    dnsHours=parseInt(b.dataset.h,10);
+    localStorage.setItem('fs_dns_hours',dnsHours); render();});
+  [...document.querySelectorAll('.dq')].forEach(a=>a.onclick=e=>{
+    e.preventDefault(); dnsFilter={client:'',domain:a.dataset.d,blocked:false};
+    render();});
+  [...document.querySelectorAll('.cq')].forEach(a=>a.onclick=e=>{
+    e.preventDefault(); dnsFilter={client:a.dataset.c,domain:'',blocked:false};
+    render();});
+
+  async function loadLog(){
+    const q=new URLSearchParams({limit:'200'});
+    if(dnsFilter.client)q.set('client',dnsFilter.client);
+    if(dnsFilter.domain)q.set('domain',dnsFilter.domain);
+    if(dnsFilter.blocked)q.set('blocked','1');
+    const r=await get('/api/dns/recent?'+q.toString());
+    $('qlog').innerHTML=r.error?`<div class="note">${esc(r.error)}</div>`:
+      table('dnslog',[
+        {k:'time',t:'Time',f:x=>new Date(x.time*1000).toLocaleTimeString()},
+        {k:'hostname',t:'Device',f:x=>esc(x.hostname||x.client)},
+        {k:'domain',t:'Domain'},{k:'type',t:'Type'},
+        {k:'action',t:'Action',f:x=>x.action==='Pass'?'Pass':
+          `<b style="color:#c2410c">${esc(x.action)}</b>`},
+        {k:'source',t:'From'},
+        {k:'rcode',t:'Result',f:x=>x.rcode==='NOERROR'?x.rcode:
+          `<span style="color:#b45309">${esc(x.rcode)}</span>`},
+        {k:'resolve_ms',t:'ms',n:1},{k:'dnssec',t:'DNSSEC'},
+        {k:'blocklist',t:'List'}],r.queries||[],'No matching queries.');
+    wireSort();
+  }
+  loadLog();
+  $('fgo').onclick=()=>{dnsFilter={client:$('fcli').value.trim(),
+    domain:$('fdom').value.trim(),blocked:$('fblk').checked}; loadLog();};
+  $('fclr').onclick=()=>{dnsFilter={client:'',domain:'',blocked:false}; render();};
+  $('rgo').onclick=async()=>{
+    const a=$('raddr').value.trim(); if(!a)return;
+    $('rout').textContent='...';
+    const r=await get('/api/dns/lookup?address='+encodeURIComponent(a));
+    $('rout').textContent=r.error?r.error:
+      (r.names&&r.names.length?r.names.join(', '):'no name in the resolver cache');
+  };
+}
+
 async function render(){
   const v=$('view');
+  if(cur==='dns'){return renderDns(v);}
   if(cur==='enroll'){return renderEnroll(v);}
   if(cur==='overview'){
     const s=await get('/api/summary')||[];
@@ -1188,7 +1402,18 @@ async function render(){
   }
   wireSort();
 }
-tabs(); render(); setInterval(render, 15000);
+// Tabs that hold an editor are never re-rendered on a timer: a periodic
+// render replaces the DOM, and doing that to a half-written policy or rule set
+// discards whatever was typed. The focus check covers the rest - a refresh
+// landing mid-keystroke on a filter field is the same loss, briefly.
+const NOAUTO=new Set(['policy','config','enroll','setup']);
+function autoRefresh(){
+  if(NOAUTO.has(cur)) return;
+  const el=document.activeElement, t=el&&el.tagName;
+  if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT') return;
+  render();
+}
+tabs(); render(); setInterval(autoRefresh, 15000);
 })();
 </script>
 """
