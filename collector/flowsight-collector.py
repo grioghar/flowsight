@@ -47,6 +47,7 @@ CAP_THREAT_DETECT = "threat.detect"
 CAP_DNS_OBSERVE = "dns.observe"
 CAP_DNS_BLOCK = "dns.block"
 CAP_HOST_INVENTORY = "host.inventory"
+CAP_RULE_ANALYSE = "firewall.analyse"
 
 # The collector publishes what it is actually doing here, so the UI and any
 # operator can see per-source health without parsing logs or guessing from
@@ -70,6 +71,13 @@ DEFAULT_CONFIG = {
             "enabled": True,
             "base_url": "http://127.0.0.1:3000",
             "timeout": 8,
+        },
+        "rulehygiene": {
+            "enabled": True,
+            "binary": "/usr/local/sbin/flowsight-rulehygiene",
+            # Rulesets change on human timescales; re-analysing every cycle
+            # would burn CPU on a gateway to re-derive an identical answer.
+            "interval_seconds": 900,
         },
     },
 }
@@ -401,6 +409,61 @@ class NtopngFlows(Source):
         return metrics, []
 
 
+class RuleHygiene(Source):
+    """Firewall ruleset analysis, via the rulehygiene module.
+
+    Shells out rather than importing: the analysis is its own module with its
+    own release cadence, and the collector should not carry a copy of its
+    logic. Results are cached because rulesets change on human timescales.
+    """
+
+    name = "rulehygiene"
+    capabilities = (CAP_RULE_ANALYSE,)
+
+    def __init__(self, cfg):
+        Source.__init__(self, cfg)
+        self._last_run = 0.0
+        self._cached = []
+
+    def collect(self):
+        interval = float(self.cfg.get("interval_seconds", 900))
+        now = time.monotonic()
+        if self._cached and (now - self._last_run) < interval:
+            return self._cached, []
+
+        # Invoke with sys.executable, not the module's own shebang: under
+        # daemon(8) the PATH excludes /usr/local/bin, so "#!/usr/bin/env
+        # python3" fails with "env: python3: No such file or directory".
+        # Using the interpreter already running the collector is portable and
+        # cannot drift from it.
+        out = subprocess.run([sys.executable, self.cfg.get("binary"), "--json"],
+                             capture_output=True, text=True, timeout=60)
+        if out.returncode != 0:
+            raise RuntimeError("rulehygiene failed: %s" % out.stderr.strip()[:200])
+        doc = json.loads(out.stdout)
+
+        score = doc.get("score", {})
+        metrics = [
+            Metric("firewall_risk_score", score.get("score", 0),
+                   {"source": self.name}),
+            Metric("firewall_rules_analysed", score.get("rules_analysed", 0),
+                   {"source": self.name}),
+        ]
+        by_sev = {}
+        for f in doc.get("findings", []):
+            sev = f.get("severity", "info")
+            by_sev[sev] = by_sev.get(sev, 0) + 1
+        # Emit a zero for every severity so a cleared finding visibly drops to
+        # zero rather than the series simply disappearing from the graph.
+        for sev in SEVERITIES:
+            metrics.append(Metric("firewall_findings", by_sev.get(sev, 0),
+                                  {"source": self.name, "severity": sev}))
+
+        self._cached = metrics
+        self._last_run = now
+        return metrics, []
+
+
 def _iso_to_nanos(stamp):
     """Convert a Suricata eve timestamp to UTC epoch nanoseconds.
 
@@ -528,6 +591,7 @@ SOURCE_TYPES = {
     "suricata": SuricataEve,
     "unbound": UnboundStats,
     "ntopng": NtopngFlows,
+    "rulehygiene": RuleHygiene,
 }
 
 

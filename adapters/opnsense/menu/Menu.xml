@@ -1,0 +1,7 @@
+<menu>
+   <Services>
+      <Flowsight cssClass="fa fa-eye fa-fw" order="60">
+         <Overview url="/flowsight.php"/>
+      </Flowsight>
+   </Services>
+</menu>

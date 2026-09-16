@@ -238,7 +238,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 25
+        "y": 33
       },
       "fieldConfig": {
         "defaults": {
@@ -266,7 +266,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 33
       },
       "fieldConfig": {
         "defaults": {
@@ -311,7 +311,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 24
       },
       "options": {
         "showTime": true,
@@ -324,6 +324,84 @@
           "refId": "A",
           "expr": "{service_name=\"flowsight-collector\"} | source=\"suricata\"",
           "queryType": "range"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Firewall risk score",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "description": "From the rulehygiene module. Track the direction over time; it is not an absolute grade. Zero means no actionable findings.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "flowsight_firewall_risk_score",
+          "legendFormat": "score"
+        },
+        {
+          "refId": "B",
+          "expr": "flowsight_firewall_rules_analysed",
+          "legendFormat": "rules"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Firewall findings by severity",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "description": "Zeros are emitted for every severity so a cleared finding visibly drops to zero rather than the series vanishing.",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "flowsight_firewall_findings",
+          "legendFormat": "{{severity}}"
         }
       ]
     }
