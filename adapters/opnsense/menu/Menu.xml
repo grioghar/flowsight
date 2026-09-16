@@ -1,7 +1,9 @@
 <menu>
-   <Services>
-      <Flowsight cssClass="fa fa-eye fa-fw" order="60">
-         <Overview url="/flowsight.php"/>
-      </Flowsight>
-   </Services>
+    <!-- Top level, immediately after Firewall (order 40) and before VPN (50).
+         Flowsight is firewall-adjacent - traffic visibility, threat detection,
+         rule hygiene and policy - so it belongs beside Firewall rather than
+         buried under Services. -->
+    <Flowsight VisibleName="Flowsight" cssClass="fa fa-eye fa-fw" order="45">
+        <Overview url="/flowsight.php" order="10"/>
+    </Flowsight>
 </menu>
