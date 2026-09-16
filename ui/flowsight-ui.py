@@ -19,6 +19,7 @@ Stdlib only, no build step and no CDN: an appliance should not need internet
 access to render its own management page.
 """
 
+import ipaddress
 import json
 import os
 import re
@@ -932,10 +933,444 @@ def api_dns_lookup():
     return _dnsview("lookup", addr)
 
 
+# ---------------------------------------------------------------------------
+# Configuration registry
+#
+# Every file Flowsight reads is registered here, so one set of operations
+# covers all of them and a new document needs a descriptor rather than another
+# pair of endpoints. Documents come in four shapes:
+#
+#   settings    a JSON object of keys, edited key by key (collector, ui)
+#   collection  a list of identified items, created and deleted one at a time
+#               (enrollment zones, classification rules)
+#   map         name to value (category feeds)
+#   text        validated as a whole, not decomposable (the policy document)
+#
+# Every write validates first, keeps a timestamped backup, replaces the file
+# atomically, and then triggers whatever needs to notice. In that order: a
+# document that fails validation must never reach disk, because most of these
+# fail soft - a malformed rules file does not raise, it makes the engine fall
+# back to an empty default and quarantine the network on the next apply.
+
+CONFIG_DOCS = {
+    "collector": {
+        "title": "Collector",
+        "why": "Which sources are polled, how often, and where telemetry is sent.",
+        "kind": "settings",
+        "path_key": "collector_config",
+        "reload": "collector",
+    },
+    "ui": {
+        "title": "Interface",
+        "why": "Bind address, backend URLs and whether this interface may write.",
+        "kind": "settings",
+        "path": "/usr/local/etc/flowsight/ui.json",
+        "reload": "ui",
+    },
+    "zones": {
+        "title": "Enrollment zones",
+        "why": "The network each class of device is placed in, and what it may reach.",
+        "kind": "collection",
+        "path": "/usr/local/etc/flowsight/zones.json",
+        "collection": "zones",
+        "id_field": "id",
+        "settings_too": True,
+        "reload": "enroll",
+    },
+    "enroll-rules": {
+        "title": "Classification rules",
+        "why": "How a device is identified from its DHCP request. Order is policy: the first match wins.",
+        "kind": "collection",
+        "path": "/usr/local/etc/flowsight/enroll-rules.json",
+        "collection": "rules",
+        "id_field": "id",
+        "ordered": True,
+        "reload": "enroll",
+    },
+    "categories": {
+        "title": "Category feeds",
+        "why": "Domain feeds backing category policy, as name to URL.",
+        "kind": "map",
+        "path": "/usr/local/etc/flowsight/categories.json",
+    },
+    "policy": {
+        "title": "Policy",
+        "why": "The declarative policy document compiled into DNS enforcement.",
+        "kind": "text",
+        "path_key": "policy_file",
+        "validator": "policy",
+    },
+}
+
+
+class ConfigError(Exception):
+    pass
+
+
+def _doc(name):
+    spec = CONFIG_DOCS.get(name)
+    if not spec:
+        raise ConfigError("unknown document %r" % name)
+    return spec
+
+
+def _doc_path(spec):
+    return spec.get("path") or CFG[spec["path_key"]]
+
+
+def _writable():
+    return bool(CFG.get("allow_write"))
+
+
+def _cfg_read(name):
+    """Parse a document, or return its empty shape if it does not exist yet."""
+    spec = _doc(name)
+    path = _doc_path(spec)
+    try:
+        with open(path) as fh:
+            raw = fh.read()
+    except OSError:
+        empty = {"collection": {spec.get("collection", "items"): []},
+                 "settings": {}, "map": {}, "text": ""}
+        return spec, path, empty[spec["kind"]], ""
+    if spec["kind"] == "text":
+        return spec, path, raw, raw
+    try:
+        return spec, path, json.loads(raw), raw
+    except ValueError as exc:
+        raise ConfigError("%s on disk is not valid JSON: %s" % (name, exc))
+
+
+def _validate(name, spec, doc):
+    kind = spec["kind"]
+    if kind == "settings" and not isinstance(doc, dict):
+        raise ConfigError("expected an object of settings")
+    if kind == "map":
+        if not isinstance(doc, dict):
+            raise ConfigError("expected an object of name to value")
+        for k, v in doc.items():
+            if not isinstance(v, str):
+                raise ConfigError("%r must be a string" % k)
+    if kind == "collection":
+        key = spec["collection"]
+        items = doc.get(key)
+        if not isinstance(items, list):
+            raise ConfigError('expected a "%s" list' % key)
+        seen = set()
+        for it in items:
+            if not isinstance(it, dict):
+                raise ConfigError("every entry must be an object")
+            ident = it.get(spec["id_field"], "")
+            if not ident:
+                raise ConfigError("every entry needs a non-empty %r"
+                                  % spec["id_field"])
+            if ident in seen:
+                raise ConfigError("duplicate id %r" % ident)
+            seen.add(ident)
+    if name == "enroll-rules":
+        for r in doc.get("rules", []):
+            for cond in _walk_conds(r.get("when", {})):
+                for ck, cv in cond.items():
+                    if ck.endswith("_re"):
+                        try:
+                            re.compile(cv)
+                        except re.error as exc:
+                            raise ConfigError("rule %r: bad regex %r: %s"
+                                              % (r.get("id"), cv, exc))
+            if r.get("zone"):
+                zones = _cfg_read("zones")[2].get("zones", [])
+                ids = {z.get("id") for z in zones}
+                if ids and r["zone"] not in ids:
+                    raise ConfigError("rule %r targets unknown zone %r"
+                                      % (r.get("id"), r["zone"]))
+    if name == "zones":
+        for z in doc.get("zones", []):
+            for field in ("subnet", "range"):
+                if field not in z:
+                    raise ConfigError("zone %r has no %s" % (z.get("id"), field))
+            try:
+                net = ipaddress.ip_network(z["subnet"], strict=False)
+            except ValueError as exc:
+                raise ConfigError("zone %r: %s" % (z.get("id"), exc))
+            rng = z.get("range") or []
+            if len(rng) != 2:
+                raise ConfigError("zone %r: range must be two addresses"
+                                  % z.get("id"))
+            for addr in rng:
+                try:
+                    if ipaddress.ip_address(addr) not in net:
+                        raise ConfigError("zone %r: %s is outside %s"
+                                          % (z.get("id"), addr, z["subnet"]))
+                except ValueError as exc:
+                    raise ConfigError("zone %r: %s" % (z.get("id"), exc))
+
+
+def _reload(spec):
+    """Tell whatever consumes this document that it changed."""
+    what = spec.get("reload")
+    if what == "collector":
+        r = subprocess.run(["/usr/sbin/service", CFG["collector_service"],
+                            "restart"], capture_output=True, text=True,
+                           timeout=90)
+        return "collector restarted" if r.returncode == 0 else \
+            "collector restart failed: %s" % (r.stderr or "").strip()[:200]
+    if what == "enroll":
+        r = subprocess.run(py_cmd(ENROLL_BIN, "reconcile"),
+                           capture_output=True, text=True, timeout=180)
+        return "enrollment re-evaluated" if r.returncode == 0 else \
+            "re-evaluation failed: %s" % (r.stderr or "").strip()[:200]
+    if what == "ui":
+        # Deliberately not automatic: this process is serving the request that
+        # changed the file, and restarting it here would drop the response and
+        # leave the caller unable to tell whether the write succeeded.
+        return "saved - restart flowsight_ui for it to take effect"
+    return ""
+
+
+def _cfg_write(name, doc, note=""):
+    spec = _doc(name)
+    if not _writable():
+        raise ConfigError("this interface is configured read-only")
+    path = _doc_path(spec)
+
+    if spec.get("validator") == "policy":
+        result = save_policy(doc if isinstance(doc, str) else str(doc))
+        if not result.get("ok"):
+            raise ConfigError(result.get("error", "policy did not validate"))
+        return {"ok": True, "path": path, "note": "policy validated and saved"}
+
+    _validate(name, spec, doc)
+    body = doc if spec["kind"] == "text" else json.dumps(doc, indent=2,
+                                                         sort_keys=False)
+    try:
+        if os.path.exists(path):
+            shutil.copy2(path, "%s.bak-%s" % (path, time.strftime("%Y%m%d%H%M%S")))
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
+            fh.write(body if body.endswith("\n") else body + "\n")
+        os.replace(tmp, path)
+    except OSError as exc:
+        raise ConfigError("could not write %s: %s" % (path, exc))
+    return {"ok": True, "path": path, "note": note or _reload(spec)}
+
+
+def _items(spec, doc):
+    return doc.setdefault(spec["collection"], [])
+
+
+# --- read -----------------------------------------------------------------
+
+
+def api_config_docs():
+    """Every document that can be edited, with its shape and size."""
+    out = []
+    for name, spec in sorted(CONFIG_DOCS.items()):
+        entry = {"name": name, "title": spec["title"], "why": spec["why"],
+                 "kind": spec["kind"], "ordered": bool(spec.get("ordered")),
+                 "writable": _writable()}
+        try:
+            _s, path, doc, _raw = _cfg_read(name)
+            entry["path"] = path
+            entry["exists"] = os.path.exists(path)
+            if spec["kind"] == "collection":
+                entry["count"] = len(doc.get(spec["collection"], []))
+                entry["collection"] = spec["collection"]
+                entry["id_field"] = spec["id_field"]
+            elif spec["kind"] in ("settings", "map"):
+                entry["count"] = len(doc)
+        except ConfigError as exc:
+            entry["error"] = str(exc)
+        out.append(entry)
+    return {"documents": out, "writable": _writable()}
+
+
+def api_config_doc():
+    name = _qstr("name", 64)
+    try:
+        spec, path, doc, raw = _cfg_read(name)
+    except ConfigError as exc:
+        return {"error": str(exc)}
+    return {"name": name, "path": path, "kind": spec["kind"],
+            "exists": os.path.exists(path), "writable": _writable(),
+            "document": doc,
+            "text": raw or (doc if spec["kind"] == "text"
+                            else json.dumps(doc, indent=2))}
+
+
+def api_config_items():
+    name = _qstr("doc", 64)
+    try:
+        spec, _path, doc, _raw = _cfg_read(name)
+    except ConfigError as exc:
+        return {"error": str(exc)}
+    if spec["kind"] == "collection":
+        return {"doc": name, "id_field": spec["id_field"],
+                "items": _items(spec, doc)}
+    if spec["kind"] in ("settings", "map"):
+        return {"doc": name, "id_field": "key",
+                "items": [{"key": k, "value": v} for k, v in doc.items()]}
+    return {"doc": name, "items": [], "text": doc}
+
+
+def api_config_item():
+    name, ident = _qstr("doc", 64), _qstr("id", 128)
+    try:
+        spec, _p, doc, _r = _cfg_read(name)
+    except ConfigError as exc:
+        return {"error": str(exc)}
+    if spec["kind"] == "collection":
+        for it in _items(spec, doc):
+            if it.get(spec["id_field"]) == ident:
+                return {"doc": name, "item": it}
+        return {"error": "no item %r in %s" % (ident, name)}
+    if spec["kind"] in ("settings", "map"):
+        if ident in doc:
+            return {"doc": name, "item": {"key": ident, "value": doc[ident]}}
+        return {"error": "no key %r in %s" % (ident, name)}
+    return {"error": "%s is not a collection" % name}
+
+
+# --- write ----------------------------------------------------------------
+
+
+def _as_error(fn, body):
+    try:
+        return fn(body)
+    except ConfigError as exc:
+        return {"ok": False, "error": str(exc)}
+    except Exception as exc:                      # noqa: BLE001 - reported, not raised
+        return {"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}
+
+
+def cfg_doc_save(body):
+    def run(b):
+        name = b.get("name") or b.get("doc") or ""
+        spec = _doc(name)
+        if "text" in b and spec["kind"] != "text":
+            try:
+                doc = json.loads(b["text"])
+            except ValueError as exc:
+                raise ConfigError("not valid JSON: %s" % exc)
+        elif "text" in b:
+            doc = b["text"]
+        elif "document" in b:
+            doc = b["document"]
+        else:
+            raise ConfigError("supply text or document")
+        return _cfg_write(name, doc)
+    return _as_error(run, body)
+
+
+def cfg_item_create(body):
+    def run(b):
+        name = b.get("doc", "")
+        spec = _doc(name)
+        _s, _p, doc, _r = _cfg_read(name)
+        if spec["kind"] == "collection":
+            item = b.get("item") or {}
+            ident = item.get(spec["id_field"], "")
+            if not ident:
+                raise ConfigError("item needs a %r" % spec["id_field"])
+            items = _items(spec, doc)
+            if any(i.get(spec["id_field"]) == ident for i in items):
+                raise ConfigError("%r already exists - update it instead" % ident)
+            pos = b.get("position")
+            if spec.get("ordered") and isinstance(pos, int) and 0 <= pos <= len(items):
+                items.insert(pos, item)
+            else:
+                items.append(item)
+        elif spec["kind"] in ("settings", "map"):
+            key = b.get("key", "")
+            if not key:
+                raise ConfigError("supply a key")
+            if key in doc:
+                raise ConfigError("%r already exists - update it instead" % key)
+            doc[key] = b.get("value")
+        else:
+            raise ConfigError("%s has no items" % name)
+        return _cfg_write(name, doc)
+    return _as_error(run, body)
+
+
+def cfg_item_update(body):
+    def run(b):
+        name = b.get("doc", "")
+        spec = _doc(name)
+        _s, _p, doc, _r = _cfg_read(name)
+        ident = b.get("id", "")
+        if spec["kind"] == "collection":
+            items = _items(spec, doc)
+            for idx, it in enumerate(items):
+                if it.get(spec["id_field"]) == ident:
+                    new = b.get("item") or {}
+                    # A merge by default: a caller editing one field should not
+                    # have to resend the whole item and risk dropping the rest.
+                    items[idx] = new if b.get("replace") else {**it, **new}
+                    items[idx][spec["id_field"]] = new.get(
+                        spec["id_field"], ident)
+                    break
+            else:
+                raise ConfigError("no item %r in %s" % (ident, name))
+        elif spec["kind"] in ("settings", "map"):
+            key = b.get("key", ident)
+            if key not in doc and not b.get("create"):
+                raise ConfigError("no key %r in %s" % (key, name))
+            doc[key] = b.get("value")
+        else:
+            raise ConfigError("%s has no items" % name)
+        return _cfg_write(name, doc)
+    return _as_error(run, body)
+
+
+def cfg_item_delete(body):
+    def run(b):
+        name = b.get("doc", "")
+        spec = _doc(name)
+        _s, _p, doc, _r = _cfg_read(name)
+        ident = b.get("id", "") or b.get("key", "")
+        if spec["kind"] == "collection":
+            items = _items(spec, doc)
+            keep = [i for i in items if i.get(spec["id_field"]) != ident]
+            if len(keep) == len(items):
+                raise ConfigError("no item %r in %s" % (ident, name))
+            doc[spec["collection"]] = keep
+        elif spec["kind"] in ("settings", "map"):
+            if ident not in doc:
+                raise ConfigError("no key %r in %s" % (ident, name))
+            del doc[ident]
+        else:
+            raise ConfigError("%s has no items" % name)
+        return _cfg_write(name, doc)
+    return _as_error(run, body)
+
+
+def cfg_reorder(body):
+    def run(b):
+        name = b.get("doc", "")
+        spec = _doc(name)
+        if not spec.get("ordered"):
+            raise ConfigError("%s is not an ordered document" % name)
+        _s, _p, doc, _r = _cfg_read(name)
+        items = _items(spec, doc)
+        want = b.get("ids") or []
+        have = [i.get(spec["id_field"]) for i in items]
+        if sorted(want) != sorted(have):
+            raise ConfigError("the id list must name every entry exactly once")
+        index = {i.get(spec["id_field"]): i for i in items}
+        doc[spec["collection"]] = [index[i] for i in want]
+        return _cfg_write(name, doc)
+    return _as_error(run, body)
+
+
 WRITE_ROUTES = {
     "/api/policy_source": lambda body: save_policy(body.get("text", "")),
     "/api/policy_apply": lambda body: apply_policy(),
     "/api/config": lambda body: save_config(body.get("text", "")),
+    "/api/config/doc": cfg_doc_save,
+    "/api/config/item/create": cfg_item_create,
+    "/api/config/item/update": cfg_item_update,
+    "/api/config/item/delete": cfg_item_delete,
+    "/api/config/reorder": cfg_reorder,
     "/api/enroll/assign": enroll_assign,
     "/api/enroll/reconcile": lambda body: _enroll_run("reconcile"),
     "/api/enroll/apply": lambda body: _enroll_run("apply"),
@@ -958,6 +1393,10 @@ ROUTES = {
     "/api/devices": api_devices,
     "/api/policy_source": lambda: api_policy_source(),
     "/api/config": lambda: api_config(),
+    "/api/config/docs": api_config_docs,
+    "/api/config/doc": api_config_doc,
+    "/api/config/items": api_config_items,
+    "/api/config/item": api_config_item,
     "/api/dns": api_dns,
     "/api/dns/recent": api_dns_recent,
     "/api/dns/resolutions": api_dns_resolutions,
@@ -1360,6 +1799,164 @@ async function renderDns(v){
   };
 }
 
+let cfgDoc=localStorage.getItem('fs_cfg_doc')||'collector';
+let cfgRaw=false;
+
+function fieldEditor(id,value){
+  const t=(typeof value==='object'&&value!==null)?JSON.stringify(value,null,1):
+          (value===undefined?'':String(value));
+  // String.fromCharCode, not an escape: the whole page is a non-raw Python
+  // triple-quoted string, so a backslash-n here is consumed by Python and
+  // arrives in the browser as a real line break inside a string literal.
+  const multi=t.length>60||t.indexOf(String.fromCharCode(10))>=0;
+  return multi?`<textarea id="${id}" rows="6" style="width:100%;font-family:ui-monospace,
+    Menlo,monospace;font-size:12px">${esc(t)}</textarea>`
+   :`<input id="${id}" value="${esc(t)}" style="width:100%;padding:6px;
+     font-family:ui-monospace,Menlo,monospace;font-size:12px">`;
+}
+// Values arrive as text. Anything that parses as JSON is stored as JSON so
+// numbers, booleans, lists and nested objects survive a round trip; anything
+// else is kept as the string it plainly is.
+function parseValue(t){
+  const v=t.trim();
+  if(v==='') return '';
+  try{ return JSON.parse(v); }catch(e){ return t; }
+}
+
+async function renderConfig(v){
+  const list=await get('/api/config/docs');
+  if(list.error){v.innerHTML=`<div class="err">${esc(list.error)}</div>`;return;}
+  const docs=list.documents||[];
+  const spec=docs.find(d=>d.name===cfgDoc)||docs[0];
+  if(!spec){v.innerHTML='<div class="note">Nothing is registered.</div>';return;}
+  cfgDoc=spec.name;
+
+  const picker=docs.map(d=>`<button class="tab ${d.name===cfgDoc?'on':''}"
+      data-d="${esc(d.name)}">${esc(d.title)}${d.count!==undefined?
+      ` <span style="opacity:.6">${d.count}</span>`:''}</button>`).join('');
+
+  let bodyHtml='';
+  if(cfgRaw||spec.kind==='text'){
+    const doc=await get(apiUrl('config/doc',{name:cfgDoc}));
+    bodyHtml=`<textarea id="rawsrc" spellcheck="false" class="editor">${esc(doc.text||'')}</textarea>
+      <div style="margin:8px 0"><button id="rawsave" class="btn">Save document</button>
+      <span id="rawmsg" class="note"></span></div>`;
+  }else{
+    const got=await get(apiUrl('config/items',{doc:cfgDoc}));
+    if(got.error){bodyHtml=`<div class="err">${esc(got.error)}</div>`;}
+    else{
+      const idf=got.id_field, items=got.items||[];
+      const isColl=spec.kind==='collection';
+      const rows=items.map((it,i)=>{
+        const ident=it[idf];
+        const summary=isColl
+          ? Object.keys(it).filter(k=>k!==idf).map(k=>
+              `${k}=${typeof it[k]==='object'?JSON.stringify(it[k]):it[k]}`).join('  ').slice(0,120)
+          : (typeof it.value==='object'?JSON.stringify(it.value):String(it.value)).slice(0,120);
+        return `<tr>
+          <td style="white-space:nowrap"><b>${esc(String(ident))}</b></td>
+          <td style="font-family:ui-monospace,Menlo,monospace;font-size:12px">${esc(summary)}</td>
+          <td style="white-space:nowrap">
+            ${spec.ordered?`<button class="btn mv" data-i="${i}" data-dir="-1"
+                 ${i===0?'disabled':''} style="padding:3px 7px">&uarr;</button>
+               <button class="btn mv" data-i="${i}" data-dir="1"
+                 ${i===items.length-1?'disabled':''} style="padding:3px 7px">&darr;</button>`:''}
+            <button class="btn ed" data-id="${esc(String(ident))}" style="padding:3px 9px">Edit</button>
+            <button class="btn del" data-id="${esc(String(ident))}"
+              style="padding:3px 9px;background:var(--crit)">Delete</button>
+          </td></tr>`;}).join('');
+      bodyHtml=`<div class="scroll"><table>
+        <tr><th>${esc(idf)}</th><th>Value</th><th></th></tr>${rows}</table></div>
+        <div style="margin-top:10px"><button id="addnew" class="btn">Add ${isColl?'entry':'key'}</button></div>
+        <div id="editbox"></div>`;
+    }
+  }
+
+  v.innerHTML=`<h2>Configuration</h2>
+    <div class="tabs">${picker}</div>
+    <div class="card" style="margin-bottom:12px">
+      <b>${esc(spec.title)}</b>
+      <div class="note" style="margin-top:2px">${esc(spec.why)}</div>
+      <div class="note"><code>${esc(spec.path||'')}</code>${spec.exists?'':' &mdash; not created yet'}</div>
+    </div>
+    ${spec.writable?'':'<div class="note">Editing is disabled (allow_write is off).</div>'}
+    <div class="tabs"><button class="tab ${cfgRaw?'on':''}" id="rawtoggle">Raw document</button></div>
+    ${bodyHtml}
+    <div class="note">Every save validates first, keeps a timestamped backup and
+      replaces the file atomically. A document that does not validate is never written.</div>`;
+
+  [...document.querySelectorAll('[data-d]')].forEach(b=>b.onclick=()=>{
+    cfgDoc=b.dataset.d; localStorage.setItem('fs_cfg_doc',cfgDoc);
+    cfgRaw=false; render();});
+  $('rawtoggle').onclick=()=>{cfgRaw=!cfgRaw; render();};
+
+  if($('rawsave')) $('rawsave').onclick=async()=>{
+    const m=$('rawmsg'); m.textContent='saving...';
+    const r=await post('/api/config/doc',{name:cfgDoc,text:$('rawsrc').value});
+    m.innerHTML=r.ok?`<span class="pill ok">saved</span> ${esc(r.note||'')}`
+      :`<span class="pill bad">rejected</span> <span class="err">${esc(r.error||'')}</span>`;
+    if(r.ok) setTimeout(render,700);
+  };
+
+  const isColl=spec.kind==='collection';
+  function openEditor(existing){
+    const box=$('editbox'); if(!box) return;
+    const idf=isColl?(spec.id_field||'id'):'key';
+    const ident=existing?(isColl?existing[idf]:existing.key):'';
+    const value=existing?(isColl?existing:existing.value):(isColl?{}:'');
+    const shown=isColl?Object.assign({},value):value;
+    if(isColl) delete shown[idf];
+    box.innerHTML=`<div class="card" style="margin-top:10px">
+      <b>${existing?'Edit':'New'} ${isColl?'entry':'key'}</b>
+      <div style="margin:8px 0"><div class="note">${esc(idf)}</div>
+        <input id="edid" value="${esc(String(ident))}" ${existing?'readonly':''}
+          style="width:100%;padding:6px;font-family:ui-monospace,Menlo,monospace"></div>
+      <div class="note">${isColl?'Remaining fields, as JSON':'Value (JSON or plain text)'}</div>
+      ${fieldEditor('edval',shown)}
+      <div style="margin-top:8px"><button id="edsave" class="btn">Save</button>
+      <button id="edcancel" class="btn" style="background:var(--mut)">Cancel</button>
+      <span id="edmsg" class="note"></span></div></div>`;
+    $('edcancel').onclick=()=>{box.innerHTML='';};
+    $('edsave').onclick=async()=>{
+      const m=$('edmsg'); m.textContent='saving...';
+      const id=$('edid').value.trim();
+      const parsed=parseValue($('edval').value);
+      let payload;
+      if(isColl){
+        if(typeof parsed!=='object'||parsed===null||Array.isArray(parsed)){
+          m.innerHTML='<span class="err">an entry must be a JSON object</span>';return;}
+        payload={doc:cfgDoc,id:id,item:Object.assign({},parsed,{[spec.id_field||'id']:id}),replace:true};
+      }else{
+        payload={doc:cfgDoc,key:id,id:id,value:parsed,create:!existing};
+      }
+      const r=await post(existing?'/api/config/item/update':'/api/config/item/create',payload);
+      m.innerHTML=r.ok?`<span class="pill ok">saved</span> ${esc(r.note||'')}`
+        :`<span class="pill bad">rejected</span> <span class="err">${esc(r.error||'')}</span>`;
+      if(r.ok) setTimeout(render,700);
+    };
+  }
+
+  if($('addnew')) $('addnew').onclick=()=>openEditor(null);
+  [...document.querySelectorAll('.ed')].forEach(b=>b.onclick=async()=>{
+    const r=await get(apiUrl('config/item',{doc:cfgDoc,id:b.dataset.id}));
+    if(r.error){alert(r.error);return;} openEditor(r.item);});
+  [...document.querySelectorAll('.del')].forEach(b=>b.onclick=async()=>{
+    if(!confirm('Delete '+b.dataset.id+' from '+cfgDoc+'?'))return;
+    const r=await post('/api/config/item/delete',{doc:cfgDoc,id:b.dataset.id,key:b.dataset.id});
+    if(!r.ok) alert(r.error||'delete failed');
+    render();});
+  [...document.querySelectorAll('.mv')].forEach(b=>b.onclick=async()=>{
+    const got=await get(apiUrl('config/items',{doc:cfgDoc}));
+    const ids=(got.items||[]).map(i=>i[spec.id_field||'id']);
+    const i=parseInt(b.dataset.i,10), j=i+parseInt(b.dataset.dir,10);
+    if(j<0||j>=ids.length) return;
+    [ids[i],ids[j]]=[ids[j],ids[i]];
+    const r=await post('/api/config/reorder',{doc:cfgDoc,ids:ids});
+    if(!r.ok) alert(r.error||'reorder failed');
+    render();});
+  wireSort();
+}
+
 async function render(){
   const v=$('view');
   if(cur==='dns'){return renderDns(v);}
@@ -1516,23 +2113,7 @@ async function render(){
         d.checks,'No checks returned.')+
       `<div class="note">Every failing check carries the command that fixes it. Nothing here changes anything &mdash; it reports state.</div>`;
   }
-  else if(cur==='config'){
-    const c=await get('/api/config');
-    v.innerHTML=`<h2>Collector configuration</h2>`+
-      `<div class="note">${esc((c&&c.path)||'')}</div>`+
-      ((c&&c.writable)
-        ? `<textarea id="cfgsrc" spellcheck="false" class="editor">${esc((c&&c.text)||'')}</textarea>
-           <div style="margin:8px 0"><button id="cfgsave" class="btn">Save &amp; restart collector</button>
-           <span id="cfgmsg" class="note"></span></div>`
-        : `<pre>${esc((c&&c.text)||'')}</pre><div class="note">Editing is disabled (allow_write is off).</div>`)+
-      `<div class="note">Saving validates the JSON, keeps a timestamped backup, and restarts the collector.</div>`;
-    if($('cfgsave')) $('cfgsave').onclick=async()=>{
-      const m=$('cfgmsg'); m.textContent='saving...';
-      const r=await post('/api/config',{text:$('cfgsrc').value});
-      m.innerHTML=(r&&r.ok)?'<span class="pill ok">saved &amp; restarted</span>':
-        `<span class="pill bad">rejected</span> <span class="err">${esc((r&&r.error)||'')}</span>`;
-    };
-  }
+  else if(cur==='config'){ return renderConfig(v); }
   wireSort();
 }
 // Tabs that hold an editor are never re-rendered on a timer: a periodic
@@ -1590,6 +2171,62 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps(fn()))
         except Exception as exc:
             return self._send(500, json.dumps({"error": str(exc)}))
+
+    # PUT and DELETE are provided so the API reads as CRUD to anything speaking
+    # REST. They are aliases: the OPNsense page that fronts this UI forwards
+    # only GET and POST, so every operation must also be reachable by POST or
+    # it would work for direct callers and fail behind the GUI.
+    VERB_ALIAS = {
+        ("PUT", "/api/config/item"): "/api/config/item/update",
+        ("POST", "/api/config/item"): "/api/config/item/create",
+        ("DELETE", "/api/config/item"): "/api/config/item/delete",
+        ("PUT", "/api/config/doc"): "/api/config/doc",
+    }
+
+    def _body(self):
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            return {}
+        if length > 4 * 1024 * 1024:
+            raise ValueError("payload too large")
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8", "replace"))
+        except ValueError:
+            raise ValueError("body is not valid JSON")
+
+    def _write_call(self, verb):
+        parsed = urllib.parse.urlparse(self.path)
+        global _QUERY
+        _QUERY = urllib.parse.parse_qs(parsed.query)
+        path = self.VERB_ALIAS.get((verb, parsed.path), parsed.path)
+        fn = WRITE_ROUTES.get(path)
+        if fn is None:
+            return self._send(404, json.dumps({"error": "not found"}))
+        try:
+            body = self._body()
+        except ValueError as exc:
+            return self._send(400, json.dumps({"error": str(exc)}))
+        # Query parameters stand in for a body on DELETE, where senders often
+        # omit one entirely.
+        for key in ("doc", "id", "key", "name"):
+            if key not in body and _QUERY.get(key):
+                body[key] = _QUERY[key][0]
+        try:
+            result = fn(body)
+        except Exception as exc:                  # noqa: BLE001
+            return self._send(500, json.dumps({"error": str(exc)}))
+        code = 200 if (not isinstance(result, dict) or
+                       result.get("ok", True)) else 400
+        return self._send(code, json.dumps(result))
+
+    def do_PUT(self):
+        return self._write_call("PUT")
+
+    def do_DELETE(self):
+        return self._write_call("DELETE")
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
