@@ -57,6 +57,9 @@ DEFAULT_CONFIG = {
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 
+# Query string of the request being served, for handlers that take parameters.
+_QUERY = {}
+
 
 def py_cmd(script, *args):
     """Run one of our own scripts with the interpreter already running us.
@@ -284,6 +287,131 @@ def api_flows():
         return {"flows": [], "error": str(exc)}
 
 
+RANGES = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800}
+
+# Metrics worth plotting over time, with the query used for each.
+SERIES = [
+    ("throughput", "Throughput (bps)",
+     'sum(flowsight_throughput_bits_per_second)'),
+    ("flows", "Active flows", 'sum(flowsight_active_flows)'),
+    ("hosts", "Active hosts", 'sum(flowsight_active_hosts)'),
+    ("dns", "DNS queries/s", 'sum(rate(flowsight_dns_queries_total[5m]))'),
+    ("traffic", "Traffic (bytes/s)",
+     'sum(rate(flowsight_traffic_direction_bytes_total[5m]))'),
+    ("alerts", "IDS alerts/h",
+     'sum(increase(flowsight_ids_alerts_total[1h]))'),
+]
+
+
+def _reachable(url, timeout=4):
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status < 500
+    except urllib.error.HTTPError:
+        return True          # answered, which is all we are testing
+    except Exception:
+        return False
+
+
+def api_setup():
+    """Guided setup: what is required, what is present, and how to fix the rest.
+
+    Every failing check carries the exact command that fixes it. A setup screen
+    that only says "not configured" makes the operator go hunting, which is the
+    part of deployment that actually costs time.
+    """
+    checks = []
+
+    def add(name, ok, detail, fix=""):
+        checks.append({"name": name, "ok": bool(ok), "detail": detail, "fix": fix})
+
+    # --- collector ---------------------------------------------------------
+    state, age = {}, None
+    try:
+        with open(CFG["collector_state"]) as fh:
+            state = json.load(fh)
+        age = int(time.time()) - int(state.get("updated", 0))
+    except Exception:
+        pass
+    add("Collector running", bool(state) and age is not None and age < 180,
+        ("last published %ss ago" % age) if age is not None
+        else "no state file at %s" % CFG["collector_state"],
+        "service flowsight_collector start")
+
+    # --- each source -------------------------------------------------------
+    for src in state.get("sources", []):
+        add("Source: %s" % src["name"], src.get("ok"),
+            (src.get("error") or "%s metrics, %s events"
+             % (src.get("metrics", 0), src.get("events", 0)))[:200],
+            "check the backend, then: service flowsight_collector restart")
+
+    # --- telemetry backends ------------------------------------------------
+    add("Metrics backend", _reachable(CFG["metrics_url"].rstrip("/") + "/api/v1/query?query=1"),
+        CFG["metrics_url"], "point metrics_url at a Prometheus-compatible endpoint")
+    add("Logs backend", _reachable(CFG["logs_url"].rstrip("/") + "/ready"),
+        CFG["logs_url"], "point logs_url at a Loki endpoint")
+    add("ntopng", _reachable(CFG["ntopng_url"].rstrip("/") +
+                             "/lua/rest/v2/get/ntopng/interfaces.lua"),
+        CFG["ntopng_url"] + " (needs -l=0 for loopback access)",
+        "add '-l=0' to ntopng.conf and restart ntopng")
+
+    # --- policy ------------------------------------------------------------
+    add("Policy file", os.path.isfile(CFG["policy_file"]), CFG["policy_file"],
+        "create it in the Policy tab, or copy policy.example.yaml")
+
+    cats = []
+    try:
+        cdir = "/usr/local/share/flowsight/categories"
+        cats = sorted(f[:-5] for f in os.listdir(cdir) if f.endswith(".list"))
+    except Exception:
+        pass
+    add("Category feeds", bool(cats),
+        (", ".join(cats) if cats else "none cached"),
+        "flowsight-categories update")
+
+    add("Writes enabled", bool(CFG.get("allow_write")),
+        "editing from this UI is %s" % ("on" if CFG.get("allow_write") else "off"),
+        "set allow_write in ui.json - only behind an authenticating proxy")
+
+    done = sum(1 for c in checks if c["ok"])
+    return {"checks": checks, "passed": done, "total": len(checks)}
+
+
+def api_timeseries():
+    """Historical series for the reports view.
+
+    Uses Mimir's query_range rather than repeated instant queries: one request
+    per series instead of hundreds, and the server picks sane step alignment.
+    """
+    rng = (_QUERY.get("range") or ["24h"])[0]
+    seconds = RANGES.get(rng, 86400)
+    now = int(time.time())
+    # ~120 points regardless of window, so the payload stays small and the
+    # chart stays legible at every range.
+    step = max(15, seconds // 120)
+
+    out = {"range": rng, "step": step, "series": []}
+    for key, label, query in SERIES:
+        try:
+            url = "%s/api/v1/query_range?%s" % (
+                CFG["metrics_url"].rstrip("/"),
+                urllib.parse.urlencode({"query": query, "start": now - seconds,
+                                        "end": now, "step": step}))
+            req = urllib.request.Request(
+                url, headers={"X-Scope-OrgID": CFG["metrics_tenant"]})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                doc = json.loads(resp.read().decode("utf-8", "replace"))
+            result = doc.get("data", {}).get("result", [])
+            points = [[int(float(t)), float(v)]
+                      for t, v in (result[0].get("values", []) if result else [])]
+            out["series"].append({"key": key, "label": label, "points": points})
+        except Exception as exc:
+            out["series"].append({"key": key, "label": label, "points": [],
+                                  "error": str(exc)[:160]})
+    return out
+
+
 def api_apps():
     """Application breakdown from nDPI, with ntopng's breed classification."""
     try:
@@ -447,6 +575,8 @@ ROUTES = {
     "/api/hosts": api_hosts,
     "/api/flows": api_flows,
     "/api/apps": api_apps,
+    "/api/timeseries": api_timeseries,
+    "/api/setup": api_setup,
     "/api/devices": api_devices,
     "/api/policy_source": lambda: api_policy_source(),
     "/api/config": lambda: api_config(),
@@ -515,12 +645,32 @@ const bytes=v=>v==null?'&mdash;':(v>=1073741824?(v/1073741824).toFixed(2)+' GB':
   v>=1048576?(v/1048576).toFixed(1)+' MB':v>=1024?(v/1024).toFixed(1)+' KB':v+' B');
 const dur=s=>s==null?'':(s>=3600?Math.floor(s/3600)+'h':s>=60?Math.floor(s/60)+'m':s+'s');
 async function get(p){try{const r=await fetch(p);return await r.json()}catch(e){return null}}
+function chart(pts){
+  if(!pts||!pts.length) return '<div class="note">no data in this window</div>';
+  const W=320,H=90,P=4;
+  const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+  const x0=Math.min(...xs), x1=Math.max(...xs);
+  let y0=Math.min(...ys), y1=Math.max(...ys);
+  if(y1===y0){y1=y0+1;}                    // flat series still needs a baseline
+  const sx=v=>P+((v-x0)/(x1-x0||1))*(W-2*P);
+  const sy=v=>H-P-((v-y0)/(y1-y0||1))*(H-2*P);
+  const line=pts.map((p,i)=>(i?'L':'M')+sx(p[0]).toFixed(1)+' '+sy(p[1]).toFixed(1)).join(' ');
+  const area=line+` L ${sx(x1).toFixed(1)} ${H-P} L ${sx(x0).toFixed(1)} ${H-P} Z`;
+  const last=ys[ys.length-1];
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:90px;display:block;margin-top:6px">`+
+    `<path d="${area}" fill="var(--accent)" opacity="0.13"/>`+
+    `<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`+
+    `</svg><div class="v" style="font-size:17px">${num(last)}</div>`+
+    `<div class="note" style="margin:0">peak ${num(y1)}</div>`;
+}
 async function post(p,b){try{const r=await fetch(p,{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return await r.json()}catch(e){return {ok:false,error:String(e)}}}
 
-const TABS=[['overview','Overview'],['devices','Devices'],['hosts','Hosts'],
-            ['apps','Applications'],['flows','Live flows'],['alerts','Alerts'],
-            ['policy','Policy'],['config','Configuration']];
+const TABS=[['overview','Overview'],['reports','Reports'],['devices','Devices'],
+            ['hosts','Hosts'],['apps','Applications'],['flows','Live flows'],
+            ['alerts','Alerts'],['policy','Policy'],['config','Configuration'],
+            ['setup','Setup']];
+let range=localStorage.getItem('fs_range')||'24h';
 let cur=location.hash.replace('#','')||'overview';
 let sortKey={}, sortDir={};
 
@@ -609,6 +759,18 @@ async function render(){
       {k:'verdict',t:'Verdict'},{k:'message',t:'Signature'}],
       d.alerts,'No alerts in the query window. On a quiet WAN that is expected, not a fault.');
   }
+  else if(cur==='reports'){
+    const d=await get('/api/timeseries?range='+encodeURIComponent(range));
+    const btns=['1h','6h','24h','7d'].map(r=>
+      `<button class="tab ${r===range?'on':''}" data-r="${r}">${r}</button>`).join('');
+    v.innerHTML=`<div class="tabs" style="border:0;margin-bottom:10px">${btns}</div>`+
+      `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">`+
+      ((d&&d.series)||[]).map(s=>`<div class="card"><div class="k">${esc(s.label)}</div>`+
+        (s.error?`<div class="err">${esc(s.error)}</div>`:chart(s.points))+`</div>`).join('')+
+      `</div><div class="note">Range queries against the metrics backend, ~120 points per window. A flat line at zero means the metric exists and is genuinely zero; an empty chart means no data was returned for that window.</div>`;
+    [...document.querySelectorAll('[data-r]')].forEach(b=>b.onclick=()=>{
+      range=b.dataset.r; localStorage.setItem('fs_range',range); render();});
+  }
   else if(cur==='devices'){
     const d=await get('/api/devices')||{devices:[]};
     v.innerHTML=`<h2>Device inventory</h2>`+table('devices',[
@@ -669,6 +831,17 @@ async function render(){
       setTimeout(render,800);
     };
   }
+  else if(cur==='setup'){
+    const d=await get('/api/setup')||{checks:[]};
+    v.innerHTML=`<h2>Deployment checklist &mdash; ${d.passed}/${d.total} passing</h2>`+
+      table('setup',[
+        {k:'ok',t:'',f:r=>r.ok?'<span class="pill ok">ok</span>':'<span class="pill bad">needs attention</span>'},
+        {k:'name',t:'Check'},
+        {k:'detail',t:'Detail'},
+        {k:'fix',t:'How to fix',f:r=>r.ok?'':`<code>${esc(r.fix)}</code>`}],
+        d.checks,'No checks returned.')+
+      `<div class="note">Every failing check carries the command that fixes it. Nothing here changes anything &mdash; it reports state.</div>`;
+  }
   else if(cur==='config'){
     const c=await get('/api/config');
     v.innerHTML=`<h2>Collector configuration</h2>`+
@@ -712,7 +885,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        path = urllib.parse.urlparse(self.path).path
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        global _QUERY
+        _QUERY = urllib.parse.parse_qs(parsed.query)
         if path in ("/", "/index.html"):
             return self._send(200, PAGE, "text/html; charset=utf-8")
         fn = ROUTES.get(path)

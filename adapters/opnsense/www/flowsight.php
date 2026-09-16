@@ -16,7 +16,7 @@ require_once("guiconfig.inc");
 
 $FLOWSIGHT_BASE = "http://127.0.0.1:8080";
 $ALLOWED_API = array("status", "summary", "alerts", "policy", "hosts", "flows",
-                     "apps", "devices", "policy_source", "config");
+                     "apps", "devices", "policy_source", "config", "timeseries", "setup");
 /* Endpoints that accept a POST body. Kept separate from the read list so a
    read-only endpoint can never be written to by accident. */
 $ALLOWED_WRITE = array("policy_source", "policy_apply", "config");
@@ -77,7 +77,16 @@ if (isset($_GET["api"])) {
         echo json_encode(array("error" => "unknown endpoint"));
         exit;
     }
-    list($body, $code, $err) = flowsight_fetch($FLOWSIGHT_BASE . "/api/" . $name);
+    $qs = "";
+    foreach ($_GET as $k => $v) {
+        if ($k === "api" || !is_string($v)) { continue; }
+        /* Forward only simple scalar params, e.g. range=24h */
+        if (preg_match('/^[A-Za-z0-9_]{1,32}$/', $k) &&
+            preg_match('/^[A-Za-z0-9_.:-]{1,64}$/', $v)) {
+            $qs .= ($qs === "" ? "?" : "&") . rawurlencode($k) . "=" . rawurlencode($v);
+        }
+    }
+    list($body, $code, $err) = flowsight_fetch($FLOWSIGHT_BASE . "/api/" . $name . $qs);
     if ($body === false || $code !== 200) {
         http_response_code(502);
         echo json_encode(array("error" => "flowsight-ui unreachable on " .

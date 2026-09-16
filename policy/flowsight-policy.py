@@ -55,6 +55,13 @@ _P = _platform_defaults()
 # Capabilities a policy clause needs, mirroring docs/SCHEMA.md.
 CAP_DNS_BLOCK = "dns.block"
 
+CATEGORY_CACHE = "/usr/local/share/flowsight/categories"
+
+# A per-view local-zone of this size is already a lot of resolver state. Some
+# feeds are millions of domains: compiling those into a view would degrade DNS
+# for the whole network, so the compiler refuses and says what to do instead.
+MAX_DOMAINS_PER_POLICY = 200000
+
 _IPV4 = re.compile(r"^(\d{1,3}(?:\.\d{1,3}){3})(?:/(\d{1,2}))?$")
 _DOMAIN = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))+$")
 
@@ -67,13 +74,42 @@ class PolicyError(Exception):
 # Model
 # --------------------------------------------------------------------------
 
+def _resolve_categories(categories, policy_name):
+    """Expand category names to domains from the on-disk feed cache.
+
+    Reads the cache only - a policy compile must not depend on the network
+    being reachable, and a feed fetch failing mid-compile would silently
+    shrink enforcement.
+    """
+    domains, counts = [], {}
+    for cat in categories:
+        path = os.path.join(CATEGORY_CACHE, "%s.list" % cat)
+        if not os.path.isfile(path):
+            raise PolicyError(
+                "policy %r uses category %r, which has no cached feed. Run "
+                "'flowsight-categories update %s' first - refusing rather than "
+                "compiling a policy that would enforce nothing."
+                % (policy_name, cat, cat))
+        with open(path) as fh:
+            got = [ln.strip().lower() for ln in fh if ln.strip()]
+        if not got:
+            raise PolicyError(
+                "policy %r uses category %r but its cached feed is empty"
+                % (policy_name, cat))
+        counts[cat] = len(got)
+        domains.extend(got)
+    return domains, counts
+
+
 class Policy:
-    def __init__(self, name, members, deny_domains, enabled=True, comment=""):
+    def __init__(self, name, members, deny_domains, enabled=True, comment="",
+                 categories=None):
         self.name = name
         self.members = members          # list of client IPs/CIDRs
         self.deny_domains = deny_domains
         self.enabled = enabled
         self.comment = comment
+        self.categories = categories or {}
 
     def required_capabilities(self):
         caps = set()
@@ -161,21 +197,25 @@ def load_policies(path):
         domains = [_validate_domain(str(d), "policy %s" % name)
                    for d in (deny.get("domains") or [])]
 
-        # Categories need a feed the compiler does not have yet. Fail loudly
-        # rather than compiling a policy that silently enforces nothing.
-        if deny.get("categories"):
-            raise PolicyError(
-                "policy %r uses deny.categories, which needs a category feed "
-                "that is not wired up yet. Use deny.domains for now - a policy "
-                "that compiles to nothing is worse than one that refuses to."
-                % name)
+        categories = [str(c).strip().lower() for c in (deny.get("categories") or [])]
+        cat_domains, cat_counts = _resolve_categories(categories, name)
+        domains = sorted(set(domains) | set(cat_domains))
 
         if not domains:
             raise PolicyError("policy %r denies nothing" % name)
 
+        if len(domains) > MAX_DOMAINS_PER_POLICY:
+            raise PolicyError(
+                "policy %r resolves to %s domains, over the %s limit. A view "
+                "that large degrades DNS for the whole network. Use a smaller "
+                "category, or block it resolver-wide with the DNSBL instead of "
+                "per-group." % (name, f"{len(domains):,}",
+                                f"{MAX_DOMAINS_PER_POLICY:,}"))
+
         policies.append(Policy(name=name, members=members, deny_domains=domains,
                                enabled=bool(entry.get("enabled", True)),
-                               comment=str(entry.get("comment", ""))))
+                               comment=str(entry.get("comment", "")),
+                               categories=cat_counts))
     return policies
 
 
@@ -371,9 +411,12 @@ def cmd_status(args, policies, providers):
     print("  policies: %d (%d enabled)"
           % (len(policies), sum(1 for p in policies if p.enabled)))
     for pol in policies:
-        print("   - %-28s %-8s members=%d deny_domains=%d"
+        cats = (" categories=%s" % ",".join(
+            "%s:%s" % (k, f"{v:,}") for k, v in sorted(pol.categories.items()))
+        ) if pol.categories else ""
+        print("   - %-28s %-8s members=%d deny_domains=%d%s"
               % (pol.name, "enabled" if pol.enabled else "disabled",
-                 len(pol.members), len(pol.deny_domains)))
+                 len(pol.members), len(pol.deny_domains), cats))
     print("  providers:")
     for prov in providers:
         print("   - %-10s capabilities=%s" % (prov.name, ",".join(prov.capabilities)))
