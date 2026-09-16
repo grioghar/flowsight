@@ -1111,16 +1111,27 @@ def _reload(spec):
     """Tell whatever consumes this document that it changed."""
     what = spec.get("reload")
     if what == "collector":
-        r = subprocess.run(["/usr/sbin/service", CFG["collector_service"],
-                            "restart"], capture_output=True, text=True,
-                           timeout=90)
-        return "collector restarted" if r.returncode == 0 else \
-            "collector restart failed: %s" % (r.stderr or "").strip()[:200]
+        # Detached, not waited on. A restart can outlast any timeout worth
+        # holding an HTTP request for - the collector shuts down through its
+        # poll interval - and a reload that runs long is not a failed write.
+        # Reporting it as one sent the caller looking for a problem in a file
+        # that had already been written correctly.
+        try:
+            subprocess.Popen(["/usr/sbin/service", CFG["collector_service"],
+                              "restart"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            return "saved; collector restarting"
+        except Exception as exc:
+            return "saved, but the collector restart could not be started: %s" % exc
     if what == "enroll":
-        r = subprocess.run(py_cmd(ENROLL_BIN, "reconcile"),
-                           capture_output=True, text=True, timeout=180)
+        try:
+            r = subprocess.run(py_cmd(ENROLL_BIN, "reconcile"),
+                               capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            return "saved; re-evaluation is still running"
         return "enrollment re-evaluated" if r.returncode == 0 else \
-            "re-evaluation failed: %s" % (r.stderr or "").strip()[:200]
+            "saved, but re-evaluation reported: %s" % (r.stderr or "").strip()[:160]
     if what == "ui":
         # Deliberately not automatic: this process is serving the request that
         # changed the file, and restarting it here would drop the response and
