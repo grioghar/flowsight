@@ -1,12 +1,18 @@
-# Headgate
+# Flowsight
 
 An open, self-hosted alternative to Zenarmor for OPNsense and other platforms.
 
-Headgate does not reimplement deep packet inspection. Proven open-source engines
+Flowsight does not reimplement deep packet inspection. Proven open-source engines
 already do that well. What has never existed is the layer above them: one policy
 model, one telemetry schema, and one interface across all of them.
 
-That layer is Headgate.
+That layer is Flowsight.
+
+The name is the design decision. Flowsight watches **flows** and gives you
+**sight** into them — it is not a valve in the pipe. Zenarmor intercepts traffic
+with netmap, which makes its packet engine a mandatory hop and, on a virtualized
+gateway, the throughput ceiling. Flowsight observes and lets the existing
+backends enforce, so nothing it runs can drop a packet.
 
 ## Why
 
@@ -27,7 +33,7 @@ OPNsense box.
 
 ## What it is
 
-| Layer | Headgate uses | Headgate provides |
+| Layer | Flowsight uses | Flowsight provides |
 |---|---|---|
 | L7 identification | nDPI (via ntopng) | normalized app/category schema |
 | Intrusion detection | Suricata | unified rule + alert model |
@@ -46,7 +52,7 @@ policy:
     schedule: { school-nights: "20:00-07:00" }
 ```
 
-Headgate compiles that into the artifacts each backend actually understands —
+Flowsight compiles that into the artifacts each backend actually understands —
 DNS blocklist entries, Suricata rules, firewall rules — and reconciles them.
 No cloud dependency, no per-feature licence gate.
 

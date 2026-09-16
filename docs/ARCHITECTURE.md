@@ -3,7 +3,7 @@
 ## Principle
 
 Compose, don't reimplement. Every component that touches packets is an existing,
-battle-tested open-source project. Headgate owns only the glue: normalization,
+battle-tested open-source project. Flowsight owns only the glue: normalization,
 policy, and presentation.
 
 This is deliberate. A new DPI engine would be a decade of work and would be worse
@@ -12,14 +12,14 @@ data model, a policy model, or a UI.
 
 ## Data path
 
-A key design decision: **Headgate does not sit inline by default.**
+A key design decision: **Flowsight does not sit inline by default.**
 
 Zenarmor intercepts traffic with netmap, which makes its packet engine a
 mandatory hop. On a virtualized gateway that becomes the throughput ceiling — a
 single worker saturating one core, with ring-full drops that are invisible to
 `netstat` and only appear in `dmesg`.
 
-Headgate's default posture is observational:
+Flowsight's default posture is observational:
 
 ```
                  ┌───────────────┐
@@ -44,7 +44,7 @@ Headgate's default posture is observational:
 ```
 
 Enforcement is applied by the backends themselves (DNS, firewall, Suricata IPS),
-not by a Headgate packet path. Nothing Headgate runs can become a bottleneck or
+not by a Flowsight packet path. Nothing Flowsight runs can become a bottleneck or
 drop packets.
 
 ## Components
@@ -76,6 +76,6 @@ Single pane: live flows, top talkers, alerts, per-device history, policy editing
 ## Where Zenarmor stays ahead, honestly
 
 Inline L7 *enforcement* mid-stream, TLS inspection, and its curated cloud
-category feed are genuinely hard to match. Headgate should say so rather than
+category feed are genuinely hard to match. Flowsight should say so rather than
 claim parity it does not have. Category data will lean on open feeds and nDPI's
 own classification.
