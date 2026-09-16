@@ -1,0 +1,19 @@
+#!/bin/sh
+# Ensure ntopng keeps its localhost login bypass.
+#
+# Flowsight reads ntopng's REST API over loopback and needs "-l=0" (disable
+# login for localhost only) so it requires no credentials, while remote access
+# still demands a login. OPNsense regenerates /usr/local/etc/ntopng.conf from a
+# template on every reconfigure of the ntopng plugin and silently drops that
+# flag - after which every Flowsight device/flow/application view goes empty.
+#
+# Idempotent and cheap: it only writes and restarts when the flag is missing.
+CONF=/usr/local/etc/ntopng.conf
+
+[ -f "$CONF" ] || exit 0
+grep -q '^-l=0' "$CONF" && exit 0
+
+echo '-l=0' >> "$CONF"
+logger -t flowsight-ntopng-guard "re-added -l=0 to ntopng.conf and restarted ntopng"
+/usr/local/etc/rc.d/ntopng restart >/dev/null 2>&1
+exit 0

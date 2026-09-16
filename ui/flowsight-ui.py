@@ -48,6 +48,8 @@ DEFAULT_CONFIG = {
     "collector_service": "flowsight_collector",
     "collector_state": "/var/run/flowsight-collector.json",
     "ntopng_url": "http://127.0.0.1:3000",
+    "hostmap_url": "http://192.168.1.252:9099/hostmap.json",
+    "dhcp_leases": "/var/db/dnsmasq.leases",
     "collector_config": "/usr/local/etc/flowsight/collector.json",
     # Writes are off unless explicitly enabled. The UI has no authentication of
     # its own; only enable this where something in front of it authenticates,
@@ -434,6 +436,76 @@ def api_apps():
         return {"apps": [], "error": str(exc)}
 
 
+_HOSTMAP = {"at": 0.0, "data": {}}
+
+
+def _hostmap():
+    """MAC -> hypervisor guest identity, cached.
+
+    Every virtual NIC shares one OUI, so vendor lookup calls all 41 guests
+    "Proxmox Server Solutions GmbH". The hypervisor knows which MAC is which
+    guest; this is that answer. Cached, and a fetch failure keeps the old map
+    rather than blanking every name.
+    """
+    now = time.time()
+    if _HOSTMAP["data"] and now - _HOSTMAP["at"] < 600:
+        return _HOSTMAP["data"]
+    try:
+        req = urllib.request.Request(CFG["hostmap_url"])
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode("utf-8", "replace"))
+        if isinstance(data, dict) and data:
+            _HOSTMAP["data"] = {k.upper(): v for k, v in data.items()}
+            _HOSTMAP["at"] = now
+    except Exception:
+        pass
+    return _HOSTMAP["data"]
+
+
+def _leases():
+    """MAC -> DHCP-assigned hostname, for devices the hypervisor knows nothing
+    about (phones, IoT, TVs)."""
+    out = {}
+    try:
+        with open(CFG["dhcp_leases"]) as fh:
+            for line in fh:
+                parts = line.split()
+                # dnsmasq: <expiry> <mac> <ip> <hostname> <client-id>
+                if len(parts) >= 4 and ":" in parts[1]:
+                    name = parts[3]
+                    if name and name != "*":
+                        out[parts[1].upper()] = {"name": name, "ip": parts[2]}
+    except Exception:
+        pass
+    return out
+
+
+BROADCAST = "FF:FF:FF:FF:FF:FF"
+
+
+def _l2_pseudo(mac):
+    """Name the addresses that are not devices at all.
+
+    ntopng lists broadcast and multicast destinations alongside real hosts, and
+    with no OUI to look up they land in the inventory as "Unknown" - which reads
+    like a device we failed to identify rather than one that never existed.
+    IPv4 multicast is 01:00:5E:.., IPv6 is 33:33:.., and the low bit of the
+    first octet marks any other multicast group.
+    """
+    if not mac:
+        return ""
+    if mac == BROADCAST:
+        return "broadcast"
+    if mac.startswith(("01:00:5E", "33:33")):
+        return "multicast"
+    try:
+        if int(mac.split(":")[0], 16) & 1:
+            return "multicast"
+    except ValueError:
+        pass
+    return ""
+
+
 def api_devices():
     """Layer-2 device inventory: manufacturer and device type per MAC.
 
@@ -444,12 +516,37 @@ def api_devices():
     try:
         rsp = _ntopng("mac/macs_list.lua?ifid=0&perPage=250").get("rsp", {})
         rows = rsp.get("data", rsp) if isinstance(rsp, dict) else rsp
+        hostmap, leases = _hostmap(), _leases()
         out = []
         for m in rows or []:
+            mac = (m.get("mac") or "").upper()
             name = m.get("name") or {}
+            label = name.get("host_label", "") if isinstance(name, dict) else str(name)
+            guest = hostmap.get(mac) or {}
+            lease = leases.get(mac) or {}
+
+            # Identity, best source first: the hypervisor knows its own guests,
+            # DHCP knows what a device called itself, ntopng's label is a last
+            # resort and is often just the IP.
+            pseudo = _l2_pseudo(mac)
+            identity = guest.get("name") or lease.get("name") or label
+            if guest:
+                gk = guest.get("kind", "")
+                kind = "hypervisor" if gk == "node" else \
+                    "%s %s" % (gk.upper(), guest.get("id", ""))
+            elif lease:
+                kind = "dhcp"
+            elif pseudo:
+                kind = pseudo
+            else:
+                kind = (m.get("device_type") or {}).get("device_type_label", "")
+
             out.append({
-                "mac": m.get("mac", ""),
-                "label": name.get("host_label", "") if isinstance(name, dict) else str(name),
+                "mac": mac,
+                "identity": identity,
+                "kind": kind,
+                "status": guest.get("status", ""),
+                "label": label,
                 "manufacturer": m.get("manufacturer", "") or "",
                 "device_type": (m.get("device_type") or {}).get("device_type_label", ""),
                 "hosts": m.get("hosts", 0),
@@ -459,7 +556,16 @@ def api_devices():
                 "seen_since": m.get("seen_since", 0),
             })
         out.sort(key=lambda r: r["traffic"], reverse=True)
-        return {"devices": out}
+        # Broadcast and multicast groups are destinations, not devices. They are
+        # kept, because their traffic is real and worth seeing, but they are not
+        # mixed into the inventory - two dozen of them buried the seventy hosts
+        # this page exists to show.
+        real = [r for r in out if r["kind"] not in ("multicast", "broadcast")]
+        pseudo = [r for r in out if r["kind"] in ("multicast", "broadcast")]
+        named = sum(1 for r in real if r["identity"] and r["identity"] != r["mac"])
+        return {"devices": real, "pseudo": pseudo, "named": named,
+                "total": len(real), "pseudo_count": len(pseudo),
+                "hostmap_entries": len(hostmap), "lease_entries": len(leases)}
     except Exception as exc:
         return {"devices": [], "error": str(exc)}
 
@@ -560,10 +666,141 @@ def save_config(text):
     return {"ok": True, "output": out}
 
 
+ENROLL_BIN = "/usr/local/sbin/flowsight-enroll"
+ENROLL_STATE = "/var/db/flowsight"
+ZONES_FILE = "/usr/local/etc/flowsight/zones.json"
+ENROLL_RULES_FILE = "/usr/local/etc/flowsight/enroll-rules.json"
+
+
+def _json_file(path, default):
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except Exception:
+        return default
+
+
+def api_enroll():
+    """Enrollment state: what each device was identified as, and by which rule.
+
+    Reads the registry the enrolment engine writes rather than invoking it, so
+    that rendering a page never waits on ntopng or the hypervisor.
+    """
+    zones = _json_file(ZONES_FILE, {"zones": [], "mode": "monitor"})
+    reg = _json_file(os.path.join(ENROLL_STATE, "enroll-registry.json"),
+                     {"devices": {}})
+    devices = list(reg.get("devices", {}).values())
+    claims = []
+    try:
+        with open(os.path.join(ENROLL_STATE, "enroll-claims.jsonl")) as fh:
+            for line in fh.readlines()[-100:]:
+                try:
+                    claims.append(json.loads(line))
+                except ValueError:
+                    continue
+    except Exception:
+        pass
+    counts = {}
+    for d in devices:
+        counts[d.get("zone") or "?"] = counts.get(d.get("zone") or "?", 0) + 1
+    devices.sort(key=lambda d: (d.get("zone") or "", d.get("hostname") or ""))
+    return {
+        "mode": zones.get("mode", "monitor"),
+        "captive_policy": zones.get("captive_policy", "self_service"),
+        "zones": zones.get("zones", []),
+        "counts": counts,
+        "devices": devices,
+        "claims": list(reversed(claims)),
+        "unidentified": sum(1 for d in devices
+                            if d.get("state") == "unidentified"),
+        "pinned": sum(1 for d in devices if d.get("state") == "pinned"),
+        "total": len(devices),
+    }
+
+
+def api_enroll_zones():
+    return _json_file(ZONES_FILE, {"zones": []})
+
+
+def api_enroll_rules():
+    return _json_file(ENROLL_RULES_FILE, {"rules": []})
+
+
+def _enroll_run(*args):
+    try:
+        r = subprocess.run(py_cmd(ENROLL_BIN, *args), capture_output=True,
+                           text=True, timeout=180)
+        return {"ok": r.returncode == 0, "out": r.stdout, "err": r.stderr}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def _save_enroll_json(path, body, key):
+    """Replace a configuration document after checking it parses and is shaped.
+
+    A malformed zone or rule file does not fail loudly - it makes the engine
+    fall back to its empty default, which would quarantine the whole network on
+    the next apply. So nothing is written until it parses and carries the list
+    it is supposed to carry.
+    """
+    text = body.get("text")
+    if text is None:
+        return {"ok": False, "error": "no text supplied"}
+    try:
+        doc = json.loads(text)
+    except ValueError as exc:
+        return {"ok": False, "error": "not valid JSON: %s" % exc}
+    if not isinstance(doc.get(key), list):
+        return {"ok": False, "error": 'expected a "%s" list' % key}
+    if key == "rules":
+        for r in doc["rules"]:
+            for cond in _walk_conds(r.get("when", {})):
+                for ck, cv in cond.items():
+                    if ck.endswith("_re"):
+                        try:
+                            re.compile(cv)
+                        except re.error as exc:
+                            return {"ok": False,
+                                    "error": "rule %r: bad regex %r: %s"
+                                             % (r.get("id"), cv, exc)}
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "saved": path, "count": len(doc[key])}
+
+
+def _walk_conds(cond):
+    yield cond
+    for sub in cond.get("any", []) or []:
+        for c in _walk_conds(sub):
+            yield c
+
+
+def enroll_assign(body):
+    mac = (body.get("mac") or "").strip().upper()
+    zone = (body.get("zone") or "").strip()
+    if not re.match(r"^[0-9A-F]{2}(:[0-9A-F]{2}){5}$", mac):
+        return {"ok": False, "error": "not a MAC address"}
+    zones = {z["id"] for z in _json_file(ZONES_FILE, {"zones": []})["zones"]}
+    if zone not in zones:
+        return {"ok": False, "error": "unknown zone %r" % zone}
+    return _enroll_run("assign", mac, zone)
+
+
 WRITE_ROUTES = {
     "/api/policy_source": lambda body: save_policy(body.get("text", "")),
     "/api/policy_apply": lambda body: apply_policy(),
     "/api/config": lambda body: save_config(body.get("text", "")),
+    "/api/enroll/assign": enroll_assign,
+    "/api/enroll/reconcile": lambda body: _enroll_run("reconcile"),
+    "/api/enroll/apply": lambda body: _enroll_run("apply"),
+    "/api/enroll/zones": lambda body: _save_enroll_json(ZONES_FILE, body, "zones"),
+    "/api/enroll/rules": lambda body: _save_enroll_json(
+        ENROLL_RULES_FILE, body, "rules"),
 }
 
 
@@ -580,6 +817,10 @@ ROUTES = {
     "/api/devices": api_devices,
     "/api/policy_source": lambda: api_policy_source(),
     "/api/config": lambda: api_config(),
+    "/api/enroll": api_enroll,
+    "/api/enroll/zones": api_enroll_zones,
+    "/api/enroll/rules": api_enroll_rules,
+    "/api/enroll/plan": lambda: _enroll_run("plan"),
 }
 
 PAGE = """<!doctype html>
@@ -667,9 +908,9 @@ async function post(p,b){try{const r=await fetch(p,{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return await r.json()}catch(e){return {ok:false,error:String(e)}}}
 
 const TABS=[['overview','Overview'],['reports','Reports'],['devices','Devices'],
-            ['hosts','Hosts'],['apps','Applications'],['flows','Live flows'],
-            ['alerts','Alerts'],['policy','Policy'],['config','Configuration'],
-            ['setup','Setup']];
+            ['enroll','Enrollment'],['hosts','Hosts'],['apps','Applications'],
+            ['flows','Live flows'],['alerts','Alerts'],['policy','Policy'],
+            ['config','Configuration'],['setup','Setup']];
 let range=localStorage.getItem('fs_range')||'24h';
 let cur=location.hash.replace('#','')||'overview';
 let sortKey={}, sortDir={};
@@ -696,8 +937,92 @@ function wireSort(){[...document.querySelectorAll('th[data-s]')].forEach(th=>th.
   const [id,k]=th.dataset.s.split(':');
   sortDir[id]=(sortKey[id]===k)?-(sortDir[id]||-1):-1; sortKey[id]=k; render();});}
 
+function zoneBadge(z){const c={infra:'#6b7f9e',personal:'#2f6fed',media:'#8b5cf6',
+  iot:'#14915c',quarantine:'#c2410c'}[z]||'#777';
+  return `<span style="background:${c};color:#fff;padding:1px 7px;border-radius:9px;
+    font-size:11px;white-space:nowrap">${esc(z||'-')}</span>`;}
+
+async function renderEnroll(v){
+  const d=await get('/api/enroll');
+  if(d.error){v.innerHTML=`<div class="note">${esc(d.error)}</div>`;return;}
+  const zoneIds=(d.zones||[]).map(z=>z.id);
+  const modeNote = d.mode==='enforce'
+    ? `<div class="note">Enforcing. New devices are placed by rule; DHCP and
+       firewall policy are written from this page's decisions.</div>`
+    : `<div class="note"><b>Monitor mode.</b> Devices are identified and shown
+       here, but nothing is enforced - no addressing or firewall change is
+       written. The Suggested column is what enforcing would do.</div>`;
+
+  const counts=Object.entries(d.counts||{}).sort((a,b)=>b[1]-a[1])
+    .map(([z,n])=>`${zoneBadge(z)} ${n}`).join(' &nbsp; ');
+
+  const cols=[
+    {k:'hostname',t:'Name',f:r=>esc(r.hostname||'(unnamed)')},
+    {k:'mac',t:'MAC'},
+    {k:'ip',t:'Address',f:r=>esc(r.ip||r.ip6||'')},
+    {k:'zone',t:'Zone',f:r=>zoneBadge(r.zone==='__existing__'?'pinned':r.zone)},
+    {k:'suggested_zone',t:'Suggested',f:r=>zoneBadge(r.suggested_zone)},
+    {k:'confidence',t:'Confidence'},
+    {k:'vendor',t:'Vendor',f:r=>esc(r.vendor|| (r.randomized_mac?'(randomized MAC)':''))},
+    {k:'rule',t:'Matched rule',f:r=>`<span title="${esc(r.why||'')}">${esc(r.rule||'-')}</span>`},
+    {k:'mac',t:'',f:r=>`<select data-mac="${esc(r.mac)}" class="zsel">
+        <option value="">move to...</option>`+
+        zoneIds.map(z=>`<option value="${esc(z)}">${esc(z)}</option>`).join('')+
+      `</select>`}];
+
+  v.innerHTML = modeNote +
+    `<div class="row"><div class="card"><h3>Zones</h3><div>${counts}</div></div>
+     <div class="card"><h3>Unidentified</h3><div class="big">${d.unidentified}</div>
+       <div class="sub">held for identification</div></div>
+     <div class="card"><h3>Pinned</h3><div class="big">${d.pinned}</div>
+       <div class="sub">present before enrollment; never moved automatically</div></div></div>` +
+    (d.claims&&d.claims.length?`<h3>Recent self-identifications</h3>`+
+      table('claims',[{k:'at',t:'When',f:r=>new Date(r.at*1000).toLocaleString()},
+        {k:'mac',t:'MAC'},{k:'ip',t:'Address'},
+        {k:'zone',t:'Claimed',f:r=>zoneBadge(r.zone)},
+        {k:'user_agent',t:'User agent'}],d.claims,'None'):'') +
+    `<h3>Devices (${d.total})</h3>` +
+    table('enroll',cols,d.devices,'No devices yet.') +
+    `<div class="row" style="margin-top:12px">
+       <button id="ereconcile">Re-identify now</button>
+       <button id="eapply">Apply placement</button></div>
+     <h3>Zones and rules</h3>
+     <p class="sub">Both are plain JSON and are validated before they are saved.
+        A rule with a bad regex is rejected rather than stored.</p>
+     <div id="ecfg"></div>`;
+  wireSort();
+
+  [...document.querySelectorAll('.zsel')].forEach(sel=>sel.onchange=async()=>{
+    if(!sel.value)return;
+    const r=await post('/api/enroll/assign',{mac:sel.dataset.mac,zone:sel.value});
+    if(!r.ok) alert(r.error||'assign failed');
+    render();});
+
+  $('ereconcile').onclick=async()=>{await post('/api/enroll/reconcile',{});render();};
+  $('eapply').onclick=async()=>{
+    if(!confirm('Write DHCP and firewall placement for every classified device?'))return;
+    const r=await post('/api/enroll/apply',{});
+    alert((r.out||'')+(r.err||'')||JSON.stringify(r)); render();};
+
+  for(const [name,path,key] of [['Zones','/api/enroll/zones','zones'],
+                                 ['Rules','/api/enroll/rules','rules']]){
+    const doc=await get(path);
+    const box=document.createElement('div');
+    box.innerHTML=`<h4>${name}</h4>
+      <textarea id="ta_${key}" rows="14" style="width:100%;font-family:ui-monospace,
+        Menlo,monospace;font-size:12px">${esc(JSON.stringify(doc,null,2))}</textarea>
+      <div><button id="sv_${key}">Save ${name.toLowerCase()}</button>
+      <span id="msg_${key}" class="sub"></span></div>`;
+    $('ecfg').appendChild(box);
+    $('sv_'+key).onclick=async()=>{
+      const r=await post(path,{text:$('ta_'+key).value});
+      $('msg_'+key).textContent=r.ok?`saved (${r.count} entries)`:('error: '+(r.error||''));};
+  }
+}
+
 async function render(){
   const v=$('view');
+  if(cur==='enroll'){return renderEnroll(v);}
   if(cur==='overview'){
     const s=await get('/api/summary')||[];
     const st=await get('/api/status');
@@ -773,10 +1098,12 @@ async function render(){
   }
   else if(cur==='devices'){
     const d=await get('/api/devices')||{devices:[]};
-    v.innerHTML=`<h2>Device inventory</h2>`+table('devices',[
-      {k:'mac',t:'MAC'},{k:'label',t:'Name'},
+    v.innerHTML=`<h2>Device inventory &mdash; ${d.named||0}/${d.total||0} identified</h2>`+table('devices',[
+      {k:'identity',t:'Identity',f:r=>r.identity?`<b>${esc(r.identity)}</b>`:'<span class="note">unidentified</span>'},
+      {k:'kind',t:'Kind'},
+      {k:'status',t:'State',f:r=>r.status?`<span class="pill ${r.status==='running'?'ok':'warn'}">${esc(r.status)}</span>`:''},
+      {k:'mac',t:'MAC'},
       {k:'manufacturer',t:'Manufacturer'},
-      {k:'device_type',t:'Type'},
       {k:'hosts',t:'IPs',n:1},
       {k:'traffic',t:'Traffic',n:1,f:r=>bytes(r.traffic)},
       {k:'sent',t:'Sent',n:1,f:r=>bytes(r.sent)},
@@ -784,7 +1111,7 @@ async function render(){
       {k:'seen_since',t:'First seen',f:r=>r.seen_since?esc(new Date(r.seen_since*1000).toLocaleString()):''}],
       d.devices,'No devices reported.')+
       (d.error?`<div class="err">${esc(d.error)}</div>`:'')+
-      `<div class="note">Manufacturer and type come from ntopng, derived from the MAC OUI and traffic fingerprint &mdash; the closest available equivalent to OS detection. One MAC can carry several IPs, which is why this is separate from Hosts.</div>`;
+      `<div class="note">Identity resolves in order: hypervisor guest name (${d.hostmap_entries||0} known), then DHCP hostname (${d.lease_entries||0} leases), then ntopng's label. Every virtual NIC shares one OUI, so Manufacturer alone reports "Proxmox" for every guest and tells you nothing &mdash; Identity is what actually names them.</div>`;
   }
   else if(cur==='apps'){
     const d=await get('/api/apps')||{apps:[]};

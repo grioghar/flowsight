@@ -1,0 +1,269 @@
+{
+  "comment": "Ordered. First rule whose conditions all match wins. Keys inside one rule are ANDed; a list of values inside one key is ORed; an 'any' block is ORed. Anything matching no rule lands in the captive zone. Note that modern phones and laptops rotate a private MAC per network, so vendor is often empty - hostname and DHCP fingerprint rules carry those.",
+  "rules": [
+    {
+      "id": "hypervisor-guest",
+      "zone": "infra",
+      "confidence": "high",
+      "why": "The hypervisor told us this MAC is one of its own guests.",
+      "when": {
+        "guest_kind": [
+          "vm",
+          "ct",
+          "node"
+        ]
+      }
+    },
+    {
+      "id": "hypervisor-vendor",
+      "zone": "infra",
+      "confidence": "high",
+      "why": "Virtual NIC belonging to the hypervisor, by vendor, hostname or the OUI ranges the common hypervisors allocate from.",
+      "when": {
+        "any": [
+          {
+            "vendor": [
+              "Proxmox",
+              "VMware",
+              "Xen",
+              "QEMU",
+              "Oracle VirtualBox"
+            ]
+          },
+          {
+            "hostname_re": "(?i)^(proxmox|pve|docker|lxc|vm)[-0-9]"
+          },
+          {
+            "mac_prefix": [
+              "BC:24:11",
+              "52:54:00",
+              "00:50:56",
+              "00:15:5D"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "infra-service",
+      "zone": "infra",
+      "confidence": "high",
+      "why": "Named after a service this network runs.",
+      "when": {
+        "hostname_re": "(?i)^(plex|jellyfin|komga|npm|telemetry|tailscale|unifi|nas|truenas|pihole|homeassistant|cv-)"
+      }
+    },
+    {
+      "id": "nintendo",
+      "zone": "media",
+      "confidence": "high",
+      "why": "Nintendo OUI - Switch, Wii or 3DS.",
+      "when": {
+        "vendor": [
+          "Nintendo"
+        ]
+      }
+    },
+    {
+      "id": "console-other",
+      "zone": "media",
+      "confidence": "high",
+      "why": "Sony or Microsoft console.",
+      "when": {
+        "any": [
+          {
+            "vendor": [
+              "Sony Interactive",
+              "Sony Computer",
+              "Microsoft Xbox"
+            ]
+          },
+          {
+            "hostname_re": "(?i)xbox|playstation|^ps[45]"
+          }
+        ]
+      }
+    },
+    {
+      "id": "steam",
+      "zone": "media",
+      "confidence": "high",
+      "why": "Steam Deck or Steam Machine.",
+      "when": {
+        "hostname_re": "(?i)steamdeck|steam-"
+      }
+    },
+    {
+      "id": "firetv",
+      "zone": "media",
+      "confidence": "high",
+      "why": "Fire TV - an Amazon streamer rather than an Echo speaker.",
+      "when": {
+        "hostname_re": "(?i)firetv|fire-tv|aftt|bravia"
+      }
+    },
+    {
+      "id": "streamer",
+      "zone": "media",
+      "confidence": "high",
+      "why": "Streaming stick, smart TV or speaker.",
+      "when": {
+        "any": [
+          {
+            "vendor": [
+              "Roku",
+              "Sonos",
+              "Vizio",
+              "TCL"
+            ]
+          },
+          {
+            "hostname_re": "(?i)roku|chromecast|shield|appletv|apple-tv|sonos|vizio|samsung|^lg-|smarttv"
+          }
+        ]
+      }
+    },
+    {
+      "id": "echo",
+      "zone": "iot",
+      "confidence": "high",
+      "why": "Amazon Echo - a voice appliance, not a general-purpose device.",
+      "when": {
+        "any": [
+          {
+            "hostname_re": "(?i)^echo-|alexa"
+          },
+          {
+            "vendor": [
+              "Amazon Technologies"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "tuya-iot",
+      "zone": "iot",
+      "confidence": "high",
+      "why": "Tuya/SmartLife appliance - plugs, bulbs and sensors.",
+      "when": {
+        "any": [
+          {
+            "vendor": [
+              "Tuya"
+            ]
+          },
+          {
+            "hostname_re": "^tuya-"
+          }
+        ]
+      }
+    },
+    {
+      "id": "kasa-iot",
+      "zone": "iot",
+      "confidence": "high",
+      "why": "TP-Link Kasa smart plug or bulb.",
+      "when": {
+        "hostname_re": "(?i)^(kasa|hs1|kl4|ep1|kp1)"
+      }
+    },
+    {
+      "id": "iot-vendor",
+      "zone": "iot",
+      "confidence": "high",
+      "why": "Known smart-home appliance vendor.",
+      "when": {
+        "vendor": [
+          "Espressif",
+          "Shelly",
+          "Sonoff",
+          "iTead",
+          "Philips Lighting",
+          "Signify",
+          "Ecobee",
+          "Nest Labs",
+          "Ring",
+          "Wyze",
+          "Broadlink",
+          "Govee",
+          "Lifi Labs",
+          "Leviton",
+          "Lutron",
+          "MINIX"
+        ]
+      }
+    },
+    {
+      "id": "iot-hostname",
+      "zone": "iot",
+      "confidence": "medium",
+      "why": "Hostname looks like an appliance.",
+      "when": {
+        "hostname_re": "(?i)thermostat|doorbell|camera|^cam-|sensor|plug|bulb|light|switch-|vacuum|roomba|printer|scanner"
+      }
+    },
+    {
+      "id": "printer",
+      "zone": "iot",
+      "confidence": "high",
+      "why": "Printers are appliances - they never need to reach personal devices.",
+      "when": {
+        "any": [
+          {
+            "vendor": [
+              "Brother",
+              "Canon",
+              "Epson",
+              "Hewlett Packard",
+              "HP Inc",
+              "Lexmark",
+              "Xerox"
+            ]
+          },
+          {
+            "hostname_re": "(?i)officejet|envy|laserjet|brother|epson"
+          }
+        ]
+      }
+    },
+    {
+      "id": "personal-hostname",
+      "zone": "personal",
+      "confidence": "high",
+      "why": "Hostname names a personal computer or phone. This is what identifies devices using a randomized MAC, where the vendor is unknowable.",
+      "when": {
+        "hostname_re": "(?i)(macbook|imac|iphone|ipad|ipod|thinkpad|pixel|galaxy|oneplus|surface|laptop|desktop|workstation|ubuntu|fedora|arch-|win10|win11|android)|(^|[-_])(mac|mbp|mba|pc)([-_0-9]|$)"
+      }
+    },
+    {
+      "id": "windows",
+      "zone": "personal",
+      "confidence": "high",
+      "why": "Windows DHCP vendor class.",
+      "when": {
+        "vendor_class_re": "^MSFT"
+      }
+    },
+    {
+      "id": "android",
+      "zone": "personal",
+      "confidence": "high",
+      "why": "Android DHCP vendor class.",
+      "when": {
+        "vendor_class_re": "(?i)^android-dhcp"
+      }
+    },
+    {
+      "id": "apple-any",
+      "zone": "personal",
+      "confidence": "medium",
+      "why": "Apple OUI but the hostname did not say which product.",
+      "when": {
+        "vendor": [
+          "Apple"
+        ]
+      }
+    }
+  ]
+}
