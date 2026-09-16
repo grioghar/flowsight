@@ -61,6 +61,8 @@ DEFAULT_CONFIG = {
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 # Query string of the request being served, for handlers that take parameters.
+FLOWSIGHT_VERSION = "0.4.0"
+
 _QUERY = {}
 
 
@@ -1274,6 +1276,330 @@ def api_host():
     return out
 
 
+# ---------------------------------------------------------------------------
+# API description
+#
+# The document is generated from the route tables rather than maintained
+# alongside them, so it cannot describe an endpoint that no longer exists or
+# quietly omit one that was added. Anything in the tables without an entry here
+# still appears, marked undocumented, because a silent gap in an API reference
+# is worse than a visible one.
+
+_Q = lambda n, d, t="string", **kw: dict(name=n, desc=d, type=t, **kw)
+
+API_INFO = {
+    "System": "Service health and what this installation can see and do.",
+    "Traffic": "Hosts, flows and applications, as observed.",
+    "DNS": "Resolver activity and address naming.",
+    "Enrollment": "Device identification and zone placement.",
+    "Configuration": "CRUD over every configuration document.",
+    "Policy": "The declarative policy document and its compilation.",
+}
+
+API_META = {
+    "GET /api/status": ("System", "Service and source health.", []),
+    "GET /api/summary": ("System", "Headline counters for the overview.", []),
+    "GET /api/setup": ("System", "Installation checks and what each one means.", []),
+    "GET /api/alerts": ("System", "Recent IDS alerts.", []),
+    "GET /api/timeseries": ("System", "Metric series for the reports page.", [
+        _Q("range", "Window: 1h, 6h, 24h or 7d.", enum=["1h", "6h", "24h", "7d"])]),
+
+    "GET /api/hosts": ("Traffic", "Active hosts with traffic and resolved names.", []),
+    "GET /api/flows": ("Traffic", "Active sessions with the nDPI application and "
+                                  "both ends named where possible.", []),
+    "GET /api/apps": ("Traffic", "Traffic grouped by nDPI application.", []),
+    "GET /api/devices": ("Traffic", "Layer-2 inventory by MAC, with identity from "
+                                    "the hypervisor, DHCP and OUI.", []),
+    "GET /api/host": ("Traffic", "Everything known about one host, joined from "
+                                 "every source.", [
+        _Q("ip", "The host to report on.", required=True),
+        _Q("hours", "DNS window in hours (1-720).", "integer")]),
+
+    "GET /api/dns": ("DNS", "Resolver overview: volume, blocks, clients and "
+                            "breakdowns.", [
+        _Q("hours", "Window in hours (1-720).", "integer"),
+        _Q("limit", "Rows per table (1-200).", "integer"),
+        _Q("interval", "Series bucket in minutes: 1, 5 or 10.", "integer")]),
+    "GET /api/dns/recent": ("DNS", "The query log, newest first.", [
+        _Q("limit", "Rows (1-1000).", "integer"),
+        _Q("client", "Only this client address."),
+        _Q("domain", "Only domains containing this string."),
+        _Q("blocked", "Set to 1 for blocked queries only.")]),
+    "GET /api/dns/resolutions": ("DNS", "The whole address-to-name map.", []),
+    "GET /api/dns/lookup": ("DNS", "Names an address resolved to.", [
+        _Q("address", "The address to name.", required=True)]),
+
+    "GET /api/enroll": ("Enrollment", "Registry state: what each device was "
+                                      "identified as, and by which rule.", []),
+    "GET /api/enroll/zones": ("Enrollment", "Zone definitions.", []),
+    "GET /api/enroll/rules": ("Enrollment", "Classification rules, in order.", []),
+    "GET /api/enroll/plan": ("Enrollment", "What enforcing would write. Writes "
+                                           "nothing.", []),
+    "POST /api/enroll/assign": ("Enrollment", "Place one device in a zone by hand.",
+                                {"mac": "MAC address", "zone": "Zone id"}),
+    "POST /api/enroll/reconcile": ("Enrollment", "Re-evaluate every device against "
+                                                 "the current rules.", {}),
+    "POST /api/enroll/apply": ("Enrollment", "Write DHCP and firewall placement. "
+                                             "Refused unless mode is enforce.", {}),
+    "POST /api/enroll/zones": ("Enrollment", "Replace the zone document.",
+                               {"text": "The whole document as JSON text"}),
+    "POST /api/enroll/rules": ("Enrollment", "Replace the rules document.",
+                               {"text": "The whole document as JSON text"}),
+
+    "GET /api/config/docs": ("Configuration", "Every editable document, with its "
+                                              "shape and entry count.", []),
+    "GET /api/config/doc": ("Configuration", "One whole document.", [
+        _Q("name", "Document name.", required=True)]),
+    "GET /api/config/items": ("Configuration", "Entries in a document.", [
+        _Q("doc", "Document name.", required=True)]),
+    "GET /api/config/item": ("Configuration", "One entry.", [
+        _Q("doc", "Document name.", required=True),
+        _Q("id", "Entry id, or key for settings and map documents.",
+           required=True)]),
+    "POST /api/config/doc": ("Configuration", "Replace a whole document. "
+                                              "Also accepts PUT.",
+                             {"name": "Document name",
+                              "text": "The document as text",
+                              "document": "or the parsed document"}),
+    "POST /api/config/item/create": ("Configuration", "Add an entry. Also reachable "
+                                                      "as POST /api/config/item.",
+                                     {"doc": "Document name",
+                                      "item": "The entry, for collections",
+                                      "key": "Key, for settings and map documents",
+                                      "value": "Value, for settings and map documents",
+                                      "position": "Index, for ordered documents"}),
+    "POST /api/config/item/update": ("Configuration", "Change an entry. Merges by "
+                                                      "default. Also PUT "
+                                                      "/api/config/item.",
+                                     {"doc": "Document name", "id": "Entry id",
+                                      "item": "Fields to change",
+                                      "replace": "true to replace rather than merge",
+                                      "key": "Key, for settings and map documents",
+                                      "value": "Value, for settings and map documents"}),
+    "POST /api/config/item/delete": ("Configuration", "Remove an entry. Also DELETE "
+                                                      "/api/config/item.",
+                                     {"doc": "Document name",
+                                      "id": "Entry id or key"}),
+    "POST /api/config/reorder": ("Configuration", "Reorder an ordered document. The "
+                                                  "id list must name every entry "
+                                                  "exactly once.",
+                                 {"doc": "Document name",
+                                  "ids": "Every entry id, in the order wanted"}),
+    "GET /api/config": ("Configuration", "Collector configuration as text. Superseded "
+                                         "by /api/config/doc?name=collector.", []),
+    "POST /api/config": ("Configuration", "Replace the collector configuration.",
+                         {"text": "The document as JSON text"}),
+
+    "GET /api/openapi.json": ("System", "This document, generated from the route "
+                                       "tables.", []),
+
+    "GET /api/policy": ("Policy", "Policy status and what applying it would change.",
+                        []),
+    "GET /api/policy_source": ("Policy", "The raw policy document.", []),
+    "POST /api/policy_source": ("Policy", "Validate and save the policy document. "
+                                          "A document that does not compile is "
+                                          "never written.",
+                                {"text": "The policy document"}),
+    "POST /api/policy_apply": ("Policy", "Compile and apply the policy.", {}),
+}
+
+
+def _openapi():
+    paths = {}
+    undocumented = []
+    for verb, table in (("GET", ROUTES), ("POST", WRITE_ROUTES)):
+        for route in table:
+            key = "%s %s" % (verb, route)
+            meta = API_META.get(key)
+            if meta is None:
+                undocumented.append(key)
+                tag, summary, extra = "Undocumented", "No description yet.", []
+            else:
+                tag, summary, extra = meta
+            op = {
+                "tags": [tag],
+                "summary": summary,
+                "operationId": "%s_%s" % (
+                    verb.lower(), route[len("/api/"):].replace("/", "_") or "root"),
+                "responses": {
+                    "200": {"description": "Success",
+                            "content": {"application/json": {
+                                "schema": {"type": "object"}}}},
+                    "400": {"description": "Rejected - the response carries an "
+                                           "error field saying why"},
+                    "404": {"description": "No such endpoint or entry"},
+                },
+            }
+            if verb == "GET":
+                op["parameters"] = [{
+                    "name": q["name"], "in": "query",
+                    "required": bool(q.get("required")),
+                    "description": q["desc"],
+                    "schema": dict({"type": q.get("type", "string")},
+                                   **({"enum": q["enum"]} if q.get("enum") else {})),
+                } for q in (extra or [])]
+            elif extra:
+                op["requestBody"] = {
+                    "required": True,
+                    "content": {"application/json": {"schema": {
+                        "type": "object",
+                        "properties": {k: {"description": v}
+                                       for k, v in extra.items()},
+                    }}},
+                }
+            paths.setdefault(route, {})[verb.lower()] = op
+
+    # The aliases exist so the API reads as CRUD; they belong in the document.
+    for route, verb, target in (("/api/config/item", "put", "update"),
+                                ("/api/config/item", "post", "create"),
+                                ("/api/config/item", "delete", "delete"),
+                                ("/api/config/doc", "put", "replace")):
+        src = paths.get("/api/config/item/%s" % target, {}).get("post") \
+            if target != "replace" else paths.get("/api/config/doc", {}).get("post")
+        if not src:
+            continue
+        alias = dict(src)
+        alias["operationId"] = src["operationId"] + "_" + verb
+        alias["summary"] = src["summary"]
+        if verb == "delete":
+            alias["parameters"] = [
+                {"name": "doc", "in": "query", "required": True,
+                 "schema": {"type": "string"},
+                 "description": "Document name"},
+                {"name": "id", "in": "query", "required": True,
+                 "schema": {"type": "string"},
+                 "description": "Entry id or key"}]
+            alias.pop("requestBody", None)
+        paths.setdefault(route, {})[verb] = alias
+
+    return {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "Flowsight API",
+            "version": FLOWSIGHT_VERSION,
+            "description":
+                "Flowsight observes; the backends enforce. Reads are always "
+                "available. Writes require allow_write, and inside OPNsense "
+                "they arrive through the authenticated GUI page rather than "
+                "directly, because this service ships no authentication of its "
+                "own and binds to loopback.\n\n"
+                "PUT and DELETE are accepted where noted, but every operation "
+                "is also reachable by POST: the OPNsense page forwards only GET "
+                "and POST, so a PUT-only operation would work for direct "
+                "callers and fail behind the GUI.",
+        },
+        "servers": [{"url": "/api", "description": "Direct, on loopback"},
+                    {"url": "/flowsight.php?api=",
+                     "description": "Through the authenticated OPNsense GUI"}],
+        "tags": [{"name": k, "description": v} for k, v in API_INFO.items()],
+        "paths": paths,
+        "x-undocumented": undocumented,
+    }
+
+
+def api_openapi():
+    return _openapi()
+
+
+SWAGGER_CDN = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5"
+
+# Swagger UI is loaded from a CDN, so this page - and only this page - relaxes
+# the service's default-src 'none' policy far enough to fetch it. A firewall
+# with no outbound access is an ordinary case rather than an error, so the page
+# renders the same document itself when the script does not arrive.
+DOCS_CSP = ("default-src 'none'; style-src 'unsafe-inline' "
+            "https://cdn.jsdelivr.net; script-src 'unsafe-inline' "
+            "https://cdn.jsdelivr.net; img-src 'self' data:; "
+            "font-src https://cdn.jsdelivr.net; connect-src 'self'")
+
+DOCS_PAGE = """<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flowsight API</title>
+<link rel="stylesheet" href="__CDN__/swagger-ui.css">
+<style>
+:root{color-scheme:light dark}
+body{margin:0;font:14px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}
+#fallback{max-width:960px;margin:0 auto;padding:22px 18px}
+#fallback h1{font-size:21px;margin:0 0 4px}
+#fallback .sub{opacity:.7;font-size:13px;margin-bottom:18px}
+#fallback h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;
+  opacity:.6;margin:22px 0 8px}
+.op{border:1px solid #8883;border-radius:8px;padding:10px 13px;margin-bottom:7px}
+.verb{display:inline-block;min-width:58px;padding:1px 8px;border-radius:5px;
+  font:600 11px/1.6 ui-monospace,Menlo,monospace;color:#fff;text-align:center;
+  margin-right:9px}
+.get{background:#2b5f8a}.post{background:#2f7d4f}
+.put{background:#b8791b}.delete{background:#b3352e}
+code{font:12px/1.5 ui-monospace,Menlo,monospace}
+.pp{margin:8px 0 0 67px;font-size:12.5px;opacity:.85}
+.pp b{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+.req{color:#b3352e;font-size:11px}
+</style>
+<div id="swagger"></div>
+<div id="fallback" hidden></div>
+<script src="__CDN__/swagger-ui-bundle.js" onerror="window.__noswagger=1"></script>
+<script>
+(function(){
+  function manual(){
+    fetch('/api/openapi.json').then(function(r){return r.json();}).then(function(d){
+      var esc=function(t){return String(t==null?'':t).replace(/[&<>"]/g,
+        function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
+      var byTag={};
+      Object.keys(d.paths).forEach(function(route){
+        Object.keys(d.paths[route]).forEach(function(verb){
+          var op=d.paths[route][verb];
+          var tag=(op.tags&&op.tags[0])||'Other';
+          (byTag[tag]=byTag[tag]||[]).push({route:route,verb:verb,op:op});
+        });
+      });
+      var html='<h1>'+esc(d.info.title)+' <span style="opacity:.5">'+
+        esc(d.info.version)+'</span></h1><div class="sub">'+
+        esc(d.info.description)+'</div><div class="sub">Swagger UI could not be '+
+        'loaded, so this is rendered locally. The document itself is at '+
+        '<code>/api/openapi.json</code> and can be imported anywhere.</div>';
+      (d.tags||[]).concat([{name:'Other'},{name:'Undocumented'}]).forEach(function(t){
+        var ops=byTag[t.name]; if(!ops) return;
+        html+='<h2>'+esc(t.name)+(t.description?' &mdash; '+esc(t.description):'')+'</h2>';
+        ops.sort(function(a,b){return a.route.localeCompare(b.route);});
+        ops.forEach(function(x){
+          html+='<div class="op"><span class="verb '+x.verb+'">'+
+            x.verb.toUpperCase()+'</span><code>'+esc(x.route)+'</code><div class="pp">'+
+            esc(x.op.summary||'')+'</div>';
+          (x.op.parameters||[]).forEach(function(pm){
+            html+='<div class="pp"><b>'+esc(pm.name)+'</b> '+esc(pm.description||'')+
+              (pm.required?' <span class="req">required</span>':'')+'</div>';
+          });
+          var rb=x.op.requestBody&&x.op.requestBody.content&&
+                 x.op.requestBody.content['application/json'];
+          if(rb&&rb.schema&&rb.schema.properties){
+            Object.keys(rb.schema.properties).forEach(function(k){
+              html+='<div class="pp"><b>'+esc(k)+'</b> '+
+                esc(rb.schema.properties[k].description||'')+'</div>';
+            });
+          }
+          html+='</div>';
+        });
+      });
+      var f=document.getElementById('fallback');
+      f.innerHTML=html; f.hidden=false;
+      document.getElementById('swagger').hidden=true;
+    });
+  }
+  // ?local=1 forces the built-in renderer, so the no-internet path can be
+  // exercised deliberately rather than only discovered on an appliance
+  // that cannot reach the CDN.
+  var forced=location.search.indexOf('local')>=0;
+  if(forced||window.__noswagger||typeof SwaggerUIBundle==='undefined'){
+    manual(); return; }
+  try{
+    SwaggerUIBundle({url:'/api/openapi.json',dom_id:'#swagger',
+      docExpansion:'list',defaultModelsExpandDepth:-1,tryItOutEnabled:true});
+  }catch(e){ manual(); }
+})();
+</script>
+""".replace("__CDN__", SWAGGER_CDN)
+
+
 def api_config_docs():
     """Every document that can be edited, with its shape and size."""
     out = []
@@ -1507,6 +1833,7 @@ ROUTES = {
     "/api/policy_source": lambda: api_policy_source(),
     "/api/config": lambda: api_config(),
     "/api/host": api_host,
+    "/api/openapi.json": api_openapi,
     "/api/config/docs": api_config_docs,
     "/api/config/doc": api_config_doc,
     "/api/config/items": api_config_items,
@@ -2371,13 +2698,13 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "flowsight-ui"
 
-    def _send(self, code, body, ctype="application/json"):
+    def _send(self, code, body, ctype="application/json", csp=None):
         data = body if isinstance(body, bytes) else body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         # This page renders only its own data; no third-party anything.
-        self.send_header("Content-Security-Policy",
+        self.send_header("Content-Security-Policy", csp or
                          "default-src 'none'; style-src 'unsafe-inline'; "
                          "script-src 'unsafe-inline'; connect-src 'self'")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -2391,6 +2718,9 @@ class Handler(BaseHTTPRequestHandler):
         _QUERY = urllib.parse.parse_qs(parsed.query)
         if path in ("/", "/index.html"):
             return self._send(200, PAGE, "text/html; charset=utf-8")
+        if path in ("/docs", "/docs/", "/api/docs"):
+            return self._send(200, DOCS_PAGE, "text/html; charset=utf-8",
+                              csp=DOCS_CSP)
         fn = ROUTES.get(path)
         if fn is None:
             return self._send(404, json.dumps({"error": "not found"}))

@@ -1,0 +1,1655 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Flowsight API",
+        "version": "0.4.0",
+        "description": "Flowsight observes; the backends enforce. Reads are always available. Writes require allow_write, and inside OPNsense they arrive through the authenticated GUI page rather than directly, because this service ships no authentication of its own and binds to loopback.\n\nPUT and DELETE are accepted where noted, but every operation is also reachable by POST: the OPNsense page forwards only GET and POST, so a PUT-only operation would work for direct callers and fail behind the GUI."
+    },
+    "servers": [
+        {
+            "url": "/api",
+            "description": "Direct, on loopback"
+        },
+        {
+            "url": "/flowsight.php?api=",
+            "description": "Through the authenticated OPNsense GUI"
+        }
+    ],
+    "tags": [
+        {
+            "name": "System",
+            "description": "Service health and what this installation can see and do."
+        },
+        {
+            "name": "Traffic",
+            "description": "Hosts, flows and applications, as observed."
+        },
+        {
+            "name": "DNS",
+            "description": "Resolver activity and address naming."
+        },
+        {
+            "name": "Enrollment",
+            "description": "Device identification and zone placement."
+        },
+        {
+            "name": "Configuration",
+            "description": "CRUD over every configuration document."
+        },
+        {
+            "name": "Policy",
+            "description": "The declarative policy document and its compilation."
+        }
+    ],
+    "paths": {
+        "/api/status": {
+            "get": {
+                "tags": [
+                    "System"
+                ],
+                "summary": "Service and source health.",
+                "operationId": "get_status",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/summary": {
+            "get": {
+                "tags": [
+                    "System"
+                ],
+                "summary": "Headline counters for the overview.",
+                "operationId": "get_summary",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/alerts": {
+            "get": {
+                "tags": [
+                    "System"
+                ],
+                "summary": "Recent IDS alerts.",
+                "operationId": "get_alerts",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/policy": {
+            "get": {
+                "tags": [
+                    "Policy"
+                ],
+                "summary": "Policy status and what applying it would change.",
+                "operationId": "get_policy",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/hosts": {
+            "get": {
+                "tags": [
+                    "Traffic"
+                ],
+                "summary": "Active hosts with traffic and resolved names.",
+                "operationId": "get_hosts",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/flows": {
+            "get": {
+                "tags": [
+                    "Traffic"
+                ],
+                "summary": "Active sessions with the nDPI application and both ends named where possible.",
+                "operationId": "get_flows",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/apps": {
+            "get": {
+                "tags": [
+                    "Traffic"
+                ],
+                "summary": "Traffic grouped by nDPI application.",
+                "operationId": "get_apps",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/timeseries": {
+            "get": {
+                "tags": [
+                    "System"
+                ],
+                "summary": "Metric series for the reports page.",
+                "operationId": "get_timeseries",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "range",
+                        "in": "query",
+                        "required": false,
+                        "description": "Window: 1h, 6h, 24h or 7d.",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "1h",
+                                "6h",
+                                "24h",
+                                "7d"
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/setup": {
+            "get": {
+                "tags": [
+                    "System"
+                ],
+                "summary": "Installation checks and what each one means.",
+                "operationId": "get_setup",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/devices": {
+            "get": {
+                "tags": [
+                    "Traffic"
+                ],
+                "summary": "Layer-2 inventory by MAC, with identity from the hypervisor, DHCP and OUI.",
+                "operationId": "get_devices",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/policy_source": {
+            "get": {
+                "tags": [
+                    "Policy"
+                ],
+                "summary": "The raw policy document.",
+                "operationId": "get_policy_source",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            },
+            "post": {
+                "tags": [
+                    "Policy"
+                ],
+                "summary": "Validate and save the policy document. A document that does not compile is never written.",
+                "operationId": "post_policy_source",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "text": {
+                                        "description": "The policy document"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/config": {
+            "get": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Collector configuration as text. Superseded by /api/config/doc?name=collector.",
+                "operationId": "get_config",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            },
+            "post": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Replace the collector configuration.",
+                "operationId": "post_config",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "text": {
+                                        "description": "The document as JSON text"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/host": {
+            "get": {
+                "tags": [
+                    "Traffic"
+                ],
+                "summary": "Everything known about one host, joined from every source.",
+                "operationId": "get_host",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "ip",
+                        "in": "query",
+                        "required": true,
+                        "description": "The host to report on.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "hours",
+                        "in": "query",
+                        "required": false,
+                        "description": "DNS window in hours (1-720).",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/openapi.json": {
+            "get": {
+                "tags": [
+                    "System"
+                ],
+                "summary": "This document, generated from the route tables.",
+                "operationId": "get_openapi.json",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/config/docs": {
+            "get": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Every editable document, with its shape and entry count.",
+                "operationId": "get_config_docs",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/config/doc": {
+            "get": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "One whole document.",
+                "operationId": "get_config_doc",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "query",
+                        "required": true,
+                        "description": "Document name.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Replace a whole document. Also accepts PUT.",
+                "operationId": "post_config_doc",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "description": "Document name"
+                                    },
+                                    "text": {
+                                        "description": "The document as text"
+                                    },
+                                    "document": {
+                                        "description": "or the parsed document"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Replace a whole document. Also accepts PUT.",
+                "operationId": "post_config_doc_put",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "description": "Document name"
+                                    },
+                                    "text": {
+                                        "description": "The document as text"
+                                    },
+                                    "document": {
+                                        "description": "or the parsed document"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/config/items": {
+            "get": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Entries in a document.",
+                "operationId": "get_config_items",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "doc",
+                        "in": "query",
+                        "required": true,
+                        "description": "Document name.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/config/item": {
+            "get": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "One entry.",
+                "operationId": "get_config_item",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "doc",
+                        "in": "query",
+                        "required": true,
+                        "description": "Document name.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "query",
+                        "required": true,
+                        "description": "Entry id, or key for settings and map documents.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Change an entry. Merges by default. Also PUT /api/config/item.",
+                "operationId": "post_config_item_update_put",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "doc": {
+                                        "description": "Document name"
+                                    },
+                                    "id": {
+                                        "description": "Entry id"
+                                    },
+                                    "item": {
+                                        "description": "Fields to change"
+                                    },
+                                    "replace": {
+                                        "description": "true to replace rather than merge"
+                                    },
+                                    "key": {
+                                        "description": "Key, for settings and map documents"
+                                    },
+                                    "value": {
+                                        "description": "Value, for settings and map documents"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Add an entry. Also reachable as POST /api/config/item.",
+                "operationId": "post_config_item_create_post",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "doc": {
+                                        "description": "Document name"
+                                    },
+                                    "item": {
+                                        "description": "The entry, for collections"
+                                    },
+                                    "key": {
+                                        "description": "Key, for settings and map documents"
+                                    },
+                                    "value": {
+                                        "description": "Value, for settings and map documents"
+                                    },
+                                    "position": {
+                                        "description": "Index, for ordered documents"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Remove an entry. Also DELETE /api/config/item.",
+                "operationId": "post_config_item_delete_delete",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "doc",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Document name"
+                    },
+                    {
+                        "name": "id",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Entry id or key"
+                    }
+                ]
+            }
+        },
+        "/api/dns": {
+            "get": {
+                "tags": [
+                    "DNS"
+                ],
+                "summary": "Resolver overview: volume, blocks, clients and breakdowns.",
+                "operationId": "get_dns",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "hours",
+                        "in": "query",
+                        "required": false,
+                        "description": "Window in hours (1-720).",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "description": "Rows per table (1-200).",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "interval",
+                        "in": "query",
+                        "required": false,
+                        "description": "Series bucket in minutes: 1, 5 or 10.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/dns/recent": {
+            "get": {
+                "tags": [
+                    "DNS"
+                ],
+                "summary": "The query log, newest first.",
+                "operationId": "get_dns_recent",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "description": "Rows (1-1000).",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "client",
+                        "in": "query",
+                        "required": false,
+                        "description": "Only this client address.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "domain",
+                        "in": "query",
+                        "required": false,
+                        "description": "Only domains containing this string.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "blocked",
+                        "in": "query",
+                        "required": false,
+                        "description": "Set to 1 for blocked queries only.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/dns/resolutions": {
+            "get": {
+                "tags": [
+                    "DNS"
+                ],
+                "summary": "The whole address-to-name map.",
+                "operationId": "get_dns_resolutions",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/dns/lookup": {
+            "get": {
+                "tags": [
+                    "DNS"
+                ],
+                "summary": "Names an address resolved to.",
+                "operationId": "get_dns_lookup",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "address",
+                        "in": "query",
+                        "required": true,
+                        "description": "The address to name.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/api/enroll": {
+            "get": {
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Registry state: what each device was identified as, and by which rule.",
+                "operationId": "get_enroll",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/enroll/zones": {
+            "get": {
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Zone definitions.",
+                "operationId": "get_enroll_zones",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            },
+            "post": {
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Replace the zone document.",
+                "operationId": "post_enroll_zones",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "text": {
+                                        "description": "The whole document as JSON text"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/enroll/rules": {
+            "get": {
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Classification rules, in order.",
+                "operationId": "get_enroll_rules",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            },
+            "post": {
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Replace the rules document.",
+                "operationId": "post_enroll_rules",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "text": {
+                                        "description": "The whole document as JSON text"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/enroll/plan": {
+            "get": {
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "What enforcing would write. Writes nothing.",
+                "operationId": "get_enroll_plan",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "parameters": []
+            }
+        },
+        "/api/policy_apply": {
+            "post": {
+                "tags": [
+                    "Policy"
+                ],
+                "summary": "Compile and apply the policy.",
+                "operationId": "post_policy_apply",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                }
+            }
+        },
+        "/api/config/item/create": {
+            "post": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Add an entry. Also reachable as POST /api/config/item.",
+                "operationId": "post_config_item_create",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "doc": {
+                                        "description": "Document name"
+                                    },
+                                    "item": {
+                                        "description": "The entry, for collections"
+                                    },
+                                    "key": {
+                                        "description": "Key, for settings and map documents"
+                                    },
+                                    "value": {
+                                        "description": "Value, for settings and map documents"
+                                    },
+                                    "position": {
+                                        "description": "Index, for ordered documents"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/config/item/update": {
+            "post": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Change an entry. Merges by default. Also PUT /api/config/item.",
+                "operationId": "post_config_item_update",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "doc": {
+                                        "description": "Document name"
+                                    },
+                                    "id": {
+                                        "description": "Entry id"
+                                    },
+                                    "item": {
+                                        "description": "Fields to change"
+                                    },
+                                    "replace": {
+                                        "description": "true to replace rather than merge"
+                                    },
+                                    "key": {
+                                        "description": "Key, for settings and map documents"
+                                    },
+                                    "value": {
+                                        "description": "Value, for settings and map documents"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/config/item/delete": {
+            "post": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Remove an entry. Also DELETE /api/config/item.",
+                "operationId": "post_config_item_delete",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "doc": {
+                                        "description": "Document name"
+                                    },
+                                    "id": {
+                                        "description": "Entry id or key"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/config/reorder": {
+            "post": {
+                "tags": [
+                    "Configuration"
+                ],
+                "summary": "Reorder an ordered document. The id list must name every entry exactly once.",
+                "operationId": "post_config_reorder",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "doc": {
+                                        "description": "Document name"
+                                    },
+                                    "ids": {
+                                        "description": "Every entry id, in the order wanted"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/enroll/assign": {
+            "post": {
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Place one device in a zone by hand.",
+                "operationId": "post_enroll_assign",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "mac": {
+                                        "description": "MAC address"
+                                    },
+                                    "zone": {
+                                        "description": "Zone id"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/enroll/reconcile": {
+            "post": {
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Re-evaluate every device against the current rules.",
+                "operationId": "post_enroll_reconcile",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                }
+            }
+        },
+        "/api/enroll/apply": {
+            "post": {
+                "tags": [
+                    "Enrollment"
+                ],
+                "summary": "Write DHCP and firewall placement. Refused unless mode is enforce.",
+                "operationId": "post_enroll_apply",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Rejected - the response carries an error field saying why"
+                    },
+                    "404": {
+                        "description": "No such endpoint or entry"
+                    }
+                }
+            }
+        }
+    },
+    "x-undocumented": []
+}

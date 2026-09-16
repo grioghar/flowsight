@@ -20,7 +20,7 @@ $ALLOWED_API = array("status", "summary", "alerts", "policy", "hosts", "flows",
                      "dns", "dns/recent", "dns/resolutions", "dns/lookup",
                      "enroll", "enroll/zones", "enroll/rules", "enroll/plan",
                      "config/docs", "config/doc", "config/items", "config/item",
-                     "host");
+                     "host", "openapi.json");
 /* Endpoints that accept a POST body. Kept separate from the read list so a
    read-only endpoint can never be written to by accident. */
 $ALLOWED_WRITE = array("policy_source", "policy_apply", "config",
@@ -48,6 +48,29 @@ function flowsight_fetch($url, $post_body = null)
     $err = curl_error($ch);
     curl_close($ch);
     return array($body, $code, $err);
+}
+
+if (isset($_GET["docs"])) {
+    /* The API reference, served standalone rather than inside the GUI chrome:
+       Swagger UI brings its own full-page layout and its own content-security
+       requirements, and nesting it inside this page fights both. Still behind
+       the GUI's authentication, because this file is. */
+    list($body, $code, $err) = flowsight_fetch($FLOWSIGHT_BASE . "/docs");
+    if ($body === false || $code !== 200) {
+        header("Content-Type: text/plain");
+        http_response_code(502);
+        echo "flowsight-ui unreachable" . ($err ? (": " . $err) : "");
+        exit;
+    }
+    header("Content-Type: text/html; charset=utf-8");
+    header("Content-Security-Policy: default-src 'none'; "
+         . "style-src 'unsafe-inline' https://cdn.jsdelivr.net; "
+         . "script-src 'unsafe-inline' https://cdn.jsdelivr.net; "
+         . "img-src 'self' data:; font-src https://cdn.jsdelivr.net; "
+         . "connect-src 'self'");
+    /* The page fetches its own document; point that at this page too. */
+    echo str_replace("'/api/openapi.json'", "'flowsight.php?api=openapi.json'", $body);
+    exit;
 }
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_GET["api"])) {

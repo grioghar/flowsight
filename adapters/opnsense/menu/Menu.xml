@@ -26,5 +26,6 @@
         <Policy       VisibleName="Policy"       url="/flowsight.php#policy"   order="100"/>
         <Configuration VisibleName="Configuration" url="/flowsight.php#config" order="110"/>
         <Setup        VisibleName="Setup"        url="/flowsight.php#setup"    order="120"/>
+        <API          VisibleName="API reference" url="/flowsight.php?docs=1"   order="130"/>
     </Flowsight>
 </menu>
