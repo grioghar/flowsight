@@ -49,6 +49,7 @@ CAP_DNS_OBSERVE = "dns.observe"
 CAP_DNS_BLOCK = "dns.block"
 CAP_HOST_INVENTORY = "host.inventory"
 CAP_RULE_ANALYSE = "firewall.analyse"
+CAP_TLS_OBSERVE = "tls.observe"
 
 # The collector publishes what it is actually doing here, so the UI and any
 # operator can see per-source health without parsing logs or guessing from
@@ -99,6 +100,10 @@ DEFAULT_CONFIG = {
             "enabled": True,
             "base_url": "http://127.0.0.1:3000",
             "timeout": 8,
+        },
+        "squid": {
+            "enabled": os.path.exists("/var/log/squid/access.log"),
+            "access_log": "/var/log/squid/access.log",
         },
         "rulehygiene": {
             # pf-specific; there is no equivalent on nftables yet.
@@ -305,6 +310,99 @@ class SuricataEve(Source):
         for severity, count in sorted(by_severity.items()):
             metrics.append(Metric("ids_alerts_by_severity", count,
                                   {"source": self.name, "severity": severity}))
+        return metrics, events
+
+
+class SquidProxy(Source):
+    """Proxy visibility from squid's access log.
+
+    Configured for peek-and-splice, squid reads the TLS ClientHello to learn the
+    destination hostname and then passes the connection through untouched. That
+    yields hostname, destination and volume per connection **without decrypting
+    anything** - the client still validates the origin server's real
+    certificate, so nothing breaks and no CA has to be trusted.
+
+    It is deliberately not tls.decrypt. Claiming that capability when the
+    connection is spliced would be exactly the false claim SCHEMA.md warns about.
+    """
+
+    name = "squid"
+    capabilities = (CAP_TLS_OBSERVE,)
+
+    # <epoch>.<ms> <dur> <client> <code>/<status> <bytes> <method> <url> ...
+    LINE = re.compile(
+        r"^(\d+)\.(\d+)\s+(\d+)\s+(\S+)\s+(\S+?)/(\d+)\s+(\d+)\s+(\S+)\s+(\S+)")
+
+    def __init__(self, cfg):
+        Source.__init__(self, cfg)
+        self._offset = None
+        self._inode = None
+        self._total = 0
+        self._bytes = 0
+
+    def _reset_if_rotated(self, path):
+        try:
+            st = os.stat(path)
+        except OSError:
+            return False
+        if self._inode is None:
+            self._inode, self._offset = st.st_ino, st.st_size
+            return False
+        if st.st_ino != self._inode or st.st_size < self._offset:
+            self._inode, self._offset = st.st_ino, 0
+        return True
+
+    def collect(self):
+        path = self.cfg.get("access_log", "/var/log/squid/access.log")
+        metrics, events = [], []
+        if not self._reset_if_rotated(path):
+            return metrics, events
+
+        by_host = {}
+        with open(path, "r", errors="replace") as fh:
+            fh.seek(self._offset)
+            for line in fh:
+                if not line.endswith("\n"):
+                    break
+                self._offset += len(line.encode("utf-8", "replace"))
+                m = self.LINE.match(line.strip())
+                if not m:
+                    continue
+                epoch, _ms, _dur, client, code, status, nbytes, method, url = m.groups()
+
+                # squid logs the CONNECT twice: the tunnel setup and its close.
+                # Counting both would double every connection.
+                if code.startswith("NONE"):
+                    continue
+
+                host = url.split("//")[-1].split("/")[0]
+                host = host.rsplit(":", 1)[0] if ":" in host else host
+                self._total += 1
+                self._bytes += int(nbytes)
+                by_host[host] = by_host.get(host, 0) + int(nbytes)
+
+                events.append(Event(
+                    timestamp=int(epoch) * 1_000_000_000,
+                    kind="flow",
+                    source=self.name,
+                    severity="info",
+                    verdict="observed",
+                    message="%s %s" % (method, host),
+                    actor={"ip": client},
+                    target={"domain": host},
+                    network={"proto": "tls" if method == "CONNECT" else "http"},
+                    rule={"category": code},
+                ))
+
+        metrics.append(Metric("proxy_connections_total", self._total,
+                              {"source": self.name}, is_counter=True))
+        metrics.append(Metric("proxy_bytes_total", self._bytes,
+                              {"source": self.name}, is_counter=True))
+        # Top destinations only: one series per hostname would be unbounded
+        # cardinality, which is how you take down a metrics backend.
+        for host, nbytes in sorted(by_host.items(), key=lambda kv: -kv[1])[:20]:
+            metrics.append(Metric("proxy_host_bytes", nbytes,
+                                  {"source": self.name, "host": host}))
         return metrics, events
 
 
@@ -621,6 +719,7 @@ SOURCE_TYPES = {
     "unbound": UnboundStats,
     "ntopng": NtopngFlows,
     "rulehygiene": RuleHygiene,
+    "squid": SquidProxy,
 }
 
 
