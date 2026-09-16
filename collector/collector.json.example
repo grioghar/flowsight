@@ -1,0 +1,16 @@
+{
+  "otlp_metrics_endpoint": "http://127.0.0.1:4318/v1/metrics",
+  "otlp_logs_endpoint": "http://127.0.0.1:4318/v1/logs",
+  "interval_seconds": 30,
+  "sources": {
+    "suricata": {
+      "enabled": true,
+      "eve_path": "/var/log/suricata/eve.json"
+    },
+    "unbound": {
+      "enabled": true,
+      "control": "/usr/local/sbin/unbound-control",
+      "config": "/var/unbound/unbound.conf"
+    }
+  }
+}
