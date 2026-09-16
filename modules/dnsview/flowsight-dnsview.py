@@ -370,6 +370,46 @@ def cmd_names(args):
     return 0
 
 
+def client_detail(db, ip, hours, limit=15):
+    """Everything the resolver saw one client do.
+
+    Separate from the network-wide queries because a host report answers a
+    different question: not what is popular, but what this one device spends
+    its DNS on and how much of it was refused.
+    """
+    since = _since(hours)
+    r = rows(db, """
+        SELECT count(*), count(*) FILTER (action = 1),
+               count(DISTINCT domain), count(*) FILTER (rcode = 3),
+               count(*) FILTER (source = 3), min(time), max(time)
+        FROM query WHERE client = ? AND time >= ?""", [ip, since])[0]
+    top = [{"domain": d.rstrip("."), "queries": n, "blocked": b}
+           for d, n, b in rows(db, """
+        SELECT domain, count(*) n, count(*) FILTER (action = 1) b
+        FROM query WHERE client = ? AND time >= ?
+        GROUP BY domain ORDER BY n DESC LIMIT ?""", [ip, since, limit])]
+    blocked = [{"domain": d.rstrip("."), "queries": n, "blocklist": bl or ""}
+               for d, n, bl in rows(db, """
+        SELECT domain, count(*) n, any_value(blocklist)
+        FROM query WHERE client = ? AND time >= ? AND action = 1
+        GROUP BY domain ORDER BY n DESC LIMIT ?""", [ip, since, limit])]
+    types = [{"label": t, "queries": n} for t, n in rows(db, """
+        SELECT type, count(*) n FROM query WHERE client = ? AND time >= ?
+        GROUP BY 1 ORDER BY n DESC""", [ip, since])]
+    return {
+        "client": ip, "hours": hours,
+        "total": r[0], "blocked": r[1], "domains": r[2], "nxdomain": r[3],
+        "cached": r[4], "first_seen": r[5], "last_seen": r[6],
+        "top_domains": top, "top_blocked": blocked, "types": types,
+    }
+
+
+def cmd_client(args):
+    with connect() as db:
+        print(json.dumps(client_detail(db, args.client, args.hours, args.limit)))
+    return 0
+
+
 def cmd_overview(args):
     """Everything the DNS page needs, in one process start.
 
@@ -430,6 +470,12 @@ def main():
     p.add_argument("--domain")
     p.add_argument("--blocked", action="store_true")
     p.set_defaults(fn=cmd_recent)
+
+    p = sub.add_parser("client")
+    p.add_argument("client")
+    p.add_argument("--hours", type=int, default=168)
+    p.add_argument("--limit", type=int, default=15)
+    p.set_defaults(fn=cmd_client)
 
     sub.add_parser("resolutions").set_defaults(fn=cmd_resolutions)
 

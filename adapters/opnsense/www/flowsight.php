@@ -19,7 +19,8 @@ $ALLOWED_API = array("status", "summary", "alerts", "policy", "hosts", "flows",
                      "apps", "devices", "policy_source", "config", "timeseries", "setup",
                      "dns", "dns/recent", "dns/resolutions", "dns/lookup",
                      "enroll", "enroll/zones", "enroll/rules", "enroll/plan",
-                     "config/docs", "config/doc", "config/items", "config/item");
+                     "config/docs", "config/doc", "config/items", "config/item",
+                     "host");
 /* Endpoints that accept a POST body. Kept separate from the read list so a
    read-only endpoint can never be written to by accident. */
 $ALLOWED_WRITE = array("policy_source", "policy_apply", "config",

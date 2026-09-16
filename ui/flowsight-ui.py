@@ -1161,6 +1161,119 @@ def _items(spec, doc):
 # --- read -----------------------------------------------------------------
 
 
+def _registry_by_ip(ip):
+    reg = _json_file(os.path.join(ENROLL_STATE, "enroll-registry.json"),
+                     {"devices": {}})
+    for d in reg.get("devices", {}).values():
+        if d.get("ip") == ip or d.get("ip6") == ip:
+            return d
+    return {}
+
+
+def api_host():
+    """Everything known about one host, from every source at once.
+
+    The value of this page is the join: ntopng knows the traffic, the
+    hypervisor knows whether it is a guest, DHCP knows what it called itself,
+    enrollment knows what it was identified as and why, and the resolver knows
+    what it asked for. Each is unremarkable alone.
+    """
+    ip = _qstr("ip", 64)
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return {"error": "not an IP address"}
+
+    out = {"ip": ip}
+    lease = _lease_names().get(ip, "")
+    dns_name = _dns_names().get(ip, "")
+    reg = _registry_by_ip(ip)
+    mac = (reg.get("mac") or "").upper()
+    guest = _hostmap().get(mac, {}) if mac else {}
+
+    out["identity"] = {
+        "name": lease or reg.get("hostname") or guest.get("name") or dns_name,
+        "dhcp_name": lease,
+        "resolved_name": dns_name,
+        "mac": mac,
+        "vendor": reg.get("vendor", ""),
+        "randomized_mac": bool(reg.get("randomized_mac")),
+        "device_type": reg.get("device_type", ""),
+        "guest": ("%s %s on the hypervisor" % (guest.get("kind", "").upper(),
+                                               guest.get("id", ""))
+                  if guest else ""),
+        "guest_status": guest.get("status", ""),
+    }
+    out["enrollment"] = {
+        "zone": reg.get("zone", ""), "suggested_zone": reg.get("suggested_zone", ""),
+        "state": reg.get("state", ""), "rule": reg.get("rule", ""),
+        "why": reg.get("why", ""), "confidence": reg.get("confidence", ""),
+        "source": reg.get("zone_source", ""),
+        "first_seen": reg.get("first_seen", 0), "last_seen": reg.get("last_seen", 0),
+        "vendor_class": reg.get("vendor_class", ""),
+        "dhcp_fingerprint": reg.get("fingerprint", ""),
+    } if reg else {}
+
+    q = urllib.parse.urlencode({"ifid": 0, "host": ip})
+    data = _ntopng("host/data.lua?" + q).get("rsp", {}) or {}
+    if isinstance(data, dict) and data:
+        out["traffic"] = {
+            "sent": data.get("bytes.sent", 0), "rcvd": data.get("bytes.rcvd", 0),
+            "packets_sent": data.get("packets.sent", 0),
+            "packets_rcvd": data.get("packets.rcvd", 0),
+            "flows_as_client": data.get("flows.as_client", 0),
+            "flows_as_server": data.get("flows.as_server", 0),
+            "active_flows": (data.get("active_flows.as_client", 0) +
+                             data.get("active_flows.as_server", 0)),
+            "contacts_as_client": data.get("contacts.as_client", 0),
+            "contacts_as_server": data.get("contacts.as_server", 0),
+            "duration": data.get("duration", 0),
+            "num_alerts": data.get("num_alerts", 0),
+            "country": data.get("country", ""), "city": data.get("city", ""),
+            "asn": data.get("asn", 0), "asname": data.get("asname", ""),
+            "is_blacklisted": bool(data.get("is_blacklisted")),
+            "dhcp_host": bool(data.get("dhcpHost")),
+            "devtype": data.get("devtype", 0),
+            "os": data.get("os_detail") or data.get("os") or "",
+            "fingerprint": data.get("fingerprint", "") or "",
+        }
+        dns = data.get("dns") or {}
+        if dns:
+            out["traffic"]["dns_counters"] = dns
+
+    ports = _ntopng("host/open_ports.lua?" + q).get("rsp", []) or []
+    out["open_ports"] = sorted({str(p.get("key")) for p in ports
+                                if isinstance(p, dict) and p.get("key")},
+                               key=lambda x: int(x) if x.isdigit() else 0)
+
+    apps = _ntopng("host/l7/stats.lua?" + q).get("rsp", []) or []
+    out["applications"] = [{"app": a.get("label", ""), "bytes": a.get("value", 0),
+                            "duration": a.get("duration", 0)}
+                           for a in apps if isinstance(a, dict)]
+
+    # This endpoint answers with {"records": [...], "stats": {...}} rather than
+    # the "data" key the other list endpoints use. Falling back to the envelope
+    # itself iterated the dict's keys as though they were alerts.
+    alerts = _ntopng("host/alert/list.lua?" + q + "&perPage=25").get("rsp", {})
+    if isinstance(alerts, dict):
+        rows = alerts.get("records") or alerts.get("data") or []
+    else:
+        rows = alerts or []
+    out["alerts"] = [{"time": a.get("tstamp", 0),
+                      "name": a.get("alert_name") or a.get("msg", ""),
+                      "severity": (a.get("severity") or {}).get("label", "")
+                                  if isinstance(a.get("severity"), dict)
+                                  else a.get("severity", "")}
+                     for a in rows if isinstance(a, dict)][:25]
+
+    out["dns"] = _dnsview("client", ip, "--hours", str(_qint("hours", 168, 1, 720)))
+
+    flows = api_flows().get("flows", [])
+    out["flows"] = [f for f in flows
+                    if f.get("client") == ip or f.get("server") == ip][:40]
+    return out
+
+
 def api_config_docs():
     """Every document that can be edited, with its shape and size."""
     out = []
@@ -1393,6 +1506,7 @@ ROUTES = {
     "/api/devices": api_devices,
     "/api/policy_source": lambda: api_policy_source(),
     "/api/config": lambda: api_config(),
+    "/api/host": api_host,
     "/api/config/docs": api_config_docs,
     "/api/config/doc": api_config_doc,
     "/api/config/items": api_config_items,
@@ -1418,6 +1532,12 @@ PAGE = """<!doctype html>
 *{box-sizing:border-box}
 .fs{color:var(--fg);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
 .fs h1{font-size:19px;margin:0 0 2px}
+.fs h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:0 0 6px;font-weight:600}
+.big{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.row>.card{flex:1;min-width:160px}
+a.hl{color:var(--accent);text-decoration:none}
+a.hl:hover{text-decoration:underline}
 .fs .sub{color:var(--mut);font-size:12px;margin-bottom:14px}
 .fslayout{display:flex;gap:20px;align-items:flex-start}
 .fsnav{flex:0 0 172px;display:flex;flex-direction:column;gap:1px;
@@ -1554,8 +1674,11 @@ let cur=location.hash.replace('#','')||'overview';
 let sortKey={}, sortDir={};
 
 function tabs(){
+  // A host page is reached from Hosts and belongs to it, so that entry stays
+  // lit rather than leaving the navigation showing nothing as current.
+  const active=cur.indexOf('host/')===0?'hosts':cur;
   $('tabs').innerHTML=TABS.map(([k,l])=>
-    `<button class="tab ${k===cur?'on':''}" data-t="${k}">${l}</button>`).join('');
+    `<button class="tab ${k===active?'on':''}" data-t="${k}">${l}</button>`).join('');
   [...document.querySelectorAll('.tab')].forEach(b=>b.onclick=()=>{
     cur=b.dataset.t; location.hash=cur; tabs(); render();});
 }
@@ -1597,7 +1720,7 @@ async function renderEnroll(v){
   const cols=[
     {k:'hostname',t:'Name',f:r=>esc(r.hostname||'(unnamed)')},
     {k:'mac',t:'MAC'},
-    {k:'ip',t:'Address',f:r=>esc(r.ip||r.ip6||'')},
+    {k:'ip',t:'Address',f:r=>r.ip?hostLink(r.ip,r.ip):esc(r.ip6||'')},
     {k:'zone',t:'Zone',f:r=>zoneBadge(r.zone==='__existing__'?'pinned':r.zone)},
     {k:'suggested_zone',t:'Suggested',f:r=>zoneBadge(r.suggested_zone)},
     {k:'confidence',t:'Confidence'},
@@ -1721,7 +1844,8 @@ async function renderDns(v){
      ${table('dnscli',[
        {k:'hostname',t:'Device',f:r=>esc(r.hostname||'(unnamed)')},
        {k:'client',t:'Address',f:r=>
-         `<a href="#" class="cq" data-c="${esc(r.client)}">${esc(r.client)}</a>`},
+         `<a href="#" class="cq" data-c="${esc(r.client)}">filter</a> `+
+         hostLink(r.client,r.client)},
        {k:'queries',t:'Queries',n:1,f:r=>num(r.queries)},
        {k:'blocked',t:'Blocked',n:1,f:r=>r.blocked?
          `<b style="color:#c2410c">${num(r.blocked)}</b>`:'0'},
@@ -1957,8 +2081,112 @@ async function renderConfig(v){
   wireSort();
 }
 
+function hostLink(ip,label){
+  if(!ip) return esc(label||'');
+  return `<a href="#host/${encodeURIComponent(ip)}" class="hl">${esc(label||ip)}</a>`;
+}
+function kv(rows){
+  const live=rows.filter(r=>r[1]!==''&&r[1]!==undefined&&r[1]!==null);
+  if(!live.length) return '<div class="note">nothing recorded</div>';
+  return `<table>`+live.map(r=>
+    `<tr><td style="color:var(--mut);white-space:nowrap">${esc(r[0])}</td>
+     <td>${r[2]?r[1]:esc(String(r[1]))}</td></tr>`).join('')+`</table>`;
+}
+
+async function renderHost(v,ip){
+  v.innerHTML=`<div class="note">loading ${esc(ip)}...</div>`;
+  const d=await get(apiUrl('host',{ip:ip,hours:168}));
+  if(d.error){v.innerHTML=`<div class="err">${esc(d.error)}</div>
+    <p><a href="#hosts">Back to hosts</a></p>`;return;}
+  const i=d.identity||{}, e=d.enrollment||{}, t=d.traffic||{}, dn=d.dns||{};
+  const when=x=>x?new Date(x*1000).toLocaleString():'';
+
+  v.innerHTML=
+    `<div class="note"><a href="#hosts">&larr; Hosts</a></div>
+     <h1 style="margin:2px 0 0">${esc(i.name||ip)}</h1>
+     <div class="sub">${esc(ip)}${i.name&&i.name!==ip?'':''}
+       ${t.is_blacklisted?' <span class="pill bad">flagged</span>':''}
+       ${i.randomized_mac?' <span class="pill warn">randomized MAC</span>':''}</div>
+
+     <div class="row">
+       <div class="card" style="flex:1;min-width:250px"><h3>Identity</h3>
+         ${kv([['Name',i.name],['From DHCP',i.dhcp_name],
+               ['Resolved name',i.resolved_name],['MAC',i.mac],
+               ['Vendor',i.vendor],['Device type',i.device_type],
+               ['Hypervisor',i.guest],['Guest state',i.guest_status]])}</div>
+       <div class="card" style="flex:1;min-width:250px"><h3>Classification</h3>
+         ${e.state?kv([['Zone',e.zone==='__existing__'?'pinned where it was':e.zone],
+               ['Suggested',e.suggested_zone],['Matched rule',e.rule],
+               ['Confidence',e.confidence],['Assigned by',e.source],
+               ['Reasoning',e.why],['DHCP vendor class',e.vendor_class],
+               ['DHCP fingerprint',e.dhcp_fingerprint],
+               ['First seen',when(e.first_seen)],['Last seen',when(e.last_seen)]])
+            :'<div class="note">not enrolled</div>'}</div>
+       <div class="card" style="flex:1;min-width:250px"><h3>Traffic</h3>
+         ${kv([['Sent',bytes(t.sent||0)],['Received',bytes(t.rcvd||0)],
+               ['Active flows',t.active_flows],
+               ['Flows as client',t.flows_as_client],
+               ['Flows as server',t.flows_as_server],
+               ['Peers contacted',t.contacts_as_client],
+               ['Alerts',t.num_alerts],
+               ['Country',[t.city,t.country].filter(Boolean).join(', ')],
+               ['Network',t.asname?(t.asname+' (AS'+t.asn+')'):''],
+               ['Seen for',t.duration?dur(t.duration):''],
+               ['OS',t.os],['DHCP client',t.dhcp_host?'yes':'']])}</div>
+     </div>
+
+     ${(d.open_ports||[]).length?`<h2>Listening ports</h2>
+       <div>${d.open_ports.map(p=>`<span class="cap">${esc(p)}</span>`).join('')}</div>
+       <div class="note">Ports ntopng observed this host accepting connections on.</div>`:''}
+
+     <h2>Applications</h2>
+     ${table('happ',[{k:'app',t:'Application'},
+       {k:'bytes',t:'Bytes',n:1,f:r=>bytes(r.bytes)},
+       {k:'duration',t:'Time',n:1,f:r=>dur(r.duration||0)}],
+       d.applications||[],'No application breakdown yet.')}
+
+     <h2>DNS</h2>
+     ${dn.error?`<div class="note">${esc(dn.error)}</div>`:
+      `<div class="row">
+        <div class="card"><h3>Queries</h3><div class="big">${num(dn.total||0)}</div>
+          <div class="sub">over ${dn.hours||168}h, ${num(dn.domains||0)} domains</div></div>
+        <div class="card"><h3>Blocked</h3><div class="big">${num(dn.blocked||0)}</div>
+          <div class="sub">${dn.total?((100*dn.blocked/dn.total).toFixed(1)):0}% of its queries</div></div>
+        <div class="card"><h3>NXDOMAIN</h3><div class="big">${num(dn.nxdomain||0)}</div>
+          <div class="sub">${num(dn.cached||0)} answered from cache</div></div>
+      </div>
+      <h3>Most requested</h3>
+      ${table('hdns',[{k:'domain',t:'Domain'},
+        {k:'queries',t:'Queries',n:1,f:r=>num(r.queries)},
+        {k:'blocked',t:'Blocked',n:1,f:r=>r.blocked?
+          `<b style="color:#c2410c">${num(r.blocked)}</b>`:'0'}],
+        dn.top_domains||[],'No DNS activity recorded.')}
+      ${(dn.top_blocked||[]).length?`<h3>Blocked</h3>`+
+        table('hblk',[{k:'domain',t:'Domain'},
+          {k:'queries',t:'Times',n:1,f:r=>num(r.queries)},
+          {k:'blocklist',t:'List'}],dn.top_blocked,''):''}`}
+
+     <h2>Live flows</h2>
+     ${table('hflow',[
+       {k:'client',t:'Client',f:r=>r.client===ip?esc(r.client_name||r.client):
+          hostLink(r.client,r.client_name||r.client)},
+       {k:'server',t:'Server',f:r=>r.server===ip?esc(r.server_name||r.server):
+          hostLink(r.server,shortName(r.server_name)||r.server)},
+       {k:'app',t:'Application'},{k:'l4',t:'Proto'},
+       {k:'bytes',t:'Bytes',n:1,f:r=>bytes(r.bytes)}],
+       d.flows||[],'No active flows involving this host.')}
+
+     ${(d.alerts||[]).length?`<h2>Alerts</h2>`+
+       table('halrt',[{k:'time',t:'When',f:r=>when(r.time)},
+         {k:'name',t:'Alert'},{k:'severity',t:'Severity'}],d.alerts,''):''}`;
+  wireSort();
+}
+
 async function render(){
   const v=$('view');
+  if(cur.indexOf('host/')===0){
+    return renderHost(v, decodeURIComponent(cur.slice(5)));
+  }
   if(cur==='dns'){return renderDns(v);}
   if(cur==='enroll'){return renderEnroll(v);}
   if(cur==='overview'){
@@ -1988,7 +2216,7 @@ async function render(){
   else if(cur==='hosts'){
     const d=await get('/api/hosts')||{hosts:[]};
     v.innerHTML=`<h2>Devices seen on the network</h2>`+table('hosts',[
-      {k:'ip',t:'Address'},
+      {k:'ip',t:'Address',f:r=>hostLink(r.ip,r.ip)},
       {k:'local',t:'Scope',f:r=>r.local?'<span class="pill ok">local</span>':'<span class="pill warn">remote</span>'},
       {k:'name',t:'Name'},
       {k:'dns_name',t:'Resolved name',f:r=>r.dns_name?
@@ -2007,10 +2235,9 @@ async function render(){
   else if(cur==='flows'){
     const d=await get('/api/flows')||{flows:[]};
     v.innerHTML=`<h2>Active sessions</h2>`+table('flows',[
-      {k:'client',t:'Client',f:r=>r.client_name?
-        `<span title="${esc(r.client)}">${esc(r.client_name)}</span>`:esc(r.client)},
-      {k:'server',t:'Server',f:r=>r.server_name?
-        `<span title="${esc(r.server)}">${esc(shortName(r.server_name))}</span>`:esc(r.server)},
+      {k:'client',t:'Client',f:r=>hostLink(r.client,r.client_name||r.client)},
+      {k:'server',t:'Server',f:r=>hostLink(r.server,
+        r.server_name?shortName(r.server_name):r.server)},
       {k:'app',t:'Application'},{k:'l4',t:'Proto'},
       {k:'bytes',t:'Bytes',n:1,f:r=>bytes(r.bytes)},
       {k:'duration',t:'Duration',n:1,f:r=>dur(r.duration)}],
