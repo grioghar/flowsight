@@ -15,22 +15,58 @@
 require_once("guiconfig.inc");
 
 $FLOWSIGHT_BASE = "http://127.0.0.1:8080";
-$ALLOWED_API = array("status", "summary", "alerts", "policy", "hosts", "flows");
+$ALLOWED_API = array("status", "summary", "alerts", "policy", "hosts", "flows",
+                     "apps", "devices", "policy_source", "config");
+/* Endpoints that accept a POST body. Kept separate from the read list so a
+   read-only endpoint can never be written to by accident. */
+$ALLOWED_WRITE = array("policy_source", "policy_apply", "config");
 
-function flowsight_fetch($url)
+function flowsight_fetch($url, $post_body = null)
 {
     /* curl, not file_get_contents: allow_url_fopen is Off in OPNsense's php.ini */
     $ch = curl_init($url);
     curl_setopt_array($ch, array(
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CONNECTTIMEOUT => 3,
-        CURLOPT_TIMEOUT => 20,
+        CURLOPT_TIMEOUT => 90,
     ));
+    if ($post_body !== null) {
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $post_body);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array("Content-Type: application/json"));
+    }
     $body = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
     return array($body, $code, $err);
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_GET["api"])) {
+    /* Writes reach the loopback UI only through this page, which the firewall
+       has already authenticated. */
+    $name = (string)$_GET["api"];
+    header("Content-Type: application/json");
+    if (!in_array($name, $ALLOWED_WRITE, true)) {
+        http_response_code(403);
+        echo json_encode(array("error" => "endpoint is not writable"));
+        exit;
+    }
+    $body = file_get_contents("php://input");
+    if (strlen($body) > 1000000) {
+        http_response_code(413);
+        echo json_encode(array("error" => "payload too large"));
+        exit;
+    }
+    list($out, $code, $err) = flowsight_fetch($FLOWSIGHT_BASE . "/api/" . $name, $body);
+    if ($out === false) {
+        http_response_code(502);
+        echo json_encode(array("error" => "flowsight-ui unreachable: " . $err));
+        exit;
+    }
+    http_response_code($code ? $code : 200);
+    echo $out;
+    exit;
 }
 
 if (isset($_GET["api"])) {

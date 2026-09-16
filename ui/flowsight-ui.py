@@ -22,7 +22,9 @@ access to render its own management page.
 import json
 import os
 import re
+import shutil
 import subprocess
+import time
 import sys
 import urllib.error
 import urllib.parse
@@ -46,9 +48,26 @@ DEFAULT_CONFIG = {
     "collector_service": "flowsight_collector",
     "collector_state": "/var/run/flowsight-collector.json",
     "ntopng_url": "http://127.0.0.1:3000",
+    "collector_config": "/usr/local/etc/flowsight/collector.json",
+    # Writes are off unless explicitly enabled. The UI has no authentication of
+    # its own; only enable this where something in front of it authenticates,
+    # such as the OPNsense GUI proxy.
+    "allow_write": False,
 }
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def py_cmd(script, *args):
+    """Run one of our own scripts with the interpreter already running us.
+
+    daemon(8) starts services with a minimal PATH that excludes
+    /usr/local/bin, so a portable "#!/usr/bin/env python3" shebang fails with
+    "env: python3: No such file or directory". Relying on the shebang has now
+    broken four separate call sites; routing every internal invocation through
+    here is the fix that stays fixed.
+    """
+    return [sys.executable, script] + list(args)
 
 
 def load_config():
@@ -146,7 +165,7 @@ def api_status():
 
     try:
         policy_out = subprocess.run(
-            [CFG["policy_bin"], "status", "-f", CFG["policy_file"]],
+            py_cmd(CFG["policy_bin"], "status", "-f", CFG["policy_file"]),
             capture_output=True, text=True, timeout=20)
         caps = []
         for line in policy_out.stdout.splitlines():
@@ -265,6 +284,58 @@ def api_flows():
         return {"flows": [], "error": str(exc)}
 
 
+def api_apps():
+    """Application breakdown from nDPI, with ntopng's breed classification."""
+    try:
+        rows = _ntopng("interface/l7/data.lua?ifid=0").get("rsp", []) or []
+        out = []
+        for a in rows:
+            app = (a.get("application") or {})
+            b = (a.get("bytes") or {})
+            out.append({
+                "app": app.get("name", "?"),
+                "breed": a.get("breed", ""),
+                "flows": a.get("tot_num_flows", 0),
+                "bytes": b.get("total", 0),
+                "sent": b.get("sent", 0),
+                "rcvd": b.get("rcvd", 0),
+            })
+        out.sort(key=lambda r: r["bytes"], reverse=True)
+        return {"apps": out}
+    except Exception as exc:
+        return {"apps": [], "error": str(exc)}
+
+
+def api_devices():
+    """Layer-2 device inventory: manufacturer and device type per MAC.
+
+    This is the closest thing available to OS/device identification - ntopng
+    derives it from the OUI and traffic fingerprint. It is a separate view from
+    Hosts because one MAC can carry several IPs.
+    """
+    try:
+        rsp = _ntopng("mac/macs_list.lua?ifid=0&perPage=250").get("rsp", {})
+        rows = rsp.get("data", rsp) if isinstance(rsp, dict) else rsp
+        out = []
+        for m in rows or []:
+            name = m.get("name") or {}
+            out.append({
+                "mac": m.get("mac", ""),
+                "label": name.get("host_label", "") if isinstance(name, dict) else str(name),
+                "manufacturer": m.get("manufacturer", "") or "",
+                "device_type": (m.get("device_type") or {}).get("device_type_label", ""),
+                "hosts": m.get("hosts", 0),
+                "sent": m.get("bytes_sent", 0),
+                "rcvd": m.get("bytes_rcvd", 0),
+                "traffic": m.get("traffic", 0),
+                "seen_since": m.get("seen_since", 0),
+            })
+        out.sort(key=lambda r: r["traffic"], reverse=True)
+        return {"devices": out}
+    except Exception as exc:
+        return {"devices": [], "error": str(exc)}
+
+
 def api_policy():
     """Declared policy and what applying it would change. Never applies."""
     out = {"exists": os.path.isfile(CFG["policy_file"]),
@@ -274,12 +345,98 @@ def api_policy():
         return out
     for key, cmd in (("status", "status"), ("plan", "plan")):
         try:
-            r = subprocess.run([CFG["policy_bin"], cmd, "-f", CFG["policy_file"]],
+            r = subprocess.run(py_cmd(CFG["policy_bin"], cmd, "-f", CFG["policy_file"]),
                                capture_output=True, text=True, timeout=30)
             out[key] = r.stdout or r.stderr
         except Exception as exc:
             out["error"] = str(exc)
     return out
+
+
+def api_policy_source():
+    """The raw policy document, for editing."""
+    path = CFG["policy_file"]
+    try:
+        with open(path) as fh:
+            return {"path": path, "text": fh.read(), "exists": True,
+                    "writable": bool(CFG.get("allow_write"))}
+    except (OSError, IOError):
+        return {"path": path, "exists": False,
+                "writable": bool(CFG.get("allow_write")),
+                "text": "version: 1\n\ngroups: {}\n\npolicies: []\n"}
+
+
+def api_config():
+    """Collector configuration, for editing."""
+    path = CFG["collector_config"]
+    try:
+        with open(path) as fh:
+            return {"path": path, "text": fh.read(), "exists": True,
+                    "writable": bool(CFG.get("allow_write"))}
+    except (OSError, IOError) as exc:
+        return {"path": path, "exists": False, "text": "",
+                "writable": bool(CFG.get("allow_write")), "error": str(exc)}
+
+
+def save_policy(text):
+    """Validate, then write. Never the other way round.
+
+    The policy file is compiled into DNS enforcement, so a document that does
+    not compile must never reach disk - it would either break the next apply or,
+    worse, look saved while enforcing nothing.
+    """
+    path = CFG["policy_file"]
+    tmp = path + ".candidate"
+    with open(tmp, "w") as fh:
+        fh.write(text)
+    try:
+        check = subprocess.run(py_cmd(CFG["policy_bin"], "plan", "-f", tmp),
+                               capture_output=True, text=True, timeout=40)
+        if check.returncode != 0:
+            return {"ok": False,
+                    "error": (check.stderr or check.stdout).strip()[:600]}
+        if os.path.exists(path):
+            shutil.copy2(path, "%s.bak-%s" % (path, time.strftime("%Y%m%d%H%M%S")))
+        os.replace(tmp, path)
+        return {"ok": True, "plan": check.stdout}
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def apply_policy():
+    r = subprocess.run(py_cmd(CFG["policy_bin"], "apply", "-f", CFG["policy_file"]),
+                       capture_output=True, text=True, timeout=90)
+    return {"ok": r.returncode == 0, "output": (r.stdout or r.stderr).strip()[:2000]}
+
+
+def save_config(text):
+    """Validate JSON, back up, write, then restart the collector."""
+    try:
+        json.loads(text)
+    except ValueError as exc:
+        return {"ok": False, "error": "not valid JSON: %s" % exc}
+    path = CFG["collector_config"]
+    if os.path.exists(path):
+        shutil.copy2(path, "%s.bak-%s" % (path, time.strftime("%Y%m%d%H%M%S")))
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
+    svc = CFG["collector_service"]
+    out = ""
+    if SAFE_NAME.match(svc):
+        r = subprocess.run(["/usr/sbin/service", svc, "restart"],
+                           capture_output=True, text=True, timeout=60)
+        out = (r.stdout or r.stderr).strip()[:400]
+    return {"ok": True, "output": out}
+
+
+WRITE_ROUTES = {
+    "/api/policy_source": lambda body: save_policy(body.get("text", "")),
+    "/api/policy_apply": lambda body: apply_policy(),
+    "/api/config": lambda body: save_config(body.get("text", "")),
+}
 
 
 ROUTES = {
@@ -289,6 +446,10 @@ ROUTES = {
     "/api/policy": api_policy,
     "/api/hosts": api_hosts,
     "/api/flows": api_flows,
+    "/api/apps": api_apps,
+    "/api/devices": api_devices,
+    "/api/policy_source": lambda: api_policy_source(),
+    "/api/config": lambda: api_config(),
 }
 
 PAGE = """<!doctype html>
@@ -333,6 +494,10 @@ PAGE = """<!doctype html>
 .note{color:var(--mut);font-size:12px;margin-top:6px}
 .err{color:var(--crit);font-size:12px}
 .scroll{max-height:560px;overflow-y:auto;border-radius:8px}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:7px 14px;
+     font:600 12px/1 inherit;cursor:pointer;margin-right:6px}
+.btn:hover{filter:brightness(1.1)}
+.editor{width:100%;height:280px;font:12px/1.5 ui-monospace,Menlo,monospace;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:6px}
 </style>
 <div class="fs">
   <h1>Flowsight</h1>
@@ -350,9 +515,12 @@ const bytes=v=>v==null?'&mdash;':(v>=1073741824?(v/1073741824).toFixed(2)+' GB':
   v>=1048576?(v/1048576).toFixed(1)+' MB':v>=1024?(v/1024).toFixed(1)+' KB':v+' B');
 const dur=s=>s==null?'':(s>=3600?Math.floor(s/3600)+'h':s>=60?Math.floor(s/60)+'m':s+'s');
 async function get(p){try{const r=await fetch(p);return await r.json()}catch(e){return null}}
+async function post(p,b){try{const r=await fetch(p,{method:'POST',
+  headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return await r.json()}catch(e){return {ok:false,error:String(e)}}}
 
-const TABS=[['overview','Overview'],['hosts','Devices'],['flows','Live flows'],
-            ['alerts','Alerts'],['policy','Policy']];
+const TABS=[['overview','Overview'],['devices','Devices'],['hosts','Hosts'],
+            ['apps','Applications'],['flows','Live flows'],['alerts','Alerts'],
+            ['policy','Policy'],['config','Configuration']];
 let cur=location.hash.replace('#','')||'overview';
 let sortKey={}, sortDir={};
 
@@ -441,12 +609,82 @@ async function render(){
       {k:'verdict',t:'Verdict'},{k:'message',t:'Signature'}],
       d.alerts,'No alerts in the query window. On a quiet WAN that is expected, not a fault.');
   }
+  else if(cur==='devices'){
+    const d=await get('/api/devices')||{devices:[]};
+    v.innerHTML=`<h2>Device inventory</h2>`+table('devices',[
+      {k:'mac',t:'MAC'},{k:'label',t:'Name'},
+      {k:'manufacturer',t:'Manufacturer'},
+      {k:'device_type',t:'Type'},
+      {k:'hosts',t:'IPs',n:1},
+      {k:'traffic',t:'Traffic',n:1,f:r=>bytes(r.traffic)},
+      {k:'sent',t:'Sent',n:1,f:r=>bytes(r.sent)},
+      {k:'rcvd',t:'Received',n:1,f:r=>bytes(r.rcvd)},
+      {k:'seen_since',t:'First seen',f:r=>r.seen_since?esc(new Date(r.seen_since*1000).toLocaleString()):''}],
+      d.devices,'No devices reported.')+
+      (d.error?`<div class="err">${esc(d.error)}</div>`:'')+
+      `<div class="note">Manufacturer and type come from ntopng, derived from the MAC OUI and traffic fingerprint &mdash; the closest available equivalent to OS detection. One MAC can carry several IPs, which is why this is separate from Hosts.</div>`;
+  }
+  else if(cur==='apps'){
+    const d=await get('/api/apps')||{apps:[]};
+    v.innerHTML=`<h2>Applications seen (nDPI)</h2>`+table('apps',[
+      {k:'app',t:'Application'},
+      {k:'breed',t:'Breed',f:r=>{const b=String(r.breed||'').toLowerCase();
+        const p=(b.indexOf('unsafe')>=0||b.indexOf('danger')>=0)?'bad':(b.indexOf('fun')>=0?'warn':'ok');
+        return r.breed?`<span class="pill ${p}">${esc(r.breed)}</span>`:''}},
+      {k:'flows',t:'Flows',n:1},
+      {k:'bytes',t:'Bytes',n:1,f:r=>bytes(r.bytes)},
+      {k:'sent',t:'Sent',n:1,f:r=>bytes(r.sent)},
+      {k:'rcvd',t:'Received',n:1,f:r=>bytes(r.rcvd)}],
+      d.apps,'No application data. Is ntopng running?')+
+      (d.error?`<div class="err">${esc(d.error)}</div>`:'')+
+      `<div class="note">Breed is ntopng's own safety classification of the protocol.</div>`;
+  }
   else if(cur==='policy'){
     const p=await get('/api/policy');
-    v.innerHTML=`<h2>Declared policy and plan</h2>`+
-      (p&&p.exists?`<pre>${esc(p.status)}\n${esc(p.plan)}</pre>`
-        :`<div class="note">${esc((p&&p.error)||'No policy declared.')}</div>`)+
-      `<div class="note">Editing and applying policy is deliberately not available here &mdash; use <code>flowsight-policy</code>.</div>`;
+    const src=await get('/api/policy_source');
+    v.innerHTML=`<h2>Policy</h2>`+
+      (src&&src.writable
+        ? `<textarea id="polsrc" spellcheck="false" class="editor">${esc(src.text)}</textarea>
+           <div style="margin:8px 0"><button id="polsave" class="btn">Validate &amp; save</button>
+           <button id="polapply" class="btn">Apply</button>
+           <span id="polmsg" class="note"></span></div>`
+        : `<pre>${esc((src&&src.text)||'')}</pre><div class="note">Editing is disabled (allow_write is off).</div>`)+
+      `<h2>Current plan</h2>`+
+      (p&&p.exists?`<pre>${esc(p.status)}${esc(p.plan)}</pre>`
+        :`<div class="note">${esc((p&&p.error)||'No policy declared yet.')}</div>`)+
+      `<div class="note">Save validates by compiling the policy, and only writes it if it compiles. Apply is a separate, deliberate step.</div>`;
+    const msg=$('polmsg');
+    if($('polsave')) $('polsave').onclick=async()=>{
+      msg.textContent='validating...';
+      const r=await post('/api/policy_source',{text:$('polsrc').value});
+      msg.innerHTML=(r&&r.ok)?'<span class="pill ok">saved</span>':
+        `<span class="pill bad">rejected</span> <span class="err">${esc((r&&r.error)||'failed')}</span>`;
+      if(r&&r.ok) setTimeout(render,600);
+    };
+    if($('polapply')) $('polapply').onclick=async()=>{
+      msg.textContent='applying...';
+      const r=await post('/api/policy_apply',{});
+      msg.innerHTML=(r&&r.ok)?'<span class="pill ok">applied</span>':
+        `<span class="pill bad">failed</span> <span class="err">${esc((r&&(r.output||r.error))||'')}</span>`;
+      setTimeout(render,800);
+    };
+  }
+  else if(cur==='config'){
+    const c=await get('/api/config');
+    v.innerHTML=`<h2>Collector configuration</h2>`+
+      `<div class="note">${esc((c&&c.path)||'')}</div>`+
+      ((c&&c.writable)
+        ? `<textarea id="cfgsrc" spellcheck="false" class="editor">${esc((c&&c.text)||'')}</textarea>
+           <div style="margin:8px 0"><button id="cfgsave" class="btn">Save &amp; restart collector</button>
+           <span id="cfgmsg" class="note"></span></div>`
+        : `<pre>${esc((c&&c.text)||'')}</pre><div class="note">Editing is disabled (allow_write is off).</div>`)+
+      `<div class="note">Saving validates the JSON, keeps a timestamped backup, and restarts the collector.</div>`;
+    if($('cfgsave')) $('cfgsave').onclick=async()=>{
+      const m=$('cfgmsg'); m.textContent='saving...';
+      const r=await post('/api/config',{text:$('cfgsrc').value});
+      m.innerHTML=(r&&r.ok)?'<span class="pill ok">saved &amp; restarted</span>':
+        `<span class="pill bad">rejected</span> <span class="err">${esc((r&&r.error)||'')}</span>`;
+    };
   }
   wireSort();
 }
@@ -486,8 +724,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(500, json.dumps({"error": str(exc)}))
 
     def do_POST(self):
-        # There is deliberately no write surface. Applying policy is a CLI act.
-        self._send(405, json.dumps({"error": "this UI is read-only"}))
+        path = urllib.parse.urlparse(self.path).path
+        fn = WRITE_ROUTES.get(path)
+        if fn is None:
+            return self._send(404, json.dumps({"error": "not found"}))
+        if not CFG.get("allow_write"):
+            return self._send(403, json.dumps({
+                "error": "writes are disabled. Set allow_write in the UI config, "
+                         "and only where something in front authenticates."}))
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > 1_000_000:
+                return self._send(413, json.dumps({"error": "payload too large"}))
+            raw = self.rfile.read(length).decode("utf-8", "replace") if length else "{}"
+            body = json.loads(raw) if raw.strip() else {}
+        except Exception as exc:
+            return self._send(400, json.dumps({"error": "bad request: %s" % exc}))
+        try:
+            return self._send(200, json.dumps(fn(body)))
+        except Exception as exc:
+            return self._send(500, json.dumps({"error": str(exc)}))
 
     def log_message(self, *args):
         pass
