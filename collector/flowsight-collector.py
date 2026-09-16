@@ -44,6 +44,11 @@ DEFAULT_CONFIG = {
             "control": "/usr/local/sbin/unbound-control",
             "config": "/var/unbound/unbound.conf",
         },
+        "ntopng": {
+            "enabled": True,
+            "base_url": "http://127.0.0.1:3000",
+            "timeout": 8,
+        },
     },
 }
 
@@ -177,6 +182,96 @@ class SuricataEve(Source):
         return metrics, logs
 
 
+class NtopngFlows(Source):
+    """Flow, host and throughput data from ntopng (nDPI under the hood).
+
+    Uses ntopng's REST v2 API over loopback. ntopng must be started with
+    `-l=0` ("disable login for localhost only") so the collector needs no
+    credentials while remote access still requires a login. See the OPNsense
+    adapter notes: OPNsense regenerates ntopng.conf on reconfigure and will
+    strip that flag.
+    """
+
+    name = "ntopng"
+
+    # (ntopng field, exported metric suffix, is_counter)
+    FIELDS = [
+        ("bytes", "traffic_bytes_total", True),
+        ("packets", "traffic_packets_total", True),
+        ("drops", "interface_drops_total", True),
+        ("num_flows", "active_flows", False),
+        ("num_hosts", "active_hosts", False),
+        ("num_devices", "active_devices", False),
+        ("throughput_bps", "throughput_bits_per_second", False),
+        ("throughput_pps", "throughput_packets_per_second", False),
+        ("alerted_flows", "alerted_flows", False),
+    ]
+
+    DIRECTIONAL = [("bytes_upload", "up"), ("bytes_download", "down")]
+
+    def _get(self, path):
+        url = "%s/lua/rest/v2/get/%s" % (self.cfg.get("base_url", "").rstrip("/"), path)
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=self.cfg.get("timeout", 8)) as resp:
+                body = resp.read().decode("utf-8", "replace")
+                if resp.status != 200:
+                    raise RuntimeError("ntopng %s returned HTTP %s" % (path, resp.status))
+        except urllib.error.HTTPError as exc:
+            if exc.code in (301, 302, 401, 403):
+                # Make the error explain its own fix: this is nearly always the
+                # login-bypass flag being lost, not a code problem.
+                raise RuntimeError(
+                    "ntopng requires authentication (HTTP %s). ntopng must run "
+                    "with '-l=0' (disable login for localhost). On OPNsense that "
+                    "flag lives in /usr/local/etc/ntopng.conf and is STRIPPED "
+                    "whenever the ntopng plugin is reconfigured - re-add it and "
+                    "restart ntopng." % exc.code)
+            raise
+        try:
+            return json.loads(body)
+        except ValueError:
+            raise RuntimeError("ntopng %s returned non-JSON (auth redirect?)" % path)
+
+    def collect(self):
+        metrics = []
+
+        ifaces = self._get("ntopng/interfaces.lua").get("rsp", [])
+        if not ifaces:
+            raise RuntimeError("ntopng reported no interfaces")
+
+        for iface in ifaces:
+            ifid = iface.get("ifid")
+            ifname = str(iface.get("ifname", ifid))
+            if ifid is None:
+                continue
+            data = self._get("interface/data.lua?ifid=%s" % ifid).get("rsp", {})
+            base = {"source": "ntopng", "interface": ifname}
+
+            for field, suffix, is_counter in self.FIELDS:
+                if field not in data:
+                    continue
+                try:
+                    value = float(data[field])
+                except (TypeError, ValueError):
+                    continue
+                metrics.append(("%s_%s" % (METRIC_PREFIX, suffix), value, base, is_counter))
+
+            for field, direction in self.DIRECTIONAL:
+                if field not in data:
+                    continue
+                try:
+                    value = float(data[field])
+                except (TypeError, ValueError):
+                    continue
+                attrs = dict(base)
+                attrs["direction"] = direction
+                metrics.append(("%s_traffic_direction_bytes_total" % METRIC_PREFIX,
+                                value, attrs, True))
+
+        return metrics, []
+
+
 class UnboundStats(Source):
     """DNS resolver counters, including blocklist hits."""
 
@@ -284,7 +379,8 @@ class Exporter:
             "scopeLogs": [{"scope": {"name": "flowsight"}, "logRecords": out}]}]})
 
 
-SOURCE_TYPES = {"suricata": SuricataEve, "unbound": UnboundStats}
+SOURCE_TYPES = {"suricata": SuricataEve, "unbound": UnboundStats,
+                "ntopng": NtopngFlows}
 
 
 def main():
