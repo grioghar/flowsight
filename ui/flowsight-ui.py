@@ -31,7 +31,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CONFIG_PATHS = [
     os.environ.get("FLOWSIGHT_UI_CONFIG", ""),
-    "/usr/local/etc/flowsight/ui.json",
+    "/usr/local/etc/flowsight/ui.json",   # FreeBSD / OPNsense
+    "/etc/flowsight/ui.json",             # Debian-family
 ]
 
 DEFAULT_CONFIG = {
@@ -44,6 +45,7 @@ DEFAULT_CONFIG = {
     "policy_bin": "/usr/local/sbin/flowsight-policy",
     "collector_service": "flowsight_collector",
     "collector_state": "/var/run/flowsight-collector.json",
+    "ntopng_url": "http://127.0.0.1:3000",
 }
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
@@ -200,6 +202,69 @@ def api_alerts():
         return {"alerts": [], "error": str(exc)}
 
 
+def _ntopng(path):
+    url = "%s/lua/rest/v2/get/%s" % (CFG["ntopng_url"].rstrip("/"), path)
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode("utf-8", "replace"))
+
+
+def api_hosts():
+    """Per-device report: who is on the network and what they are doing."""
+    try:
+        rsp = _ntopng("host/active.lua?ifid=0&perPage=100").get("rsp", {})
+        rows = []
+        for h in rsp.get("data", []):
+            b = h.get("bytes", {}) or {}
+            rows.append({
+                "ip": h.get("ip", ""),
+                "name": (h.get("name") or "") if h.get("name") != h.get("ip") else "",
+                "mac": h.get("mac", ""),
+                "country": h.get("country", ""),
+                "sent": b.get("sent", 0),
+                "recvd": b.get("recvd", 0),
+                "total": b.get("total", 0),
+                # ntopng returns num_flows as {total, as_client, as_server}
+                "flows": (h.get("num_flows") or {}).get("total", 0)
+                         if isinstance(h.get("num_flows"), dict)
+                         else h.get("num_flows", 0),
+                "alerts": h.get("num_alerts", 0),
+                "blacklisted": bool(h.get("is_blacklisted")),
+                "local": bool(h.get("is_localhost")),
+                "last_seen": h.get("last_seen", 0),
+            })
+        rows.sort(key=lambda r: r["total"], reverse=True)
+        return {"hosts": rows}
+    except Exception as exc:
+        return {"hosts": [], "error": str(exc)}
+
+
+def api_flows():
+    """Live sessions, with the nDPI-identified application per flow."""
+    try:
+        rsp = _ntopng("flow/active.lua?ifid=0&perPage=100").get("rsp", {})
+        raw = rsp.get("data", rsp) if isinstance(rsp, dict) else rsp
+        rows = []
+        for f in raw or []:
+            cli = f.get("client", {}) or {}
+            srv = f.get("server", {}) or {}
+            proto = f.get("protocol", {}) or {}
+            b = f.get("bytes", {}) or {}
+            rows.append({
+                "client": cli.get("ip") or cli.get("name", ""),
+                "server": srv.get("ip") or srv.get("name", ""),
+                "app": proto.get("l7") or proto.get("l7_proto") or
+                       proto.get("l4") or "",
+                "l4": proto.get("l4", ""),
+                "bytes": b.get("total", b.get("sent", 0)) if isinstance(b, dict) else b,
+                "duration": f.get("duration", 0),
+            })
+        rows.sort(key=lambda r: r["bytes"] or 0, reverse=True)
+        return {"flows": rows}
+    except Exception as exc:
+        return {"flows": [], "error": str(exc)}
+
+
 def api_policy():
     """Declared policy and what applying it would change. Never applies."""
     out = {"exists": os.path.isfile(CFG["policy_file"]),
@@ -222,6 +287,8 @@ ROUTES = {
     "/api/summary": api_summary,
     "/api/alerts": api_alerts,
     "/api/policy": api_policy,
+    "/api/hosts": api_hosts,
+    "/api/flows": api_flows,
 }
 
 PAGE = """<!doctype html>
@@ -233,22 +300,29 @@ PAGE = """<!doctype html>
 @media(prefers-color-scheme:dark){:root{--bg:#16181a;--fg:#e8e8e6;--mut:#9a9a97;
       --card:#1e2124;--line:#2f3336;--ok:#6cc08b;--warn:#e0a84a;--crit:#e0736a;--accent:#7fb3e0}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);
-     font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;padding:24px 16px}
-.wrap{max-width:1100px;margin:0 auto}
-h1{font-size:19px;margin:0 0 2px} .sub{color:var(--mut);font-size:12px;margin-bottom:20px}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:22px}
+.fs{color:var(--fg);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+.fs h1{font-size:19px;margin:0 0 2px}
+.fs .sub{color:var(--mut);font-size:12px;margin-bottom:14px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:7px 14px;cursor:pointer;border:0;background:none;color:var(--mut);
+     font:600 12px/1.4 inherit;text-transform:uppercase;letter-spacing:.05em;
+     border-bottom:2px solid transparent}
+.tab:hover{color:var(--fg)}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:18px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
 .card .k{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
 .card .v{font-size:22px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
-h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);
-   margin:24px 0 8px;font-weight:600}
-table{width:100%;border-collapse:collapse;background:var(--card);
+.fs h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);
+   margin:20px 0 8px;font-weight:600}
+.fs table{width:100%;border-collapse:collapse;background:var(--card);
       border:1px solid var(--line);border-radius:8px;overflow:hidden}
-th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px}
-th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase}
-tr:last-child td{border-bottom:0}
-pre{background:var(--card);border:1px solid var(--line);border-radius:8px;
+.fs th,.fs td{text-align:left;padding:7px 11px;border-bottom:1px solid var(--line);font-size:13px}
+.fs th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;cursor:pointer;white-space:nowrap}
+.fs th:hover{color:var(--fg)}
+.fs tr:last-child td{border-bottom:0}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.fs pre{background:var(--card);border:1px solid var(--line);border-radius:8px;
     padding:12px;overflow-x:auto;font-size:12px;white-space:pre-wrap}
 .pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;font-weight:600}
 .ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
@@ -258,71 +332,126 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:8px;
      color:var(--accent);padding:2px 9px;border-radius:5px;font-size:12px;margin:0 6px 6px 0}
 .note{color:var(--mut);font-size:12px;margin-top:6px}
 .err{color:var(--crit);font-size:12px}
+.scroll{max-height:560px;overflow-y:auto;border-radius:8px}
 </style>
-<div class="wrap">
+<div class="fs">
   <h1>Flowsight</h1>
   <div class="sub" id="sub">read-only &middot; policy is applied from the CLI, never here</div>
-  <div class="grid" id="summary"></div>
-  <h2>Modules</h2><div id="modules"></div>
-  <h2>Capabilities</h2><div id="caps"></div>
-  <div class="note">Observation is what Flowsight can see. Enforcement is what it can actually change.</div>
-  <h2>Recent alerts</h2><div id="alerts"></div>
-  <h2>Policy</h2><div id="policy"></div>
+  <div class="tabs" id="tabs"></div>
+  <div id="view"></div>
 </div>
 <script>
+(function(){
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const fmt=v=>v==null?'&mdash;':(v>=1e9?(v/1e9).toFixed(1)+'G':v>=1e6?(v/1e6).toFixed(1)+'M':
-  v>=1e3?(v/1e3).toFixed(1)+'k':(Number.isInteger(v)?v:v.toFixed(1)));
+const num=v=>v==null?'&mdash;':(v>=1e9?(v/1e9).toFixed(1)+'G':v>=1e6?(v/1e6).toFixed(1)+'M':
+  v>=1e3?(v/1e3).toFixed(1)+'k':(Number.isInteger(v)?v:(+v).toFixed(1)));
+const bytes=v=>v==null?'&mdash;':(v>=1073741824?(v/1073741824).toFixed(2)+' GB':
+  v>=1048576?(v/1048576).toFixed(1)+' MB':v>=1024?(v/1024).toFixed(1)+' KB':v+' B');
+const dur=s=>s==null?'':(s>=3600?Math.floor(s/3600)+'h':s>=60?Math.floor(s/60)+'m':s+'s');
 async function get(p){try{const r=await fetch(p);return await r.json()}catch(e){return null}}
 
-async function render(){
-  const s=await get('/api/summary');
-  $('summary').innerHTML=(s||[]).map(m=>
-    `<div class="card"><div class="k">${esc(m.label)}</div><div class="v">${fmt(m.value)}</div></div>`).join('');
+const TABS=[['overview','Overview'],['hosts','Devices'],['flows','Live flows'],
+            ['alerts','Alerts'],['policy','Policy']];
+let cur=location.hash.replace('#','')||'overview';
+let sortKey={}, sortDir={};
 
-  const st=await get('/api/status');
-  if(st){
-    const cls=st.collector==='running'?'ok':'bad';
-    $('sub').innerHTML=`read-only &middot; policy is applied from the CLI, never here &middot; `+
-      `collector <span class="pill ${cls}">${esc(st.collector)}</span>`;
-    $('modules').innerHTML=st.sources.length?
-      `<table><tr><th>Source</th><th>Health</th><th>Series</th><th>Provides</th></tr>`+
-      st.sources.map(x=>{
-        const h=x.ok===true?'<span class="pill ok">ok</span>':
-                x.ok===false?`<span class="pill bad">failing</span>`:
-                '<span class="pill warn">unknown</span>';
-        return `<tr><td>${esc(x.name)}</td><td>${h}${x.error?' <span class="err">'+esc(x.error)+'</span>':''}</td>`+
-               `<td>${x.series}</td><td>${(x.capabilities||[]).map(esc).join(', ')}</td></tr>`}).join('')+`</table>`
-      :`<div class="note">No sources are reporting. The collector may be down, or nothing has been scraped yet.</div>`;
-    const capRow=(t,list)=>`<div style="margin-bottom:6px"><span class="k" style="color:var(--mut);font-size:11px;text-transform:uppercase">${t}</span><br>`+
-      (list.length?list.map(c=>`<span class="cap">${esc(c)}</span>`).join(''):'<span class="note">none</span>')+`</div>`;
-    $('caps').innerHTML=capRow('Observe',st.observe_capabilities||[])+capRow('Enforce',st.enforce_capabilities||[]);
-    if(st.stale) $('caps').innerHTML+=`<div class="err">Collector state is ${st.state_age_seconds}s old &mdash; it may have stopped without clearing it.</div>`;
-    if(st.errors&&st.errors.length)
-      $('caps').innerHTML+=st.errors.map(e=>`<div class="err">${esc(e)}</div>`).join('');
-  }
-
-  const a=await get('/api/alerts');
-  if(a){
-    $('alerts').innerHTML=a.alerts.length?
-      `<table><tr><th>When</th><th>Severity</th><th>Actor</th><th>Target</th><th>Signature</th></tr>`+
-      a.alerts.map(x=>{const p=(x.severity==='critical'||x.severity==='high')?'bad':
-        (x.severity==='medium'?'warn':'ok');
-        return `<tr><td>${esc(new Date(x.ts*1000).toLocaleTimeString())}</td>`+
-        `<td><span class="pill ${p}">${esc(x.severity)}</span></td>`+
-        `<td>${esc(x.actor)}</td><td>${esc(x.target)}</td><td>${esc(x.message)}</td></tr>`}).join('')+`</table>`
-      :`<div class="note">No alerts in the query window. On a quiet WAN that is the expected state, not a fault.</div>`;
-  }
-
-  const p=await get('/api/policy');
-  if(p){
-    $('policy').innerHTML = p.exists
-      ? `<pre>${esc(p.status)}\n${esc(p.plan)}</pre>`
-      : `<div class="note">${esc(p.error||'No policy declared.')}</div>`;
-  }
+function tabs(){
+  $('tabs').innerHTML=TABS.map(([k,l])=>
+    `<button class="tab ${k===cur?'on':''}" data-t="${k}">${l}</button>`).join('');
+  [...document.querySelectorAll('.tab')].forEach(b=>b.onclick=()=>{
+    cur=b.dataset.t; location.hash=cur; tabs(); render();});
 }
-render(); setInterval(render, 15000);
+
+function table(id, cols, rows, empty){
+  if(!rows.length) return `<div class="note">${empty}</div>`;
+  const k=sortKey[id], d=sortDir[id]||-1;
+  if(k) rows=[...rows].sort((a,b)=>{const x=a[k],y=b[k];
+    return (typeof x==='number'&&typeof y==='number')?(x-y)*d:String(x).localeCompare(String(y))*d;});
+  return `<div class="scroll"><table><tr>`+
+    cols.map(c=>`<th data-s="${id}:${c.k}" class="${c.n?'num':''}">${c.t}${k===c.k?(d<0?' \u2193':' \u2191'):''}</th>`).join('')+
+    `</tr>`+rows.map(r=>`<tr>`+cols.map(c=>
+      `<td class="${c.n?'num':''}">${c.f?c.f(r):esc(r[c.k])}</td>`).join('')+`</tr>`).join('')+
+    `</table></div>`;
+}
+function wireSort(){[...document.querySelectorAll('th[data-s]')].forEach(th=>th.onclick=()=>{
+  const [id,k]=th.dataset.s.split(':');
+  sortDir[id]=(sortKey[id]===k)?-(sortDir[id]||-1):-1; sortKey[id]=k; render();});}
+
+async function render(){
+  const v=$('view');
+  if(cur==='overview'){
+    const s=await get('/api/summary')||[];
+    const st=await get('/api/status');
+    v.innerHTML=`<div class="grid">`+s.map(m=>
+      `<div class="card"><div class="k">${esc(m.label)}</div><div class="v">${num(m.value)}</div></div>`).join('')+
+      `</div><h2>Modules</h2><div id="mod"></div><h2>Capabilities</h2><div id="caps"></div>`;
+    if(st){
+      const cls=st.collector==='running'?'ok':'bad';
+      $('sub').innerHTML=`read-only &middot; policy is applied from the CLI, never here &middot; collector <span class="pill ${cls}">${esc(st.collector)}</span>`;
+      $('mod').innerHTML=table('mod',[
+        {k:'name',t:'Source'},
+        {k:'ok',t:'Health',f:r=>r.ok===true?'<span class="pill ok">ok</span>':
+           r.ok===false?`<span class="pill bad">failing</span> <span class="err">${esc(r.error)}</span>`:
+           '<span class="pill warn">unknown</span>'},
+        {k:'series',t:'Series',n:1},
+        {k:'capabilities',t:'Provides',f:r=>esc((r.capabilities||[]).join(', '))}],
+        st.sources,'No sources reporting.');
+      const row=(t,l)=>`<div style="margin-bottom:6px"><span style="color:var(--mut);font-size:11px;text-transform:uppercase">${t}</span><br>`+
+        (l.length?l.map(c=>`<span class="cap">${esc(c)}</span>`).join(''):'<span class="note">none</span>')+`</div>`;
+      $('caps').innerHTML=row('Observe',st.observe_capabilities||[])+row('Enforce',st.enforce_capabilities||[])+
+        `<div class="note">Observation is what Flowsight can see. Enforcement is what it can actually change.</div>`+
+        (st.stale?`<div class="err">Collector state is ${st.state_age_seconds}s old.</div>`:'');
+    }
+  }
+  else if(cur==='hosts'){
+    const d=await get('/api/hosts')||{hosts:[]};
+    v.innerHTML=`<h2>Devices seen on the network</h2>`+table('hosts',[
+      {k:'ip',t:'Address'},
+      {k:'local',t:'Scope',f:r=>r.local?'<span class="pill ok">local</span>':'<span class="pill warn">remote</span>'},
+      {k:'name',t:'Name'},{k:'mac',t:'MAC'},{k:'country',t:'CC'},
+      {k:'total',t:'Total',n:1,f:r=>bytes(r.total)},
+      {k:'sent',t:'Sent',n:1,f:r=>bytes(r.sent)},
+      {k:'recvd',t:'Received',n:1,f:r=>bytes(r.recvd)},
+      {k:'flows',t:'Flows',n:1},
+      {k:'alerts',t:'Alerts',n:1,f:r=>r.alerts>0?`<span class="pill bad">${r.alerts}</span>`:'0'},
+      {k:'blacklisted',t:'Flagged',f:r=>r.blacklisted?'<span class="pill bad">yes</span>':''}],
+      d.hosts,'No devices reported. Is ntopng running?')+
+      (d.error?`<div class="err">${esc(d.error)}</div>`:'')+
+      `<div class="note">From ntopng. Includes remote peers as well as local devices &mdash; the Scope column distinguishes them. Sorted by traffic; click a column to re-sort.</div>`;
+  }
+  else if(cur==='flows'){
+    const d=await get('/api/flows')||{flows:[]};
+    v.innerHTML=`<h2>Active sessions</h2>`+table('flows',[
+      {k:'client',t:'Client'},{k:'server',t:'Server'},
+      {k:'app',t:'Application'},{k:'l4',t:'Proto'},
+      {k:'bytes',t:'Bytes',n:1,f:r=>bytes(r.bytes)},
+      {k:'duration',t:'Duration',n:1,f:r=>dur(r.duration)}],
+      d.flows,'No active flows reported.')+
+      (d.error?`<div class="err">${esc(d.error)}</div>`:'')+
+      `<div class="note">Application is identified by nDPI, the same engine ntopng uses for L7 classification.</div>`;
+  }
+  else if(cur==='alerts'){
+    const d=await get('/api/alerts')||{alerts:[]};
+    v.innerHTML=`<h2>Recent alerts</h2>`+table('alerts',[
+      {k:'ts',t:'When',f:r=>esc(new Date(r.ts*1000).toLocaleString())},
+      {k:'severity',t:'Severity',f:r=>{const p=(r.severity==='critical'||r.severity==='high')?'bad':
+        (r.severity==='medium'?'warn':'ok');return `<span class="pill ${p}">${esc(r.severity)}</span>`}},
+      {k:'actor',t:'Actor'},{k:'target',t:'Target'},
+      {k:'verdict',t:'Verdict'},{k:'message',t:'Signature'}],
+      d.alerts,'No alerts in the query window. On a quiet WAN that is expected, not a fault.');
+  }
+  else if(cur==='policy'){
+    const p=await get('/api/policy');
+    v.innerHTML=`<h2>Declared policy and plan</h2>`+
+      (p&&p.exists?`<pre>${esc(p.status)}\n${esc(p.plan)}</pre>`
+        :`<div class="note">${esc((p&&p.error)||'No policy declared.')}</div>`)+
+      `<div class="note">Editing and applying policy is deliberately not available here &mdash; use <code>flowsight-policy</code>.</div>`;
+  }
+  wireSort();
+}
+tabs(); render(); setInterval(render, 15000);
+})();
 </script>
 """
 

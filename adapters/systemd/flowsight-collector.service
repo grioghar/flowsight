@@ -1,0 +1,23 @@
+[Unit]
+Description=Flowsight collector
+Documentation=https://github.com/grioghar/flowsight
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/flowsight-collector
+Restart=always
+RestartSec=10
+Nice=10
+
+# It reads logs and runs read-only backend queries; it needs nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/run /run
+RuntimeDirectory=flowsight
+
+[Install]
+WantedBy=multi-user.target

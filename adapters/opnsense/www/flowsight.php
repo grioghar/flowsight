@@ -15,7 +15,7 @@
 require_once("guiconfig.inc");
 
 $FLOWSIGHT_BASE = "http://127.0.0.1:8080";
-$ALLOWED_API = array("status", "summary", "alerts", "policy");
+$ALLOWED_API = array("status", "summary", "alerts", "policy", "hosts", "flows");
 
 function flowsight_fetch($url)
 {

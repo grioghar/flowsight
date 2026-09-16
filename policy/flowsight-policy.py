@@ -31,6 +31,27 @@ except ImportError:
 
 DEFAULT_POLICY_PATH = "/usr/local/etc/flowsight/policy.yaml"
 
+
+def _platform_defaults():
+    """Unbound's drop-in directory and control paths differ per platform."""
+    if os.path.exists("/usr/local/sbin/opnsense-version") or \
+            os.uname()[0] == "FreeBSD":
+        return {
+            "include_path": "/var/unbound/etc/flowsight-policy.conf",
+            "control": "/usr/local/sbin/unbound-control",
+            "checkconf": "/usr/local/sbin/unbound-checkconf",
+            "config": "/var/unbound/unbound.conf",
+        }
+    return {
+        "include_path": "/etc/unbound/unbound.conf.d/flowsight-policy.conf",
+        "control": "/usr/sbin/unbound-control",
+        "checkconf": "/usr/sbin/unbound-checkconf",
+        "config": "/etc/unbound/unbound.conf",
+    }
+
+
+_P = _platform_defaults()
+
 # Capabilities a policy clause needs, mirroring docs/SCHEMA.md.
 CAP_DNS_BLOCK = "dns.block"
 
@@ -200,9 +221,10 @@ class UnboundViewProvider(Provider):
 
     def __init__(self, cfg=None):
         cfg = cfg or {}
-        self.path = cfg.get("include_path", "/var/unbound/etc/flowsight-policy.conf")
-        self.control = cfg.get("control", "/usr/local/sbin/unbound-control")
-        self.config = cfg.get("config", "/var/unbound/unbound.conf")
+        self.path = cfg.get("include_path", _P["include_path"])
+        self.control = cfg.get("control", _P["control"])
+        self.checkconf = cfg.get("checkconf", _P["checkconf"])
+        self.config = cfg.get("config", _P["config"])
 
     def compile(self, policies):
         lines = [self.HEADER]
@@ -250,7 +272,7 @@ class UnboundViewProvider(Provider):
 
         # Validate before reloading: a bad include takes DNS down for everyone,
         # and on a gateway that is the whole network.
-        check = subprocess.run(["/usr/local/sbin/unbound-checkconf", self.config],
+        check = subprocess.run([self.checkconf, self.config],
                                capture_output=True, text=True)
         if check.returncode != 0:
             if backup:

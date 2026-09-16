@@ -27,7 +27,8 @@ import urllib.request
 
 CONFIG_PATHS = [
     os.environ.get("FLOWSIGHT_CONFIG", ""),
-    "/usr/local/etc/flowsight/collector.json",
+    "/usr/local/etc/flowsight/collector.json",   # FreeBSD / OPNsense
+    "/etc/flowsight/collector.json",             # Debian-family
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "collector.json"),
 ]
 
@@ -54,6 +55,33 @@ CAP_RULE_ANALYSE = "firewall.analyse"
 # config. Config says what was asked for; this says what is happening.
 STATE_PATH = "/var/run/flowsight-collector.json"
 
+def _platform_defaults():
+    """Per-platform paths.
+
+    The same backends live in different places on FreeBSD/OPNsense and on
+    Debian-family Linux. Detecting once here keeps every call site free of
+    platform conditionals, and config still overrides anything.
+    """
+    if os.path.exists("/usr/local/sbin/opnsense-version") or \
+            os.uname()[0] == "FreeBSD":
+        return {
+            "unbound_control": "/usr/local/sbin/unbound-control",
+            "unbound_config": "/var/unbound/unbound.conf",
+            "eve_path": "/var/log/suricata/eve.json",
+            "rulehygiene_bin": "/usr/local/sbin/flowsight-rulehygiene",
+        }
+    return {
+        "unbound_control": "/usr/sbin/unbound-control",
+        # Debian's unbound-control finds its own config; an empty value means
+        # "do not pass -c", which is correct there and wrong on FreeBSD.
+        "unbound_config": "",
+        "eve_path": "/var/log/suricata/eve.json",
+        "rulehygiene_bin": "/usr/local/sbin/flowsight-rulehygiene",
+    }
+
+
+_P = _platform_defaults()
+
 DEFAULT_CONFIG = {
     "state_path": STATE_PATH,
     "otlp_metrics_endpoint": "http://127.0.0.1:4318/v1/metrics",
@@ -61,11 +89,11 @@ DEFAULT_CONFIG = {
     "host_name": "",
     "interval_seconds": 30,
     "sources": {
-        "suricata": {"enabled": True, "eve_path": "/var/log/suricata/eve.json"},
+        "suricata": {"enabled": True, "eve_path": _P["eve_path"]},
         "unbound": {
             "enabled": True,
-            "control": "/usr/local/sbin/unbound-control",
-            "config": "/var/unbound/unbound.conf",
+            "control": _P["unbound_control"],
+            "config": _P["unbound_config"],
         },
         "ntopng": {
             "enabled": True,
@@ -73,8 +101,9 @@ DEFAULT_CONFIG = {
             "timeout": 8,
         },
         "rulehygiene": {
-            "enabled": True,
-            "binary": "/usr/local/sbin/flowsight-rulehygiene",
+            # pf-specific; there is no equivalent on nftables yet.
+            "enabled": os.uname()[0] == "FreeBSD",
+            "binary": _P["rulehygiene_bin"],
             # Rulesets change on human timescales; re-analysing every cycle
             # would burn CPU on a gateway to re-derive an identical answer.
             "interval_seconds": 900,
