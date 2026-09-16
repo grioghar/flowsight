@@ -42,7 +42,13 @@ exist anywhere else and is the reason the project is worth building.
 
 Single pane over the schema and the policy model.
 
-## Phase 5 — Portability and release
+## Phase 5 — rulehygiene module
+
+Firewall rule analysis: shadowed, redundant, unused and overly permissive rules,
+change tracking and risk scoring. The FireMon-shaped capability, built on flow
+data the earlier phases already collect.
+
+## Phase 6 — Portability and release
 
 Adapters beyond OPNsense (Debian, OpenWrt, container), packaging, docs, and a
 public release.
@@ -50,5 +56,7 @@ public release.
 ## Non-goals
 
 - Reimplementing DPI. nDPI is better than anything this project would write.
+- Monolithic design. Every capability ships as a module against a thin core;
+  nothing domain-specific belongs in the core.
 - Inline mid-stream L7 enforcement in v1. Enforcement stays with the backends.
 - TLS interception.
