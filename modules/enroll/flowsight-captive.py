@@ -55,8 +55,11 @@ PAGE = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Identify this device</title><style>
-:root{color-scheme:light dark;--bg:#f5f6f8;--fg:#14171c;--card:#fff;--line:#d9dde3;--accent:#2f6fed}
-@media(prefers-color-scheme:dark){:root{--bg:#14171c;--fg:#e8eaed;--card:#1d2128;--line:#2c313a}}
+/* Light only, and the same palette as the rest of Flowsight, so a device sent
+   here sees something recognisably part of this network rather than a page
+   that changes appearance with the phone's theme. */
+:root{color-scheme:light;--bg:#f5f5f5;--fg:#373736;--card:#fff;--line:#ddd;
+      --accent:#C03E14}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
 font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 display:flex;justify-content:center;padding:24px 16px}
