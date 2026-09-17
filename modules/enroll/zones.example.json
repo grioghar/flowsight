@@ -1,5 +1,5 @@
 {
-  "comment": "One layer-2 network, one gateway, and a /24 block per class of device. Zones here are address ranges inside a single /17 - not separate subnets - because that is what a flat segment with one router actually is. Every zone therefore shares the same subnet and gateway, and differs only in the range addresses are handed out from. Sorting devices by third octet is what makes a firewall rule, a DNS view or a glance at an address readable at all.",
+  "comment": "One layer-2 segment carved into a /24 per class of device. Each zone has its own gateway and hands out a /24 mask, so traffic between zones is routed through the firewall and can actually be filtered. With a single wide mask every block is on-link to every other and firewall rules load but match nothing.",
   "mode": "monitor",
   "captive_zone": "quarantine",
   "captive_policy": "self_service",
@@ -10,7 +10,7 @@
       "id": "personal",
       "name": "Personal",
       "description": "Laptops, phones, tablets and watches belonging to people in the house.",
-      "subnet": "192.168.0.0/17",
+      "subnet": "192.168.0.0/24",
       "gateway": "192.168.0.1",
       "range": [
         "192.168.0.30",
@@ -24,16 +24,17 @@
       "reach_zones": [
         "personal",
         "infra",
-        "media",
-        "iot"
-      ]
+        "iot",
+        "media"
+      ],
+      "block": "192.168.0.0/24"
     },
     {
       "id": "infra",
       "name": "Infrastructure",
       "description": "The firewall, hypervisors, containers, resolvers and build runners.",
-      "subnet": "192.168.0.0/17",
-      "gateway": "192.168.0.1",
+      "subnet": "192.168.1.0/24",
+      "gateway": "192.168.1.1",
       "range": [
         "192.168.1.150",
         "192.168.1.250"
@@ -46,16 +47,17 @@
       "reach_zones": [
         "personal",
         "infra",
-        "media",
-        "iot"
-      ]
+        "iot",
+        "media"
+      ],
+      "block": "192.168.1.0/24"
     },
     {
       "id": "iot",
       "name": "IoT",
       "description": "Smart plugs, bulbs, speakers, thermostats, cameras and other appliances.",
-      "subnet": "192.168.0.0/17",
-      "gateway": "192.168.0.1",
+      "subnet": "192.168.2.0/24",
+      "gateway": "192.168.2.1",
       "range": [
         "192.168.2.120",
         "192.168.2.250"
@@ -66,15 +68,17 @@
       ],
       "internet": true,
       "reach_zones": [
-        "iot"
-      ]
+        "iot",
+        "infra"
+      ],
+      "block": "192.168.2.0/24"
     },
     {
       "id": "media",
       "name": "Media and Consoles",
       "description": "Consoles, headsets, TVs and streaming devices.",
-      "subnet": "192.168.0.0/17",
-      "gateway": "192.168.0.1",
+      "subnet": "192.168.3.0/24",
+      "gateway": "192.168.3.1",
       "range": [
         "192.168.3.120",
         "192.168.3.250"
@@ -85,15 +89,17 @@
       ],
       "internet": true,
       "reach_zones": [
-        "media"
-      ]
+        "media",
+        "infra"
+      ],
+      "block": "192.168.3.0/24"
     },
     {
       "id": "quarantine",
       "name": "Unidentified",
       "description": "Devices Flowsight could not identify. No internet; HTTP is answered by the identification page. Kept clear of the host's own untagged pool lower in the same block, so the two do not define overlapping ranges with different lease times.",
-      "subnet": "192.168.0.0/17",
-      "gateway": "192.168.0.1",
+      "subnet": "192.168.9.0/24",
+      "gateway": "192.168.9.1",
       "range": [
         "192.168.9.130",
         "192.168.9.220"
@@ -104,7 +110,22 @@
       "internet": false,
       "captive": true,
       "self_service": true,
-      "reach_zones": []
+      "reach_zones": [],
+      "block": "192.168.9.0/24"
     }
-  ]
+  ],
+  "always_allow": {
+    "comment": "Reachable from every zone regardless of reach_zones, because removing these breaks the network rather than segmenting it: the gateway itself, and name resolution.",
+    "hosts": [
+      "192.168.0.1",
+      "192.168.1.1",
+      "192.168.1.53"
+    ],
+    "ports": [
+      "53",
+      "67",
+      "68",
+      "123"
+    ]
+  }
 }

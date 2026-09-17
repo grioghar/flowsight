@@ -110,3 +110,76 @@ Pick live targets. An earlier attempt at this was rolled back on the conclusion
 that origin servers were rejecting SNI-less handshakes; the real cause was
 retired test addresses that answered nothing, and one chronically flaky test
 site. SNI-less interception works.
+
+---
+
+# Zone isolation
+
+See `modules/enroll/README.md` for the zone model. This is what it takes to
+make it *enforced* rather than descriptive.
+
+## One subnet cannot be segmented
+
+With every device on a single wide mask, all zones are on-link to each other.
+Traffic between them is switched directly and never reaches the firewall, so
+filter rules load cleanly and match nothing — verified by flushing pf states,
+generating inter-zone traffic, and finding zero states for it.
+
+Each zone therefore needs **its own /24 and its own gateway**. Then a device's
+traffic to another zone leaves via the firewall, where it can be filtered.
+
+This is still policy, not isolation: the segment is shared, so a device that
+statically re-masks itself to the wider prefix bypasses the whole thing. It
+stops appliances, which follow DHCP; it does not stop an attacker. True
+isolation needs VLANs.
+
+## Three ways these rules silently do nothing
+
+**Sequence.** Every rule OPNsense emits is `quick`, so first match wins, and
+the automatic "Default allow LAN to any" rule sits at **sequence 1**. Rules at
+sequence 1 or above are emitted after it and never match. Use sequence 0.
+
+**A port with protocol `any`.** pf rejects it outright — *"port only applies to
+tcp/udp/sctp"* — and one invalid rule makes pfctl refuse the **entire file**.
+The firewall then keeps running its previous ruleset while `configctl filter
+reload` still reports `OK`. Always check the generated file directly:
+
+```
+pfctl -n -f /tmp/rules.debug
+```
+
+**Blocking a zone from infra.** The resolver and the media servers live there.
+`iot → infra` and `media → infra` must stay open or appliances lose DNS and
+consoles lose Plex — that breaks the network rather than segmenting it.
+
+## Verifying, properly
+
+Reachability tests are ambiguous: a host that is simply switched off looks
+identical to one that is blocked. Use pf's own counters, which say whether a
+rule matched:
+
+```
+pfctl -z                     # zero counters
+# ... generate traffic ...
+pfctl -sr -v                 # Packets: on the rule that should have matched
+```
+
+Note that `pfctl -sr` shows the rule's UUID label, not its description — the
+comments exist only in `rules.debug`, so match on the addresses.
+
+A throwaway namespace makes a convincing test client without touching a real
+device:
+
+```
+ip netns add t; ip link add veth0 type veth peer name veth1
+ip link set veth0 master vmbr0 up; ip link set veth1 netns t
+ip netns exec t ip addr add 192.168.2.200/24 dev veth1
+ip netns exec t ip link set veth1 up
+ip netns exec t ip route add default via 192.168.2.1
+```
+
+## Not yet enforced
+
+Quarantine still has full egress. Blocking it, and redirecting its HTTP to the
+identification page, is the remaining piece — and the DNS exception it needs
+must carry protocol `tcp/udp`, not `any`.

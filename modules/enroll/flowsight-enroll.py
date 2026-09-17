@@ -412,7 +412,7 @@ def render_dnsmasq(zones, reg):
     lines = [GENERATED, "\n"]
     for z in zones.get("zones", []):
         zid = z["id"]
-        net = ipaddress.ip_network(z["subnet"], strict=False)
+        net = ipaddress.ip_network(z.get("block") or z["subnet"], strict=False)
         lines.append("# zone: %s - %s\n" % (zid, z.get("name", "")))
         # "tag:" not "set:". On a dhcp-range, set: assigns a tag when the
         # range is chosen, while tag: restricts the range to clients that
@@ -420,12 +420,25 @@ def render_dnsmasq(zones, reg):
         # device fell through to the untagged pool, and the placement looked
         # applied while quietly doing nothing - visible only as DHCPNAK
         # followed by an offer from the wrong block.
-        lines.append("dhcp-range=tag:%s,%s,%s,%s,%s\n" % (
-            zid, z["range"][0], z["range"][1], net.netmask, lease))
+        # Two ranges per zone, and the option scope is the reason for both.
+        #
+        # "tag:<zone>" selects this pool for devices enrolment has classified.
+        # "set:<zone>net" marks whoever is served from it, so the router and
+        # DNS options below attach to them.
+        #
+        # The second range declares the rest of the block as static-only. Hosts
+        # with a reservation carry no enrolment tag, so without it they fall
+        # back to the wide global range and keep a /17 mask - on-link to every
+        # other zone, and therefore unfilterable. Declaring the block gives
+        # them the /24 and this zone's gateway too.
+        lines.append("dhcp-range=tag:%s,set:%snet,%s,%s,%s,%s\n" % (
+            zid, zid, z["range"][0], z["range"][1], net.netmask, lease))
+        lines.append("dhcp-range=set:%snet,%s,static,%s,%s\n" % (
+            zid, net.network_address, net.netmask, lease))
         if z.get("gateway"):
-            lines.append("dhcp-option=tag:%s,option:router,%s\n" % (zid, z["gateway"]))
+            lines.append("dhcp-option=tag:%snet,option:router,%s\n" % (zid, z["gateway"]))
         for dns in z.get("dns", []):
-            lines.append("dhcp-option=tag:%s,option:dns-server,%s\n" % (zid, dns))
+            lines.append("dhcp-option=tag:%snet,option:dns-server,%s\n" % (zid, dns))
         lines.append("\n")
 
     reserved = _reserved_macs()
