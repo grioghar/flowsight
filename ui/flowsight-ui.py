@@ -1528,18 +1528,20 @@ DOCS_PAGE = """<!doctype html>
 <title>Flowsight API</title>
 <link rel="stylesheet" href="__CDN__/swagger-ui.css">
 <style>
-:root{color-scheme:light dark}
-body{margin:0;font:14px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}
+/* Light only, to match the GUI this is reached from. */
+:root{color-scheme:light}
+body{margin:0;font:14px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;
+  background:#f5f5f5;color:#373736}
 #fallback{max-width:960px;margin:0 auto;padding:22px 18px}
 #fallback h1{font-size:21px;margin:0 0 4px}
 #fallback .sub{opacity:.7;font-size:13px;margin-bottom:18px}
 #fallback h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;
   opacity:.6;margin:22px 0 8px}
-.op{border:1px solid #8883;border-radius:8px;padding:10px 13px;margin-bottom:7px}
+.op{background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px 13px;margin-bottom:7px}
 .verb{display:inline-block;min-width:58px;padding:1px 8px;border-radius:5px;
   font:600 11px/1.6 ui-monospace,Menlo,monospace;color:#fff;text-align:center;
   margin-right:9px}
-.get{background:#2b5f8a}.post{background:#2f7d4f}
+.get{background:#C03E14}.post{background:#2f7d4f}
 .put{background:#b8791b}.delete{background:#b3352e}
 code{font:12px/1.5 ui-monospace,Menlo,monospace}
 .pp{margin:8px 0 0 67px;font-size:12.5px;opacity:.85}
@@ -1863,12 +1865,17 @@ PAGE = """<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Flowsight</title>
 <style>
-:root{--bg:#f7f7f6;--fg:#1b1b1a;--mut:#6b6b68;--card:#fff;--line:#e2e2df;
-      --ok:#2f7d4f;--warn:#b8791b;--crit:#b3352e;--accent:#2b5f8a}
-@media(prefers-color-scheme:dark){:root{--bg:#16181a;--fg:#e8e8e6;--mut:#9a9a97;
-      --card:#1e2124;--line:#2f3336;--ok:#6cc08b;--warn:#e0a84a;--crit:#e0736a;--accent:#7fb3e0}}
+/* Matches the OPNsense "opnsense" theme this page is embedded in: #f5f5f5
+   behind white content boxes, #373736 text, and #C03E14 as the accent. There is
+   deliberately no prefers-color-scheme rule - the surrounding GUI is light
+   whatever the operating system is set to, and a page that went dark inside it
+   was unreadable against the white chrome around it. */
+:root{color-scheme:light;
+      --bg:#f5f5f5;--fg:#373736;--mut:#777772;--card:#fff;--line:#ddd;
+      --ok:#4b8b3b;--warn:#b8791b;--crit:#d9534f;--accent:#C03E14}
 *{box-sizing:border-box}
-.fs{color:var(--fg);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+.fs{color:var(--fg);background:var(--bg);
+    font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
 .fs h1{font-size:19px;margin:0 0 2px}
 .fs h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:0 0 6px;font-weight:600}
 .big{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -2692,7 +2699,18 @@ function autoRefresh(){
   if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT') return;
   render();
 }
-if(window.FS_EMBEDDED) document.getElementById('fsroot').classList.add('embedded');
+if(window.FS_EMBEDDED){
+  document.getElementById('fsroot').classList.add('embedded');
+}else{
+  // Reached directly rather than through the GUI: nothing else paints the
+  // page, so without this the browser canvas shows through around the app -
+  // dark grey under dark text if the operating system asks for dark.
+  document.documentElement.style.background='#f5f5f5';
+  document.body.style.background='#f5f5f5';
+  document.body.style.margin='0';
+  document.getElementById('fsroot').style.minHeight='100vh';
+  document.getElementById('fsroot').style.padding='14px 16px';
+}
 tabs(); render(); setInterval(autoRefresh, 15000);
 // The OPNsense menu navigates by changing the fragment on the same page, so
 // the view has to follow the hash rather than only the in-page buttons.
