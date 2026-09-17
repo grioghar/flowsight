@@ -231,9 +231,9 @@
       "id": "personal-hostname",
       "zone": "personal",
       "confidence": "high",
-      "why": "Hostname names a personal computer or phone. This is what identifies devices using a randomized MAC, where the vendor is unknowable.",
+      "why": "Hostname names a personal computer or phone. This is what identifies devices using a randomized MAC, where the vendor is unknowable, and it carries the vendor-specific phone naming that OUI lookup cannot help with.",
       "when": {
-        "hostname_re": "(?i)(macbook|imac|iphone|ipad|ipod|thinkpad|pixel|galaxy|oneplus|surface|laptop|desktop|workstation|ubuntu|fedora|arch-|win10|win11|android)|(^|[-_])(mac|mbp|mba|pc)([-_0-9]|$)"
+        "hostname_re": "(?i)(macbook|imac|iphone|ipad|ipod|thinkpad|pixel|galaxy|oneplus|surface|laptop|desktop|workstation|ubuntu|fedora|arch-|win10|win11|android|sm-[gn]|note[0-9])|(^|[-_])s[0-9]{2}([-_]|$)|(^|[-_])(mac|mbp|mba|pc)([-_0-9]|$)"
       }
     },
     {

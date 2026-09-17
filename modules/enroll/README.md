@@ -102,3 +102,37 @@ generated `dnsmasq.conf` already includes via `conf-dir`. Anything written into
 ```
 dhcp-script=/usr/local/sbin/flowsight-enroll-hook
 ```
+
+## Zones on a flat segment
+
+Zones here are **address ranges inside one subnet**, not separate subnets. A
+flat segment with a single router is what it is, and pretending otherwise
+produces per-zone gateways that nothing routes to.
+
+So every zone shares one `subnet` and one `gateway` and differs only in the
+range addresses come from — a `/24` block per class inside a wider `/17`.
+Sorting devices by third octet is what makes a firewall rule, a DNS view, or a
+glance at an address readable:
+
+| Block | Class |
+|---|---|
+| `192.168.0.x` | personal |
+| `192.168.1.x` | infrastructure |
+| `192.168.2.x` | IoT |
+| `192.168.3.x` | media and consoles |
+| `192.168.9.x` | unidentified |
+
+Two dnsmasq details are easy to get backwards and both fail quietly:
+
+**`tag:` selects a range, `set:` assigns a tag.** On a `dhcp-range`, `set:zone`
+means "tag clients that land here", while `tag:zone` means "only serve clients
+already carrying that tag". Written with `set:`, the zone ranges match nobody,
+every device falls through to the untagged pool, and the placement looks
+applied while doing nothing. It shows up only as `DHCPNAK ... address not
+available` followed by an offer from the wrong block.
+
+**A duplicate `dhcp-host` is fatal, not overriding.** dnsmasq rejects its whole
+configuration on a repeated MAC or address and then serves no DHCP at all, so
+enrollment omits any MAC already reserved in the host's own configuration — on
+this network that was 80 of 100 devices. A reservation someone made by hand
+also outranks anything inferred here.

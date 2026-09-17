@@ -381,6 +381,26 @@ def _hosts_for_zone(reg, zone_id):
     return out
 
 
+def _reserved_macs():
+    """MACs already carrying a static reservation outside Flowsight.
+
+    Read rather than assumed: a duplicate dhcp-host makes dnsmasq reject its
+    entire configuration and serve nothing, so this is the difference between
+    placing the devices nobody has pinned and taking DHCP down for everyone.
+    """
+    out = set()
+    for path in ("/usr/local/etc/dnsmasq.conf", "/etc/dnsmasq.conf"):
+        try:
+            with open(path) as fh:
+                for line in fh:
+                    m = re.match(r"dhcp-host=([0-9A-Fa-f:]{17})", line.strip())
+                    if m:
+                        out.add(m.group(1).lower())
+        except OSError:
+            continue
+    return out
+
+
 def render_dnsmasq(zones, reg):
     """dnsmasq drop-in: a tagged range per zone, and a tag per known device.
 
@@ -394,7 +414,13 @@ def render_dnsmasq(zones, reg):
         zid = z["id"]
         net = ipaddress.ip_network(z["subnet"], strict=False)
         lines.append("# zone: %s - %s\n" % (zid, z.get("name", "")))
-        lines.append("dhcp-range=set:%s,%s,%s,%s,%s\n" % (
+        # "tag:" not "set:". On a dhcp-range, set: assigns a tag when the
+        # range is chosen, while tag: restricts the range to clients that
+        # already carry it. With set: the zone ranges matched nobody, every
+        # device fell through to the untagged pool, and the placement looked
+        # applied while quietly doing nothing - visible only as DHCPNAK
+        # followed by an offer from the wrong block.
+        lines.append("dhcp-range=tag:%s,%s,%s,%s,%s\n" % (
             zid, z["range"][0], z["range"][1], net.netmask, lease))
         if z.get("gateway"):
             lines.append("dhcp-option=tag:%s,option:router,%s\n" % (zid, z["gateway"]))
@@ -402,14 +428,27 @@ def render_dnsmasq(zones, reg):
             lines.append("dhcp-option=tag:%s,option:dns-server,%s\n" % (zid, dns))
         lines.append("\n")
 
+    reserved = _reserved_macs()
     lines.append("# device placements\n")
+    skipped = 0
     for mac, d in sorted(reg.get("devices", {}).items()):
         zid = d.get("zone", "")
         if not zid or zid == "__existing__":
             continue
+        if mac.lower() in reserved:
+            # Already pinned by hand in the host's own DHCP configuration.
+            # Emitting a second dhcp-host for the same MAC does not override
+            # it - dnsmasq rejects the whole file with "duplicate dhcp-host"
+            # and then serves no DHCP at all. A reservation someone made
+            # deliberately also outranks anything inferred here.
+            skipped += 1
+            continue
         name = re.sub(r"[^A-Za-z0-9-]", "", (d.get("hostname") or "").replace(" ", "-"))
         tail = ",%s" % name if name else ""
         lines.append("dhcp-host=%s,set:%s%s\n" % (mac.lower(), zid, tail))
+    if skipped:
+        lines.append("\n# %d device(s) omitted: already reserved in the host's\n"
+                     "# own DHCP configuration, which takes precedence.\n" % skipped)
     return "".join(lines)
 
 

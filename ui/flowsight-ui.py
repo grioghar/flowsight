@@ -1656,8 +1656,12 @@ def api_config_items():
     except ConfigError as exc:
         return {"error": str(exc)}
     if spec["kind"] == "collection":
-        return {"doc": name, "id_field": spec["id_field"],
-                "items": _items(spec, doc)}
+        out = {"doc": name, "id_field": spec["id_field"],
+               "items": _items(spec, doc)}
+        if spec.get("settings_too"):
+            out["settings"] = {k: v for k, v in doc.items()
+                               if k != spec["collection"]}
+        return out
     if spec["kind"] in ("settings", "map"):
         return {"doc": name, "id_field": "key",
                 "items": [{"key": k, "value": v} for k, v in doc.items()]}
@@ -1750,6 +1754,20 @@ def cfg_item_update(body):
         spec = _doc(name)
         _s, _p, doc, _r = _cfg_read(name)
         ident = b.get("id", "")
+        if spec["kind"] == "collection" and spec.get("settings_too") and \
+                b.get("key") and "item" not in b:
+            # A collection document can also carry document-level settings -
+            # zones.json holds "mode" and "captive_policy" beside its list. A
+            # caller supplying "key" rather than "item" means one of those.
+            # The descriptor advertised this and the code did not implement it,
+            # so the setting could only be changed by rewriting the whole file.
+            key = b["key"]
+            if key == spec["collection"]:
+                raise ConfigError("use the item operations to change %r" % key)
+            if key not in doc and not b.get("create"):
+                raise ConfigError("no setting %r in %s" % (key, name))
+            doc[key] = b.get("value")
+            return _cfg_write(name, doc)
         if spec["kind"] == "collection":
             items = _items(spec, doc)
             for idx, it in enumerate(items):
