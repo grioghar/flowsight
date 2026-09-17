@@ -96,6 +96,9 @@ DEFAULT_CONFIG = {
     "dns_name_refresh_seconds": 60,
     # Re-derive squid's IPv6 localnet ACL from the current delegated prefix.
     "squid_v6_acl_refresh_seconds": 300,
+    # Re-assert ntopng's localhost login bypass, without which every view here
+    # goes empty. 0 disables.
+    "ntopng_login_guard_seconds": 300,
     "sources": {
         "suricata": {"enabled": True, "eve_path": _P["eve_path"]},
         "unbound": {
@@ -789,6 +792,70 @@ def refresh_squid_v6_acl(cfg):
         sys.stderr.write("flowsight: squid v6 acl refresh failed: %s\n" % exc)
 
 
+NTOPNG_CONF = "/usr/local/etc/ntopng.conf"
+NTOPNG_RC = "/usr/local/etc/rc.d/ntopng"
+_ntopng_at = [0.0]
+
+
+def ensure_ntopng_localhost_login(cfg):
+    """Re-assert "-l=0" in ntopng.conf, which everything here depends on.
+
+    Flowsight reads ntopng's REST API over loopback. "-l=0" disables the login
+    requirement for localhost only - remote access still needs credentials - and
+    without it every device, flow and application view goes empty while ntopng
+    itself reports perfectly healthy. OPNsense regenerates this file from a
+    template and drops the flag on a plugin reconfigure, so the breakage arrives
+    later, detached from whatever caused it.
+
+    This lived in a standalone script once. Nothing ever called it, so it never
+    ran; putting it on the collector loop is the difference between a guard and
+    a comment. Writing only when the flag is actually missing keeps it free in
+    the normal case - no restart, no log line.
+    """
+    every = cfg.get("ntopng_login_guard_seconds", 300)
+    if not every or not os.path.exists(NTOPNG_CONF):
+        return
+    now = time.monotonic()
+    if _ntopng_at[0] and now - _ntopng_at[0] < every:
+        return
+    _ntopng_at[0] = now
+
+    try:
+        lines = open(NTOPNG_CONF).read().splitlines()
+    except Exception as exc:
+        sys.stderr.write("flowsight: cannot read %s: %s\n" % (NTOPNG_CONF, exc))
+        return
+
+    existing = [i for i, ln in enumerate(lines) if ln.strip().startswith("-l=")]
+    if existing and lines[existing[0]].strip() == "-l=0":
+        return
+
+    if existing:
+        # Replace rather than append: two -l= lines would leave which one wins
+        # up to ntopng's argument order, which is not something to rely on.
+        was = lines[existing[0]].strip()
+        lines[existing[0]] = "-l=0"
+        what = "replaced %r with -l=0" % was
+    else:
+        lines.append("-l=0")
+        what = "re-added -l=0"
+
+    try:
+        with open(NTOPNG_CONF, "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+    except Exception as exc:
+        sys.stderr.write("flowsight: cannot write %s: %s\n" % (NTOPNG_CONF, exc))
+        return
+
+    sys.stderr.write("flowsight: ntopng login guard %s in %s; restarting\n"
+                     % (what, NTOPNG_CONF))
+    try:
+        subprocess.run([NTOPNG_RC, "restart"], capture_output=True,
+                       text=True, timeout=120)
+    except Exception as exc:
+        sys.stderr.write("flowsight: ntopng restart failed: %s\n" % exc)
+
+
 def main():
     cfg = load_config()
     exporter = Exporter(cfg, int(time.time() * 1e9))
@@ -838,6 +905,7 @@ def main():
 
         refresh_dns_names(cfg)
         refresh_squid_v6_acl(cfg)
+        ensure_ntopng_localhost_login(cfg)
         write_state(state_path, sources, results, exports)
         time.sleep(cfg["interval_seconds"])
 
