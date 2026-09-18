@@ -69,7 +69,8 @@ address the firewall owns on that interface.
 **A stable one.** The LAN's global address is tracked from the WAN delegation
 and carries a one hour lifetime; squid cannot rebind when it changes. So the
 listener is a **unique local address** assigned as a virtual IP on the LAN, and
-squid binds it via `/usr/local/etc/squid/pre-auth/10-flowsight-v6.conf`. The
+squid binds it via `/usr/local/etc/squid/pre-auth/10-flowsight-v6.conf`, which
+ships as `adapters/opnsense/10-flowsight-v6.conf`. The
 proxy plugin owns only its own files in that directory, so this survives a
 reconfigure, and the `include` sits at a point where an `http_port` is still
 accepted.
