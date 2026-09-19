@@ -1,0 +1,117 @@
+#!/bin/sh
+#
+# Build the os-flowsight package for OPNsense/FreeBSD with pkg(8) alone.
+#
+# No ports tree, no plugins framework: the binary is cross-compiled from any
+# machine with Go, the plugin files are copied from the repo, and pkg create
+# wraps them with a manifest. The result installs with `pkg add` and shows up
+# in System > Firmware > Plugins like any other plugin.
+#
+#   build-pkg.sh <version> <arch: amd64|aarch64> <flowsightd binary> <plugin src dir> <out dir>
+#
+set -eu
+
+VERSION="${1:?version}"
+ARCH="${2:?arch}"
+BIN="${3:?flowsightd binary}"
+SRC="${4:?plugin src dir}"
+OUT="${5:?out dir}"
+
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$STAGE/usr/local/sbin" "$STAGE/usr/local/share/flowsight" "$STAGE/usr/local/etc/flowsight" "$OUT"
+
+install -m 755 "$BIN" "$STAGE/usr/local/sbin/flowsightd"
+(cd "$SRC" && find . -type f | while read -r f; do
+    dest="$STAGE/usr/local/${f#./}"
+    case "$f" in
+        ./etc/rc.d/*) mode=755 ;;
+        ./www/*|./opnsense/*|./etc/inc/*) mode=644 ;;
+        *) mode=644 ;;
+    esac
+    install -d "$(dirname "$dest")"
+    install -m "$mode" "$f" "$dest"
+done)
+
+# OUI registry if the repo ships one; the identity module reads it from share.
+if [ -f "$(dirname "$0")/../oui.txt" ]; then
+    install -m 644 "$(dirname "$0")/../oui.txt" "$STAGE/usr/local/share/flowsight/oui.txt"
+fi
+
+cat > "$STAGE/+MANIFEST" <<EOF
+name: os-flowsight
+version: "$VERSION"
+origin: opnsense/os-flowsight
+comment: "Flowsight: L7 visibility, policy and enforcement"
+desc: <<EOD
+Flowsight is an open alternative to Zenarmor for OPNsense: application and
+web visibility per device, DNS, web and application policy compiled onto the
+firewall's own resolver, proxy and packet filter, TLS transparency with an
+optional inspection CA, firewall rule hygiene, reports and alerting. One
+static binary, no cloud, no licence gates.
+EOD
+maintainer: flowsight@grio.co
+www: https://github.com/grioghar/flowsight
+abi: "FreeBSD:*:$ARCH"
+arch: "freebsd:*:$ARCH"
+prefix: /usr/local
+licenselogic: single
+licenses: [APACHE20]
+categories: [opnsense, net]
+deps: {
+  squid: {origin: www/squid, version: "6.0"}
+}
+annotations: {
+  plugin_type: "os-flowsight",
+  tier: "community"
+}
+EOF
+
+cat > "$STAGE/+POST_INSTALL" <<'EOF'
+#!/bin/sh
+install -d -m 755 /var/db/flowsight /var/log/flowsight /var/run/flowsight /usr/local/etc/flowsight
+# Register the service and enable the plugin's firewall hooks on first install.
+sysrc -q flowsight_enable=YES >/dev/null
+if [ -x /usr/local/sbin/configctl ]; then
+    php -r '
+require_once("config.inc"); global $config;
+if (!isset($config["OPNsense"]["flowsight"]["general"]["enabled"])) {
+    $config["OPNsense"]["flowsight"]["general"]["enabled"] = "1";
+    write_config("Flowsight: plugin installed");
+}' 2>/dev/null || true
+    rm -f /var/lib/php/tmp/opnsense_menu_cache.xml
+    configctl webgui restart >/dev/null 2>&1 &
+    /usr/local/etc/rc.d/configd restart >/dev/null 2>&1 &
+    sleep 2
+    configctl filter reload >/dev/null 2>&1 || true
+fi
+service flowsight restart >/dev/null 2>&1 || service flowsight start >/dev/null 2>&1 || true
+echo ""
+echo "Flowsight is installed. Open Services > Flowsight in the GUI."
+echo "Nothing is enforced until you turn on policy enforcement there."
+EOF
+
+cat > "$STAGE/+PRE_DEINSTALL" <<'EOF'
+#!/bin/sh
+service flowsight stop >/dev/null 2>&1 || true
+sysrc -q -x flowsight_enable >/dev/null 2>&1 || true
+# Withdraw everything Flowsight put in front of traffic; leave data and policy.
+pfctl -a flowsight/web -F nat >/dev/null 2>&1 || true
+pfctl -a flowsight/policy -F rules >/dev/null 2>&1 || true
+for f in /var/unbound/etc/flowsight-*.conf /var/unbound/etc/flowsight-*.rpz /usr/local/etc/unbound.opnsense.d/flowsight-*; do
+    [ -e "$f" ] && rm -f "$f"
+done
+rm -f /var/lib/php/tmp/opnsense_menu_cache.xml
+EOF
+
+cat > "$STAGE/+POST_DEINSTALL" <<'EOF'
+#!/bin/sh
+if [ -x /usr/local/sbin/configctl ]; then
+    configctl unbound restart >/dev/null 2>&1 &
+    configctl filter reload >/dev/null 2>&1 || true
+fi
+EOF
+
+(cd "$STAGE" && find usr -type f | sed 's#^#/#' | sort > "$STAGE/plist")
+pkg create -r "$STAGE" -m "$STAGE" -p "$STAGE/plist" -o "$OUT" -f txz
+ls -la "$OUT"/os-flowsight-"$VERSION".*

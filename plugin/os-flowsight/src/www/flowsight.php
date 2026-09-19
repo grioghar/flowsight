@@ -1,0 +1,181 @@
+<?php
+
+/*
+ * Flowsight inside the OPNsense web GUI.
+ *
+ * flowsightd binds to loopback and ships no authentication of its own; the
+ * GUI has already authenticated the user, so this page is the only door:
+ *
+ *   flowsight.php            the page, inside the OPNsense chrome
+ *   flowsight.php?app=1      the Flowsight application shell (in an iframe)
+ *   flowsight.php?asset=…    static files of the shell
+ *   flowsight.php?api=/api/… JSON API, GET and POST
+ *
+ * Writes are accepted only with the session's CSRF token in the X-CSRFToken
+ * header and an Origin (or Referer) matching this host. The GUI user's name
+ * travels to the daemon in X-Flowsight-User so the audit log names people,
+ * not "local".
+ */
+
+require_once("guiconfig.inc");
+
+$FLOWSIGHT_BASE = "http://127.0.0.1:8080";
+
+function fs_fetch($url, $method = "GET", $body = null, $headers = [])
+{
+    $ch = curl_init($url);
+    $hdrs = array_merge(["X-Requested-With: Flowsight"], $headers);
+    if (!empty($_SESSION["Username"])) {
+        $hdrs[] = "X-Flowsight-User: " . preg_replace('/[^A-Za-z0-9@._-]/', '', $_SESSION["Username"]);
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_TIMEOUT => 120,
+        CURLOPT_HEADER => true,
+        CURLOPT_CUSTOMREQUEST => $method,
+        CURLOPT_HTTPHEADER => $hdrs,
+    ]);
+    if ($body !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+    }
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $hsize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($resp === false) {
+        return [null, 0, [], $err];
+    }
+    $rawh = substr($resp, 0, $hsize);
+    $out = substr($resp, $hsize);
+    $rh = [];
+    foreach (explode("\r\n", $rawh) as $line) {
+        if (strpos($line, ":") !== false) {
+            list($k, $v) = explode(":", $line, 2);
+            $rh[strtolower(trim($k))] = trim($v);
+        }
+    }
+    return [$out, $code, $rh, $err];
+}
+
+function fs_same_origin()
+{
+    $host = $_SERVER["HTTP_HOST"] ?? "";
+    foreach (["HTTP_ORIGIN", "HTTP_REFERER"] as $h) {
+        if (!empty($_SERVER[$h])) {
+            $u = parse_url($_SERVER[$h]);
+            $ohost = ($u["host"] ?? "") . (isset($u["port"]) ? ":" . $u["port"] : "");
+            $hostOnly = explode(":", $host)[0];
+            return $ohost === $host || ($u["host"] ?? "") === $hostOnly;
+        }
+    }
+    return false;
+}
+
+function fs_fail($code, $msg)
+{
+    http_response_code($code);
+    header("Content-Type: application/json");
+    echo json_encode(["error" => $msg]);
+    exit;
+}
+
+/* ---------------------------------------------------------------- API */
+if (isset($_GET["api"])) {
+    $path = (string)$_GET["api"];
+    if (strpos($path, "/api/") !== 0 || strpos($path, "..") !== false || preg_match('/[\r\n\s]/', $path)) {
+        fs_fail(400, "bad api path");
+    }
+    $method = $_SERVER["REQUEST_METHOD"];
+    $body = null;
+    if ($method === "POST") {
+        if (!fs_same_origin()) {
+            fs_fail(403, "cross-origin write refused");
+        }
+        /* guiconfig.inc already rejected a POST without a valid X-CSRFToken
+           header (LegacyCSRF); check again so this file does not depend on
+           that behaviour staying put. */
+        if (empty($_SERVER["HTTP_X_CSRFTOKEN"]) || !(new LegacyCSRF())->checkToken()) {
+            fs_fail(403, "invalid CSRF token");
+        }
+        $body = file_get_contents("php://input");
+        if (strlen($body) > 4 * 1024 * 1024) {
+            fs_fail(413, "payload too large");
+        }
+    } elseif ($method !== "GET") {
+        fs_fail(405, "method not allowed");
+    }
+    list($out, $code, $rh, $err) = fs_fetch($FLOWSIGHT_BASE . $path, $method, $body,
+        $body !== null ? ["Content-Type: application/json"] : []);
+    if ($out === null) {
+        fs_fail(502, "flowsightd unreachable: " . $err);
+    }
+    http_response_code($code ?: 200);
+    header("Content-Type: " . ($rh["content-type"] ?? "application/json"));
+    if (!empty($rh["content-disposition"])) {
+        header("Content-Disposition: " . $rh["content-disposition"]);
+    }
+    header("Cache-Control: no-store");
+    echo $out;
+    exit;
+}
+
+/* ---------------------------------------------------------------- assets */
+if (isset($_GET["asset"])) {
+    $name = (string)$_GET["asset"];
+    if (!preg_match('/^[A-Za-z0-9_.-]+$/', $name)) {
+        fs_fail(400, "bad asset");
+    }
+    list($out, $code, $rh, $err) = fs_fetch($FLOWSIGHT_BASE . "/static/" . $name);
+    if ($out === null || $code !== 200) {
+        http_response_code(404);
+        exit;
+    }
+    header("Content-Type: " . ($rh["content-type"] ?? "application/octet-stream"));
+    header("Cache-Control: private, max-age=300");
+    echo $out;
+    exit;
+}
+
+/* ---------------------------------------------------------------- app shell */
+if (isset($_GET["app"])) {
+    list($out, $code, $rh, $err) = fs_fetch($FLOWSIGHT_BASE . "/static/index.html");
+    if ($out === null || $code !== 200) {
+        header("Content-Type: text/plain");
+        http_response_code(502);
+        echo "flowsightd is not running" . ($err ? ": " . $err : "") . "\nStart it under Services or run: service flowsight start";
+        exit;
+    }
+    $csrf = (new LegacyCSRF())->getToken();
+    $boot = "<script>window.FS_API_BASE='flowsight.php?api=';window.FS_CSRF=" . json_encode($csrf["token"]) . ";</script>";
+    $html = str_replace("/static/", "flowsight.php?asset=", $out);
+    $html = str_replace("<head>", "<head>" . $boot, $html);
+    header("Content-Type: text/html; charset=utf-8");
+    header("Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+        . "img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'self'");
+    echo $html;
+    exit;
+}
+
+/* ---------------------------------------------------------------- page */
+$pgtitle = [gettext("Services"), gettext("Flowsight")];
+include("head.inc");
+?>
+<body>
+<?php include("fbegin.inc"); ?>
+<style>
+  #fs-frame { width: 100%; height: calc(100vh - 140px); min-height: 640px; border: 0; background: #f4f6f9; border-radius: 6px; }
+  .page-content-main { padding-top: 6px !important; }
+</style>
+<section class="page-content-main">
+  <div class="container-fluid">
+    <div class="row">
+      <section class="col-xs-12">
+        <iframe id="fs-frame" src="flowsight.php?app=1<?= isset($_GET['page']) ? '#' . htmlspecialchars(preg_replace('/[^A-Za-z0-9_\/?=&.-]/', '', $_GET['page'])) : '' ?>"
+                title="Flowsight" referrerpolicy="same-origin"></iframe>
+      </section>
+    </div>
+  </div>
+</section>
+<?php include("foot.inc"); ?>
