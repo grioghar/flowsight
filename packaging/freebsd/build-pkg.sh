@@ -80,12 +80,11 @@ if (!isset($config["OPNsense"]["flowsight"]["general"]["enabled"])) {
     write_config("Flowsight: plugin installed");
 }' 2>/dev/null || true
     rm -f /var/lib/php/tmp/opnsense_menu_cache.xml
-    configctl webgui restart >/dev/null 2>&1 &
-    /usr/local/etc/rc.d/configd restart >/dev/null 2>&1 &
-    sleep 2
-    configctl filter reload >/dev/null 2>&1 || true
+    # Detach fully: pkg may be driven by something waiting on our descriptors.
+    /usr/sbin/daemon -f /bin/sh -c 'sleep 1; /usr/local/etc/rc.d/configd restart; sleep 3; configctl filter reload; configctl webgui restart' \
+        </dev/null >/dev/null 2>&1
 fi
-service flowsight restart >/dev/null 2>&1 || service flowsight start >/dev/null 2>&1 || true
+service flowsight restart </dev/null >/dev/null 2>&1 || service flowsight start </dev/null >/dev/null 2>&1 || true
 echo ""
 echo "Flowsight is installed. Open Services > Flowsight in the GUI."
 echo "Nothing is enforced until you turn on policy enforcement there."

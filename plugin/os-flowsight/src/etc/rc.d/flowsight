@@ -18,15 +18,21 @@ load_rc_config $name
 
 pidfile=/var/run/flowsight/flowsightd.pid
 procname=/usr/local/sbin/flowsightd
-command=/usr/sbin/daemon
 supervisor_pidfile=/var/run/flowsight/daemon.pid
-command_args="-S -T flowsightd -R 5 -P ${supervisor_pidfile} -p ${pidfile} -o /var/log/flowsight/daemon.out ${procname} -config ${flowsight_config}"
-start_precmd=flowsight_precmd
+start_cmd=flowsight_start
 extra_commands=reload
 
-flowsight_precmd()
+# Start through daemon(8) with every standard descriptor redirected. The
+# supervisor lives as long as the service; if it inherited the descriptors of
+# whatever started it (a configd action, a guest-agent exec, an SSH session),
+# that caller would wait on them forever.
+flowsight_start()
 {
     install -d -m 755 /var/run/flowsight /var/log/flowsight /var/db/flowsight
+    echo "Starting ${name}."
+    /usr/sbin/daemon -f -S -T flowsightd -R 5 -P ${supervisor_pidfile} -p ${pidfile} \
+        -o /var/log/flowsight/daemon.out ${procname} -config ${flowsight_config} \
+        </dev/null >/dev/null 2>&1
 }
 
 run_rc_command "$1"
