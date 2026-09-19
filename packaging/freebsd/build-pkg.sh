@@ -73,7 +73,8 @@ install -d -m 755 /var/db/flowsight /var/log/flowsight /var/run/flowsight /usr/l
 # Register the service and enable the plugin's firewall hooks on first install.
 sysrc -q flowsight_enable=YES >/dev/null
 if [ -x /usr/local/sbin/configctl ]; then
-    php -r '
+    # The CLI php has no include path for the OPNsense libraries; give it one.
+    cd /usr/local/www && php -d include_path=".:/usr/local/etc/inc:/usr/local/www:/usr/local/opnsense/mvc" -r '
 require_once("config.inc"); global $config;
 if (!isset($config["OPNsense"]["flowsight"]["general"]["enabled"])) {
     $config["OPNsense"]["flowsight"]["general"]["enabled"] = "1";
