@@ -1,82 +1,48 @@
 # Roadmap
 
-Phases are ordered so the system is useful early and nothing depends on a
-component that does not exist yet.
+## Done
 
-## Phase 0 — Decommission Zenarmor
+- Native daemon: one static Go binary, embedded SQLite store, embedded UI,
+  module registry, scheduler, self-describing API.
+- Visibility: ntopng flows and applications, hosts with names and vendors,
+  web sessions with server names, DNS log, TLS sessions and certificates,
+  Suricata alerts, per-host reports, rollups for a year of history.
+- Policy: document model with groups, schedules, exclusions; compiler with
+  plan, diff, apply and continuous reconciliation; DNS (RPZ), web (SNI and
+  HTTP), application (pf tables from nDPI), ports and internet providers;
+  safe search and YouTube restriction; monitor mode.
+- TLS transparency: generated inspection CA, per-policy inspection with
+  bypass lists, certificate inventory and findings.
+- Firewall hygiene: live counters, shadowed and permissive rules, change
+  tracking with the user who changed it, risk score.
+- Enrolment: device identification from DHCP, zones, placement and isolation
+  in monitor-first mode, captive self-identification page.
+- Operations: reports and CSV export, scheduled email reports, alerting to
+  email, webhooks, Discord, Slack and ntfy, audit log, signed in-place
+  updates with roll back, OTLP export.
+- OPNsense plugin package built with pkg alone; Debian package; installer for
+  other systems.
 
-Remove `os-sensei`, `os-sensei-updater`, `os-sunnyvalley` (432 MB) and the netmap
-ring tuning that exists only to serve it (`rc.d/netmap_ringsize`, the syshook,
-and the `loader.conf.local` ring_size entry).
+## Next
 
-Side effect worth naming: the `netmap_transmit vtnet0 full` drops disappear
-entirely rather than being tuned around, because the netmap interception path
-goes away with it.
-
-Interim: no L7 inspection. Suricata and DNS filtering carry the load.
-
-## Phase 1 — Visibility  *(in progress)*
-
-- Install `os-ntopng` (available in the OPNsense repo, 6.6).
-- Re-enable Suricata in alert-only mode (it is installed and currently disabled).
-- Ship ntopng flows, Suricata EVE and Unbound DNS logs into the existing
-  Prometheus-compatible TSDB and Loki.
-- Grafana dashboards reproducing Zenarmor's core reports: top talkers, per-device
-  activity, app/category breakdown, blocked-domain history.
-
-Done so far: ntopng + nDPI capturing on LAN, redis loopback-only, Suricata
-running alert-only on WAN with 21 threat-focused rulesets, and the collector
-shipping normalized metrics to Mimir behind the `Flowsight — Overview`
-dashboard.
-
-Remaining: ntopng flows into the collector (its REST API needs auth), and Loki
-log shipping for Suricata alert bodies.
-
-Exit criteria: every question the Zenarmor dashboard answered can be answered
-here.
-
-## Phase 2 — Normalization
-
-The `collector/` service and a stable event schema. Until this exists, each
-source has its own field names and the dashboards are bespoke per source.
-
-## Phase 3 — Policy engine  *(first backend working)*
-
-The declarative model and the compiler to DNS blocklists, Suricata rules and
-firewall rules, with continuous reconciliation. This is the part that does not
-exist anywhere else and is the reason the project is worth building.
-
-Done: the policy model, capability resolution, plan/apply with diffing, and the
-first provider — per-group DNS blocking via Unbound views, validated with
-`unbound-checkconf` before any reload.
-
-Next: a category feed so `deny.categories` works, firewall and Suricata
-providers, and periodic reconciliation to correct drift.
-
-## Phase 4 — UI  *(working)*
-
-Single pane over the schema and the policy model. Read-only, loopback-bound,
-no build step and no CDN. Shows module health and observe-vs-enforce
-capabilities, a live summary, recent normalized alerts, and the current policy
-plan with its diff.
-
-Next: authentication, so it can safely be exposed beyond loopback.
-
-## Phase 5 — rulehygiene module
-
-Firewall rule analysis: shadowed, redundant, unused and overly permissive rules,
-change tracking and risk scoring. The FireMon-shaped capability, built on flow
-data the earlier phases already collect.
-
-## Phase 6 — Portability and release
-
-Adapters beyond OPNsense (Debian, OpenWrt, container), packaging, docs, and a
-public release.
+- Content controls inside inspected sessions: URL-path rules, file-type and
+  size limits, keyword lists (squid ACLs on bumped traffic).
+- GeoIP: country tables from an open database for `deny.countries` and for
+  destination country in reports.
+- User identity: RADIUS accounting listener and LDAP/AD group lookup so
+  policies can target people, not only devices.
+- nftables providers so Linux gateways get web, application and port
+  enforcement.
+- Quotas: per-device or per-group bandwidth and time budgets, enforced
+  through pf tables and schedules.
+- Threat intelligence: IP reputation feeds into pf tables (`threat.block`),
+  Suricata rule management from the UI.
+- Multi-gateway: one UI over several flowsightd instances.
+- Licensing and support tiers, built on the module tier field that already
+  exists, after the product is stable.
 
 ## Non-goals
 
 - Reimplementing DPI. nDPI is better than anything this project would write.
-- Monolithic design. Every capability ships as a module against a thin core;
-  nothing domain-specific belongs in the core.
-- Inline mid-stream L7 enforcement in v1. Enforcement stays with the backends.
-- TLS interception.
+- A packet engine of our own in the forwarding path.
+- A cloud dependency of any kind.

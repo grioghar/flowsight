@@ -1,0 +1,43 @@
+#!/bin/sh
+# Build a .deb for Debian/Ubuntu with dpkg-deb alone.
+#   build-deb.sh <version> <arch: amd64|arm64> <flowsightd binary> <out dir>
+set -eu
+VERSION="${1:?}"; ARCH="${2:?}"; BIN="${3:?}"; OUT="${4:?}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$STAGE/DEBIAN" "$STAGE/usr/local/sbin" "$STAGE/lib/systemd/system" "$STAGE/etc/flowsight" "$STAGE/usr/share/flowsight" "$OUT"
+install -m 755 "$BIN" "$STAGE/usr/local/sbin/flowsightd"
+install -m 644 "$HERE/../systemd/flowsight.service" "$STAGE/lib/systemd/system/flowsight.service"
+cat > "$STAGE/DEBIAN/control" <<CTRL
+Package: flowsight
+Version: $VERSION
+Section: net
+Priority: optional
+Architecture: $ARCH
+Maintainer: Flowsight <flowsight@grio.co>
+Depends: unbound
+Recommends: squid-openssl | squid, ntopng, suricata
+Homepage: https://github.com/grioghar/flowsight
+Description: L7 visibility, policy and enforcement for gateways
+ Application and web visibility per device, per-group policy compiled onto
+ Unbound, squid and the packet filter, TLS transparency, reports and alerting.
+CTRL
+cat > "$STAGE/DEBIAN/postinst" <<'PI'
+#!/bin/sh
+set -e
+if [ ! -f /etc/flowsight/flowsight.json ]; then
+    TOKEN="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)"
+    printf '{\n  "api_token": "%s"\n}\n' "$TOKEN" > /etc/flowsight/flowsight.json
+    chmod 600 /etc/flowsight/flowsight.json
+    echo "Flowsight API token (also in /etc/flowsight/flowsight.json): $TOKEN"
+fi
+systemctl daemon-reload || true
+systemctl enable --now flowsight || true
+PI
+cat > "$STAGE/DEBIAN/prerm" <<'PR'
+#!/bin/sh
+systemctl disable --now flowsight >/dev/null 2>&1 || true
+PR
+chmod 755 "$STAGE/DEBIAN/postinst" "$STAGE/DEBIAN/prerm"
+dpkg-deb --build --root-owner-group "$STAGE" "$OUT/flowsight_${VERSION}_${ARCH}.deb"
+ls -la "$OUT"/flowsight_"${VERSION}"_"${ARCH}".deb

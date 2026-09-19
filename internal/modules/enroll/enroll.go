@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -239,6 +240,29 @@ func (m *Module) Stop() {
 	if srv, ok := m.captiveServer.(*http.Server); ok && srv != nil {
 		_ = srv.Close()
 	}
+}
+
+// Health returns the module's health status.
+func (m *Module) Health() core.Health {
+	m.mu.RLock()
+	deviceCount := len(m.devices)
+	m.mu.RUnlock()
+
+	detail := fmt.Sprintf("%d device(s) in registry", deviceCount)
+	notes := []string{}
+
+	if m.lastErr != "" {
+		notes = append(notes, m.lastErr)
+	}
+	if m.lastTailErr != "" {
+		notes = append(notes, m.lastTailErr)
+	}
+
+	if len(notes) > 0 {
+		detail += "; note: " + strings.Join(notes, "; ")
+	}
+
+	return core.Health{OK: true, Detail: detail}
 }
 
 // ============================================================================
@@ -650,7 +674,12 @@ func (m *Module) parseDnsmasqLog() error {
 	})
 
 	if err != nil {
-		m.lastTailErr = err.Error()
+		// Missing file is not an error; report in Health
+		if os.IsNotExist(err) {
+			m.lastTailErr = fmt.Sprintf("dnsmasq DHCP log not yet created (%s)", m.tailer.Path)
+		} else {
+			m.lastTailErr = err.Error()
+		}
 		return nil // Don't propagate; log missing is OK
 	}
 
@@ -1045,6 +1074,20 @@ func (m *Module) apiSetMode(r *core.Req) (any, error) {
 // Dnsmasq logging setup
 // ============================================================================
 
+func resolveDnsmasqBinary() string {
+	// Try explicit paths first
+	for _, path := range []string{"/usr/local/sbin/dnsmasq", "/usr/sbin/dnsmasq"} {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	// Fall back to PATH lookup
+	if path, err := exec.LookPath("dnsmasq"); err == nil {
+		return path
+	}
+	return ""
+}
+
 func (m *Module) setupDnsmasqLogging() error {
 	if !m.ctx.Platform.IsOPNsense() {
 		return nil
@@ -1052,6 +1095,12 @@ func (m *Module) setupDnsmasqLogging() error {
 
 	manage := core.Bool(m.ctx.Settings(), "manage_dnsmasq_logging", true)
 	if !manage {
+		return nil
+	}
+
+	dnsmasqBin := resolveDnsmasqBinary()
+	if dnsmasqBin == "" {
+		m.lastErr = "dnsmasq binary not found; skipping logging setup"
 		return nil
 	}
 
@@ -1067,9 +1116,10 @@ func (m *Module) setupDnsmasqLogging() error {
 
 	// Validate the main config with our addition
 	mainConf := "/usr/local/etc/dnsmasq.conf"
-	if _, err := core.Run(30*time.Second, "dnsmasq", "--test", "-C", mainConf); err != nil {
+	if _, err := core.Run(30*time.Second, dnsmasqBin, "--test", "-C", mainConf); err != nil {
 		os.Remove(tmpPath)
-		return fmt.Errorf("dnsmasq config validation failed: %w", err)
+		m.lastErr = fmt.Sprintf("dnsmasq config validation failed: %v", err)
+		return nil // Report in Health instead of failing the job
 	}
 
 	// Move into place
@@ -1085,6 +1135,7 @@ func (m *Module) setupDnsmasqLogging() error {
 		return fmt.Errorf("dnsmasq restart failed: %w", err)
 	}
 
+	m.lastErr = ""
 	return nil
 }
 

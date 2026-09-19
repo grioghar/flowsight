@@ -2,138 +2,122 @@
 
 ## Principle
 
-Compose, don't reimplement. Every component that touches packets is an existing,
-battle-tested open-source project. Flowsight owns only the glue: normalization,
-policy, and presentation.
+Compose, don't reimplement. Everything that touches packets is an existing,
+battle-tested engine: Unbound answers DNS, squid terminates and relays TLS,
+pf drops packets, nDPI (through ntopng) names applications, Suricata detects
+threats. Flowsight owns the layer above them, which is the layer that never
+existed: one policy model, one store, one interface, and the reconciliation
+that keeps the engines in step with what the operator declared.
 
-This is deliberate. A new DPI engine would be a decade of work and would be worse
-than nDPI. The actual gap in the ecosystem is that these tools do not share a
-data model, a policy model, or a UI.
+## The daemon
 
-## Data path
-
-A key design decision: **Flowsight does not sit inline by default.**
-
-Zenarmor intercepts traffic with netmap, which makes its packet engine a
-mandatory hop. On a virtualized gateway that becomes the throughput ceiling — a
-single worker saturating one core, with ring-full drops that are invisible to
-`netstat` and only appear in `dmesg`.
-
-Flowsight's default posture is observational:
+`flowsightd` is one static Go binary. It embeds the UI, opens one SQLite
+file, and loads modules. It runs as root because it manages the resolver's
+includes, the proxy instance and pf anchors; it listens on loopback only and
+is reached through the OPNsense GUI (which authenticates) or, elsewhere,
+with a token.
 
 ```
-                 ┌───────────────┐
-   traffic ──────┤  OS forwarding │────── traffic
-                 └───────┬───────┘
-                         │ (mirror / flows / eBPF)
-                 ┌───────▼────────┐
-                 │  ntopng (nDPI) │  flows + L7 app identity
-                 │  Suricata      │  IDS alerts (EVE JSON)
-                 │  Unbound       │  DNS query + block log
-                 └───────┬────────┘
-                         │ normalized events
-                 ┌───────▼────────┐
-                 │   collector    │  one schema, OTLP out
-                 └───────┬────────┘
-                 ┌───────▼────────┐
-                 │  TSDB + Loki   │
-                 └───────┬────────┘
-                 ┌───────▼────────┐
-                 │ Grafana / UI   │
-                 └────────────────┘
+flowsightd
+├── core        config · store (SQLite, WAL) · scheduler · API · module registry · policy model
+├── identity    names and MACs: DHCP leases (dnsmasq/ISC/Kea), ARP/NDP, reservations, resolver answers, OUI
+├── visibility  ntopng REST → flows, hosts, apps, throughput; publishes a flow bus
+├── web         owns a transparent squid: SNI on every session, web.block, tls.inspect, block page
+├── dns         Unbound reply log → DNS log; cache → address names; provider dns.block (RPZ + views)
+├── firewall    pf anchors flowsight/*; provider net.block and the tables for app.block
+├── appcontrol  subscribes to the flow bus; denied apps → pf table + state kill
+├── tls         inspection CA (EC, generated in Go), certificate inventory, findings
+├── ids         Suricata EVE → alerts, TLS sessions and certificates
+├── categories  open domain feeds, cached; classification index; custom categories
+├── policy      the document, validation, plan/diff, apply, reconcile every minute
+├── enroll      device identification from DHCP, zones, placement, isolation, captive page
+├── rulehygiene pf ruleset analysis with live counters, change tracking, risk score
+├── reports     HTML reports, CSV export, schedules by email
+├── alerting    rules over the store → email / webhook / Discord / Slack / ntfy
+├── telemetry   optional OTLP export of metrics and events
+└── updater     signed release manifest, verified download, atomic swap, roll back
 ```
-
-Enforcement is applied by the backends themselves (DNS, firewall, Suricata IPS),
-not by a Flowsight packet path. Nothing Flowsight runs can become a bottleneck or
-drop packets.
-
-## Modules
-
-Flowsight is a **thin core plus modules**. The core owns nothing domain-specific:
-it provides the event schema, the storage abstraction, a module registry, the API
-surface and auth. Everything that knows about a particular problem — flows,
-intrusion detection, DNS filtering, firewall rule hygiene — is a module that can
-be installed, upgraded and removed on its own.
-
-This is not a late refactor target. It is the reason the project can grow past
-what Zenarmor does: Zenarmor is one monolithic engine, so every capability has to
-be built by one vendor and gated by one licence. A module boundary means anyone
-can add a capability without touching the core.
 
 ### Module contract
 
-A module declares:
+A module implements `Info()` and `Setup(ctx)`. Through the context it
+registers jobs (run on a shared pool; a panic is contained and reported),
+API routes (every write passes one gate), policy providers, UI panels and
+published services other modules consume. It declares its capabilities;
+policy targets capabilities, never modules.
 
-| Element | Purpose |
-|---|---|
-| `collectors` | ingest sources it normalizes into the core event schema |
-| `providers` | enforcement targets it can compile policy onto |
-| `panels` | UI surfaces it contributes |
-| `capabilities` | what it claims to do, so policy can target it by intent |
-| `requires` | backends it needs present (e.g. `suricata >= 7`) |
+| Capability | Meaning | Provided by |
+|---|---|---|
+| `traffic.observe`, `app.observe`, `host.inventory` | flows, applications, devices | visibility, identity, enroll |
+| `web.observe`, `tls.observe` | server names, sessions, certificates | web, ids, tls |
+| `dns.observe` | resolver activity | dns |
+| `threat.detect` | signatures | ids |
+| `firewall.analyse` | ruleset hygiene | rulehygiene |
+| `dns.block` | refuse a name | dns (Unbound RPZ/views) |
+| `web.block` | terminate a web session by name | web (squid) |
+| `app.block` | cut an application | firewall + appcontrol (pf tables from nDPI) |
+| `net.block` | ports, internet | firewall (pf) |
+| `tls.inspect` | decrypt selected clients | web + tls (squid bump with the CA) |
+| `notify` | deliver a message | alerting |
 
-Policy is expressed against **capabilities**, never against a specific backend.
-"block category X" resolves to whichever installed module can enforce it — DNS
-filter, firewall, or IDS — so swapping a backend does not rewrite policy.
+A module that only observes must never claim a `.block` capability; the
+compiler trusts the declaration, and a false one produces a policy that
+silently does nothing.
 
-### Planned modules
+## Data path
 
-| Module | Role |
-|---|---|
-| `visibility` | ntopng / nDPI flows, app and category identity |
-| `ids` | Suricata rules and alerts |
-| `dnsfilter` | Unbound / AdGuard blocklists and query logs |
-| `policy` | the declarative model and its compiler |
-| `rulehygiene` | firewall policy analysis — see below |
+Flowsight is not inline. pf redirects port 80 and 443 from the local networks
+to squid on loopback; squid peeks at the ClientHello for the server name and
+splices (relays untouched) unless the policy says terminate or bump.
+Application blocking is reactive: nDPI names the application on the first
+packets, the far end goes into a pf table, the state is killed, and every
+later connection is dropped at the first packet. DNS blocking happens in the
+resolver. If flowsightd dies, nothing changes for traffic already allowed;
+interception rules are loaded only while the proxy answers, and withdrawn
+the moment it stops, so a proxy failure cannot take the web down.
 
-### rulehygiene (FireMon-like)
+## The store
 
-Firewall rulesets decay. Rules get added for a reason nobody records, shadow each
-other, stop matching anything, and quietly widen exposure. Commercial tools
-(FireMon, Tufin, AlgoSec) solve this and are priced for enterprises.
+One SQLite file in WAL mode. Raw flows, DNS queries, alerts and TLS sessions
+are kept for days; five-minute rollups by application, domain, destination
+and DNS name are kept for a year and answer every long-window question.
+Findings are idempotent on a fingerprint and closed automatically when they
+stop being true. Every configuration change is recorded with its diff and
+the user who made it.
 
-The module analyses the live ruleset and reports:
+## Policy compilation
 
-- **shadowed rules** — never reachable because an earlier rule already matches
-- **redundant rules** — fully covered by another rule
-- **unused rules** — zero hits over a window, correlated against real counters
-- **overly permissive rules** — `any/any`, wide port ranges, unbounded sources
-- **change tracking** — every ruleset diff, who changed it, and what it altered
-- **risk scoring** — exposure weighted by what the rule actually reaches
+`policy.json` is validated as a whole. Each provider compiles the document to
+its artifact (Unbound zones and views, squid configuration and ACL files, pf
+rules), shows the diff against what is in place, and applies only when
+enforcement is on: write atomically, validate with the backend's own checker,
+revert on rejection, reload. Reconciliation runs every minute, so schedule
+windows, refreshed category feeds and hand edits converge without a button.
+See [POLICY.md](POLICY.md).
 
-This is a natural fit: Flowsight already ingests the flow data needed to tell a
-genuinely unused rule from one that simply has not matched today, which is the
-distinction that makes such tools trustworthy.
+## OPNsense integration
 
-## Components
+The plugin is small on purpose: an rc script, configd actions, a
+`plugins.inc.d` hook that registers the service and three pf anchors
+(`flowsight/*` quick at the head of the filter rules, and as rdr and nat
+anchors at the tail so port forwards and reflection still win), a menu, an
+ACL, and one legacy page that serves the embedded UI and proxies its API
+with the session's CSRF token and a same-origin check. Everything else is
+the daemon.
 
-### collector/
-Reads ntopng flows, Suricata EVE JSON, and DNS logs; normalizes them to one
-event schema; exports via OTLP. Stateless, restartable, and safe to kill.
+## Where it beats Zenarmor
 
-### policy/
-The declarative policy model and the compiler that renders it to backend
-artifacts. Reconciles continuously so drift is corrected.
+No licence gates: exclusions, unlimited policies, every report. No cloud: data
+never leaves the firewall, and the category feeds are open. No inline packet
+engine to pin a core or drop rings. Policy, groups and schedules as a diffable
+document. Firewall hygiene, certificate inventory, device enrolment with zone
+placement, self-hosted alerting and reports, signed in-place updates.
 
-### adapters/
-Platform integration. `opnsense/` is first: a plugin exposing the UI and wiring
-the services. Debian/OpenWrt/container adapters follow the same interface.
+## Where it does not, yet
 
-### ui/
-Single pane: live flows, top talkers, alerts, per-device history, policy editing.
-
-## Where it must beat Zenarmor
-
-1. **No licence gates.** Exclusions, multiple policies, and full reporting are
-   core behaviour, not upsells.
-2. **No cloud dependency.** Data stays on the user's infrastructure.
-3. **No inline bottleneck.** See data path above.
-4. **Portable.** Not tied to one firewall distribution.
-5. **Dashboards and policy as code.** Reviewable, diffable, restorable.
-
-## Where Zenarmor stays ahead, honestly
-
-Inline L7 *enforcement* mid-stream, TLS inspection, and its curated cloud
-category feed are genuinely hard to match. Flowsight should say so rather than
-claim parity it does not have. Category data will lean on open feeds and nDPI's
-own classification.
+Content inspection inside decrypted sessions is not performed: inspection
+today yields URLs, certificates and the ability to block by full URL path in
+squid, not keyword or file-type scanning. Country blocking needs a GeoIP
+source. User identity from directories (LDAP, RADIUS accounting) and per-user
+policy are on the roadmap. Linux enforcement beyond DNS needs nftables
+providers.

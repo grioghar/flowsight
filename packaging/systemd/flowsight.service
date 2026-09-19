@@ -1,0 +1,20 @@
+[Unit]
+Description=Flowsight: L7 visibility, policy and enforcement
+Documentation=https://github.com/grioghar/flowsight
+After=network-online.target unbound.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/flowsightd -config /etc/flowsight/flowsight.json
+Restart=on-failure
+RestartSec=5
+# Root is required: it manages the resolver's includes, the proxy and the firewall.
+User=root
+LimitNOFILE=65536
+StateDirectory=flowsight
+LogsDirectory=flowsight
+RuntimeDirectory=flowsight
+
+[Install]
+WantedBy=multi-user.target

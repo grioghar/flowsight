@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -75,6 +76,16 @@ func run() int {
 		}
 		return 0
 	}
+
+	// A firewall is not a place to let the heap sprawl: ask the collector to
+	// keep the process near the limit and give memory back promptly. The soft
+	// limit is a target, not a cap; correctness never depends on it.
+	limit := c.Config.Core().MemoryLimitMB
+	if limit <= 0 {
+		limit = 256
+	}
+	debug.SetMemoryLimit(int64(limit) << 20)
+	debug.SetGCPercent(50)
 
 	stop := make(chan struct{})
 	sig := make(chan os.Signal, 2)

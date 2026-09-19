@@ -27,14 +27,16 @@ type Config struct {
 // through the API: whoever can change where the daemon listens or what it
 // executes is root, so those are changed in the file, by root.
 type CoreSettings struct {
-	SiteName  string    `json:"site_name"`
-	Bind      string    `json:"bind"`
-	Port      int       `json:"port"`
-	APIToken  string    `json:"api_token"`
-	LogLevel  string    `json:"log_level"`
-	DataDir   string    `json:"data_dir"`
-	Workers   int       `json:"workers"`
-	Retention Retention `json:"retention"`
+	SiteName string `json:"site_name"`
+	Bind     string `json:"bind"`
+	Port     int    `json:"port"`
+	APIToken string `json:"api_token"`
+	LogLevel string `json:"log_level"`
+	DataDir  string `json:"data_dir"`
+	Workers  int    `json:"workers"`
+	// MemoryLimitMB is the Go soft memory limit (default 256).
+	MemoryLimitMB int       `json:"memory_limit_mb"`
+	Retention     Retention `json:"retention"`
 	// Overrides for platform paths, applied on top of detection.
 	Paths map[string]any `json:"paths"`
 }

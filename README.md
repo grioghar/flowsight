@@ -1,65 +1,99 @@
 # Flowsight
 
-An open, self-hosted alternative to Zenarmor for OPNsense and other platforms.
+Open, self-hosted layer-7 visibility, policy and enforcement for OPNsense and
+other gateways. One static binary, no cloud, no licence gates.
 
-Flowsight does not reimplement deep packet inspection. Proven open-source engines
-already do that well. What has never existed is the layer above them: one policy
-model, one telemetry schema, and one interface across all of them.
+Flowsight does what Zenarmor does and stays out of the packet path while
+doing it: application and web visibility per device, per-group policy for
+applications, web categories, domains and TLDs, safe search, schedules,
+inline blocking at the DNS answer and the TLS handshake, an inspection CA for
+the devices you choose, a certificate inventory, firewall rule hygiene,
+reports and alerting. Everything is compiled onto engines the firewall already
+runs: Unbound, squid, pf, nDPI (through ntopng) and Suricata.
 
-That layer is Flowsight.
+## How it works
 
-The name is the design decision. Flowsight watches **flows** and gives you
-**sight** into them — it is not a valve in the pipe. Zenarmor intercepts traffic
-with netmap, which makes its packet engine a mandatory hop and, on a virtualized
-gateway, the throughput ceiling. Flowsight observes and lets the existing
-backends enforce, so nothing it runs can drop a packet.
-
-## Why
-
-Zenarmor is the only turnkey L7 visibility and policy stack for OPNsense, and it
-is a good product. It is also proprietary, and the free edition gates things that
-matter for a home or small network:
-
-- Host and network exclusions from inspection are premium (`ip_nets` and `vlans`
-  are rejected outright on the free licence).
-- Only the single default policy can be used; any additional policy is premium.
-- Reporting data is shared with the vendor under the free licence.
-- Its netmap data path becomes a throughput ceiling: a single packet-engine
-  worker, pinned to one core, that cannot be scaled by adding workers.
-
-None of the underlying capability requires any of that. nDPI, Suricata and
-Unbound are open, and most of the stack is already installed on a typical
-OPNsense box.
-
-## What it is
-
-| Layer | Flowsight uses | Flowsight provides |
-|---|---|---|
-| L7 identification | nDPI (via ntopng) | normalized app/category schema |
-| Intrusion detection | Suricata | unified rule + alert model |
-| DNS filtering | Unbound / AdGuard Home | one blocklist + allowlist source of truth |
-| Storage | Prometheus-compatible TSDB + Loki | one schema across all sources |
-| Reporting | Grafana | dashboards shipped as code |
-| Policy | — | **the missing piece: one model, many backends** |
-
-The core idea is the **policy compiler**. You declare intent once:
-
-```yaml
-policy:
-  - name: kids-devices
-    match: { group: kids }
-    deny:  { categories: [adult, gambling], apps: [discord] }
-    schedule: { school-nights: "20:00-07:00" }
+```
+                 ┌────────────────────────────────────────────┐
+   LAN ──────────┤ pf ─ rdr 80/443 ─► squid (Flowsight-owned) ├──────── WAN
+                 │        │              peek SNI, splice/bump │
+                 │        │              terminate denied names│
+                 │   Unbound (RPZ per policy, safe search)     │
+                 │   ntopng/nDPI (flows, apps)   Suricata (IDS)│
+                 └───────────────┬────────────────────────────┘
+                                 │ logs, REST, pfctl
+                        ┌────────▼────────┐
+                        │   flowsightd    │  SQLite store · policy compiler
+                        │  (one binary)   │  API · embedded UI · modules
+                        └─────────────────┘
 ```
 
-Flowsight compiles that into the artifacts each backend actually understands —
-DNS blocklist entries, Suricata rules, firewall rules — and reconciles them.
-No cloud dependency, no per-feature licence gate.
+* **Nothing inline that can fail closed.** DNS and TLS-handshake blocking are
+  done by the resolver and proxy themselves; application blocking is a pf
+  table filled from nDPI identifications. If flowsightd stops, the network
+  keeps working. Interception rules are only loaded once the proxy answers,
+  and withdrawn the moment it stops.
+* **One policy, many backends.** A policy names capabilities (`dns.block`,
+  `web.block`, `app.block`, `tls.inspect`, `net.block`), never a backend. The
+  compiler renders it onto whatever providers are installed, shows the diff,
+  and reconciles every minute once enforcement is on. Nothing is written
+  before that.
+* **Everything is a module** against a thin core: store, scheduler, API,
+  module registry. Modules ship visibility, enforcement, reporting, alerting
+  and the update mechanism; each can be disabled.
 
-## Status
+## Install on OPNsense
 
-Early. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and
-[docs/ROADMAP.md](docs/ROADMAP.md) for what works today.
+```sh
+fetch https://github.com/grioghar/flowsight/releases/latest/download/os-flowsight-amd64.pkg
+pkg add os-flowsight-amd64.pkg
+```
+
+Open **Services › Flowsight**. Visibility works immediately from ntopng (the
+`os-ntopng` plugin) and Unbound. Turn on web interception under
+*Settings › web* to see server names on every web session and to allow web
+blocking; create the inspection CA under *TLS* if you want to decrypt for
+selected devices. Policies do nothing until *Settings › policy › Enforce* is on.
+
+Requirements: OPNsense 25.7 or later, `os-ntopng` for application identity
+(optional but recommended), squid (pulled in as a dependency). The OPNsense
+proxy plugin (`os-squid`) must not intercept the same networks.
+
+## Install elsewhere (Debian, Ubuntu, FreeBSD)
+
+```sh
+curl -fsSL https://github.com/grioghar/flowsight/releases/latest/download/install.sh | sh
+```
+
+The installer places `flowsightd` in `/usr/local/sbin`, installs a systemd
+unit or rc script, and prints the API token for the web UI on
+`http://127.0.0.1:8080`. On Linux enforcement providers other than DNS
+require nftables support that is still in progress; visibility, DNS policy,
+reports and alerting work today.
+
+## What you get
+
+| Area | Capability |
+|---|---|
+| Visibility | live sessions with nDPI application and category, per-host reports, top hosts/apps/sites/destinations, throughput history, web log with server names, DNS log with block attribution, TLS sessions and certificate inventory, device inventory with vendor |
+| Policy | groups by address, network, MAC, device name or zone; schedules with overnight windows; deny applications, application categories, web categories (27 open feeds plus custom), domains, TLDs, ports, all internet; allow exceptions; safe search and YouTube restricted; monitor or block; exclusions |
+| Enforcement | Unbound response policy zones per policy (RPZ, logged per policy); squid terminates denied names at the ClientHello and serves a block page for HTTP; pf tables fed from nDPI cut denied applications; pf rules for ports and internet denial; optional TLS inspection with a Flowsight CA and a bypass list |
+| Security | Suricata alerts, TLS findings (expired, self-signed), firewall rule hygiene with live counters, ruleset change tracking, risk score, open findings across modules |
+| Operations | reports on demand and scheduled by email, CSV export, alerting to email/webhook/Discord/Slack/ntfy, audit log of every write with the GUI user, signed in-line updates with roll back, OTLP export for Grafana |
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/POLICY.md](docs/POLICY.md)
+and [docs/INSTALL.md](docs/INSTALL.md). The API is self-describing at
+`/api/openapi.json`.
+
+## Building
+
+```sh
+go build ./cmd/flowsightd                                   # for this machine
+CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build ./cmd/flowsightd
+packaging/freebsd/build-pkg.sh 1.0.0 amd64 ./flowsightd plugin/os-flowsight/src ./dist
+```
+
+Pure Go, no cgo; the UI is embedded static files with no build step.
 
 ## Licence
 

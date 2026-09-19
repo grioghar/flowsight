@@ -1,118 +1,86 @@
 #!/bin/sh
-# Flowsight installer.
+# Flowsight installer for machines that are not OPNsense (OPNsense uses the pkg).
 #
-# Detects the platform, installs the components, and wires up services. It does
-# NOT enable enforcement: policy is applied deliberately, by hand, afterwards.
-#
-#   ./install.sh --check     verify prerequisites, install nothing
-#   ./install.sh             install
+#   curl -fsSL https://github.com/grioghar/flowsight/releases/latest/download/install.sh | sh
+#   FLOWSIGHT_VERSION=1.0.0 ./install.sh          pin a version
+#   ./install.sh --binary ./flowsightd            install a local build
 #
 set -eu
+REPO="grioghar/flowsight"
+VERSION="${FLOWSIGHT_VERSION:-latest}"
+BIN_SRC=""
+[ "${1:-}" = "--binary" ] && BIN_SRC="$2"
 
-SRC="$(cd "$(dirname "$0")" && pwd)"
-CHECK_ONLY=0
-[ "${1:-}" = "--check" ] && CHECK_ONLY=1
-
-say()  { printf '  %s\n' "$*"; }
+say() { printf '  %s\n' "$*"; }
 fail() { printf '  ERROR: %s\n' "$*" >&2; exit 1; }
-warn() { printf '  WARN:  %s\n' "$*" >&2; }
+[ "$(id -u)" = "0" ] || fail "run as root"
 
-# ---------------------------------------------------------------- platform
-OS="$(uname -s)"
-if [ -x /usr/local/sbin/opnsense-version ]; then
-    PLATFORM="opnsense"; CONFDIR="/usr/local/etc/flowsight"; SVC="rc"
-elif [ "$OS" = "FreeBSD" ]; then
-    PLATFORM="freebsd";  CONFDIR="/usr/local/etc/flowsight"; SVC="rc"
-elif [ -d /run/systemd/system ]; then
-    PLATFORM="systemd";  CONFDIR="/etc/flowsight";           SVC="systemd"
+OS="$(uname -s | tr 'A-Z' 'a-z')"; ARCH="$(uname -m)"
+case "$ARCH" in x86_64|amd64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *) fail "unsupported architecture $ARCH" ;; esac
+case "$OS" in linux|freebsd) ;; *) fail "unsupported OS $OS" ;; esac
+[ -x /usr/local/sbin/opnsense-version ] && fail "this is OPNsense: install the os-flowsight package instead"
+
+if [ -z "$BIN_SRC" ]; then
+    if [ "$VERSION" = "latest" ]; then URL="https://github.com/$REPO/releases/latest/download/flowsightd-$OS-$ARCH"
+    else URL="https://github.com/$REPO/releases/download/v$VERSION/flowsightd-$OS-$ARCH"; fi
+    say "downloading $URL"
+    TMP="$(mktemp)"; trap 'rm -f "$TMP"' EXIT
+    if command -v curl >/dev/null; then curl -fsSL -o "$TMP" "$URL"; else fetch -qo "$TMP" "$URL"; fi
+    BIN_SRC="$TMP"
+fi
+install -m 755 "$BIN_SRC" /usr/local/sbin/flowsightd
+say "installed /usr/local/sbin/flowsightd ($(/usr/local/sbin/flowsightd -version))"
+
+if [ "$OS" = "freebsd" ]; then
+    ETC=/usr/local/etc/flowsight
+    install -d -m 755 "$ETC" /var/db/flowsight /var/log/flowsight /var/run/flowsight
+    cat > /usr/local/etc/rc.d/flowsight <<'RC'
+#!/bin/sh
+# PROVIDE: flowsight
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+. /etc/rc.subr
+name=flowsight
+rcvar=flowsight_enable
+load_rc_config $name
+: ${flowsight_enable:=NO}
+pidfile=/var/run/flowsight/flowsightd.pid
+command=/usr/sbin/daemon
+command_args="-S -T flowsightd -R 5 -P /var/run/flowsight/daemon.pid -p ${pidfile} /usr/local/sbin/flowsightd -config /usr/local/etc/flowsight/flowsight.json"
+run_rc_command "$1"
+RC
+    chmod 755 /usr/local/etc/rc.d/flowsight
 else
-    fail "unsupported platform: $OS (no OPNsense, FreeBSD rc, or systemd found)"
-fi
-BINDIR="/usr/local/sbin"
-say "platform : $PLATFORM  (config $CONFDIR, services $SVC)"
-
-# ------------------------------------------------------------ prerequisites
-PY=""
-for c in /usr/local/bin/python3 /usr/bin/python3 python3; do
-    command -v "$c" >/dev/null 2>&1 && { PY="$(command -v "$c")"; break; }
-done
-[ -n "$PY" ] || fail "python3 not found"
-say "python   : $PY"
-
-"$PY" - <<'EOP' || fail "PyYAML is required by flowsight-policy (pkg install py311-yaml / apt install python3-yaml)"
-import yaml  # noqa
-EOP
-say "pyyaml   : present"
-
-MISSING=""
-for b in unbound-control; do
-    command -v "$b" >/dev/null 2>&1 || MISSING="$MISSING $b"
-done
-[ -n "$MISSING" ] && warn "not found:$MISSING - the matching source will report as failing until installed"
-
-if [ "$CHECK_ONLY" = "1" ]; then
-    say "check only - nothing installed"
-    exit 0
-fi
-[ "$(id -u)" = "0" ] || fail "install must run as root"
-
-# ------------------------------------------------------------------ install
-install -d -m 755 "$CONFDIR"
-install -m 755 "$SRC/collector/flowsight-collector.py"        "$BINDIR/flowsight-collector"
-install -m 755 "$SRC/policy/flowsight-policy.py"              "$BINDIR/flowsight-policy"
-install -m 755 "$SRC/ui/flowsight-ui.py"                      "$BINDIR/flowsight-ui"
-say "installed: flowsight-collector, flowsight-policy, flowsight-ui"
-
-if [ "$PLATFORM" = "opnsense" ] || [ "$PLATFORM" = "freebsd" ]; then
-    install -m 755 "$SRC/modules/rulehygiene/flowsight-rulehygiene.py" \
-                   "$BINDIR/flowsight-rulehygiene"
-    say "installed: flowsight-rulehygiene (pf only)"
+    ETC=/etc/flowsight
+    install -d -m 755 "$ETC" /var/lib/flowsight /var/log/flowsight
+    cat > /lib/systemd/system/flowsight.service <<'UNIT'
+[Unit]
+Description=Flowsight: L7 visibility, policy and enforcement
+After=network-online.target unbound.service
+Wants=network-online.target
+[Service]
+ExecStart=/usr/local/sbin/flowsightd -config /etc/flowsight/flowsight.json
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+[Install]
+WantedBy=multi-user.target
+UNIT
 fi
 
-# Never clobber an existing config - it is the operator's, not ours.
-for f in collector ui; do
-    if [ ! -f "$CONFDIR/$f.json" ]; then
-        case "$f" in
-          collector) src="$SRC/collector/collector.json.example" ;;
-          ui)        src="" ;;
-        esac
-        [ -n "$src" ] && [ -f "$src" ] && install -m 640 "$src" "$CONFDIR/$f.json" \
-            && say "config   : wrote $CONFDIR/$f.json from example"
-    else
-        say "config   : kept existing $CONFDIR/$f.json"
-    fi
-done
-[ -f "$CONFDIR/policy.example.yaml" ] || \
-    install -m 640 "$SRC/policy/policy.example.yaml" "$CONFDIR/policy.example.yaml"
-
-# ------------------------------------------------------------------ services
-if [ "$SVC" = "rc" ]; then
-    install -m 555 "$SRC/adapters/opnsense/flowsight_collector" /usr/local/etc/rc.d/flowsight_collector
-    install -m 555 "$SRC/adapters/opnsense/flowsight_ui"        /usr/local/etc/rc.d/flowsight_ui
-    say "services : rc.d scripts installed (service flowsight_collector start)"
-    if [ "$PLATFORM" = "opnsense" ]; then
-        install -m 644 "$SRC/adapters/opnsense/www/flowsight.php" /usr/local/www/flowsight.php
-        install -d -m 755 /usr/local/opnsense/mvc/app/models/OPNsense/Flowsight/Menu
-        install -m 644 "$SRC/adapters/opnsense/menu/Menu.xml" \
-            /usr/local/opnsense/mvc/app/models/OPNsense/Flowsight/Menu/Menu.xml
-        # Editing Menu.xml alone does nothing: the menu is cached and a GUI
-        # restart does not clear it.
-        rm -f /var/lib/php/tmp/opnsense_menu_cache.xml
-        say "opnsense : menu entry installed, menu cache invalidated"
-    fi
+if [ ! -f "$ETC/flowsight.json" ]; then
+    TOKEN="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)"
+    printf '{\n  "api_token": "%s"\n}\n' "$TOKEN" > "$ETC/flowsight.json"
+    chmod 600 "$ETC/flowsight.json"
+    say "API token: $TOKEN   (kept in $ETC/flowsight.json)"
 else
-    install -m 644 "$SRC/adapters/systemd/flowsight-collector.service" /etc/systemd/system/
-    install -m 644 "$SRC/adapters/systemd/flowsight-ui.service"        /etc/systemd/system/
-    systemctl daemon-reload
-    say "services : systemd units installed (systemctl enable --now flowsight-collector)"
+    say "kept existing $ETC/flowsight.json"
 fi
 
-cat <<EOT
-
-  Installed. Nothing is running or enforcing yet.
-
-  1. Edit $CONFDIR/collector.json - point otlp_* at your OTLP endpoint.
-  2. Start the collector, then the UI.
-  3. Policy is opt-in: copy policy.example.yaml to policy.yaml, run
-     'flowsight-policy plan', and only then 'apply'.
-EOT
+if [ "$OS" = "freebsd" ]; then
+    sysrc -q flowsight_enable=YES >/dev/null; service flowsight restart >/dev/null 2>&1 || service flowsight start
+else
+    systemctl daemon-reload; systemctl enable --now flowsight; systemctl restart flowsight
+fi
+say "running. UI: http://127.0.0.1:8080  (tunnel with: ssh -L 8080:127.0.0.1:8080 $(hostname))"
+say "to reach it from the LAN, set \"bind\" in $ETC/flowsight.json; the token protects it."

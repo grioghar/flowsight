@@ -34,6 +34,8 @@ type Module struct {
 	loadErr  string
 	lastPlan *Plan
 	applying bool
+	lastSig  string // inputs of the last clean, in-sync plan; unchanged inputs skip recompiling
+	cycles   int
 }
 
 // Plan is what apply would do, per provider.
@@ -214,6 +216,7 @@ func (m *Module) save(doc *core.PolicyDoc, actor, summary string) error {
 	m.mu.Lock()
 	m.doc = doc
 	m.loadErr = ""
+	m.lastSig = ""
 	m.mu.Unlock()
 	_ = m.ctx.Store.RecordChange("policy", "policy.json", actor, hash(before), hash(after),
 		unifiedDiff(string(before), string(after), "policy.json"), summary)
@@ -341,8 +344,10 @@ func (m *Module) plan(apply bool) (*Plan, error) {
 			} else {
 				pp.Note = note
 				pp.Changed = false
+				// The artifact itself can be tens of megabytes (a category zone);
+				// the hash and the file list are enough to know what is in place.
 				_ = m.ctx.Store.Exec(`INSERT OR REPLACE INTO policy_state(provider,hash,applied_ts,artifact,note)
-					VALUES(?,?,?,?,?)`, pr.Name(), pp.Hash, time.Now().Unix(), all.String(), note)
+					VALUES(?,?,?,?,?)`, pr.Name(), pp.Hash, time.Now().Unix(), strings.Join(files, "\n"), note)
 				_ = m.ctx.Store.RecordChange("policy", "provider:"+pr.Name(), "flowsightd", "", pp.Hash,
 					strings.Join(diffs, "\n"), "applied to "+pr.Name()+": "+note)
 				m.ctx.Event("policy", "applied to "+pr.Name()+": "+note, nil)
@@ -360,9 +365,54 @@ func (m *Module) setPlan(p *Plan) {
 	m.mu.Unlock()
 }
 
-// reconcile runs on the interval: plan, and apply when enforcing.
+// signature summarises everything a compile depends on apart from the
+// providers' current files: the document, the category feeds, which
+// schedules are active and the enforcement flag. Compiling a policy with a
+// 300,000-name category allocates tens of megabytes; doing that every minute
+// when nothing changed is what made the daemon's footprint balloon.
+func (m *Module) signature() string {
+	doc := m.Doc()
+	h := sha256.New()
+	b, _ := json.Marshal(doc)
+	h.Write(b)
+	now := time.Now()
+	for _, p := range doc.Policies {
+		fmt.Fprintf(h, "%s=%v;", p.Name, doc.Active(p.Schedule, now))
+	}
+	if c, ok := m.ctx.Service("categories").(core.Categories); ok {
+		for _, ci := range c.List() {
+			fmt.Fprintf(h, "%s:%d:%d;", ci.Name, ci.Domains, ci.Updated)
+		}
+	}
+	fmt.Fprintf(h, "enforce=%v;", core.Bool(m.ctx.Settings(), "enforce", false))
+	for _, mod := range []string{"web", "dns", "firewall"} {
+		b, _ := json.Marshal(m.ctx.Config.Module(mod))
+		h.Write(b)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// reconcile runs on the interval: plan, and apply when enforcing. When the
+// inputs have not changed since the last plan that left every provider in
+// sync, the expensive compile is skipped; a provider whose files were edited
+// by hand is caught on the next input change or every tenth cycle.
 func (m *Module) reconcile() error {
+	sig := m.signature()
+	m.mu.Lock()
+	last := m.lastPlan
+	skip := sig == m.lastSig && last != nil && len(last.Errors) == 0 && last.Changes == 0 &&
+		m.cycles%10 != 0
+	m.cycles++
+	m.mu.Unlock()
+	if skip {
+		return nil
+	}
 	p, err := m.plan(true)
+	if err == nil && len(p.Errors) == 0 && p.Changes == 0 {
+		m.mu.Lock()
+		m.lastSig = sig
+		m.mu.Unlock()
+	}
 	if err != nil {
 		return err
 	}

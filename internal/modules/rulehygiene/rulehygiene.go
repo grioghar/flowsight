@@ -68,7 +68,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	if ctx.Platform.Firewall == "pf" && ctx.Platform.Pfctl != "" {
 		interval := time.Duration(core.Int(ctx.Settings(), "analyse_minutes", 15)) * time.Minute
-		ctx.Every("analyse", interval, m.analyse, core.Delayed())
+		ctx.Every("analyse", interval, m.analyse)
 
 		// Track config changes on OPNsense.
 		if ctx.Platform.IsOPNsense() && ctx.Platform.ConfigXML != "" {
