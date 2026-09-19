@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -134,11 +135,33 @@ func (p *Platform) IsOPNsense() bool { return p.Name == "opnsense" }
 
 // Run executes a command with a timeout and returns combined output.
 func Run(timeout time.Duration, name string, args ...string) (string, error) {
+	return RunIn("", timeout, name, args...)
+}
+
+// RunIn is Run with a working directory.
+func RunIn(dir string, timeout time.Duration, name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
+}
+
+// UnboundCheck validates the resolver configuration. OPNsense's Unbound
+// loads its python module by a path relative to /var/unbound, so the check
+// must run from the config's own directory or it fails for the wrong reason.
+func (p *Platform) UnboundCheck() (string, error) {
+	if p.UnboundCheckconf == "" {
+		return "", nil
+	}
+	args := []string{}
+	dir := ""
+	if p.UnboundConfig != "" {
+		args = append(args, p.UnboundConfig)
+		dir = filepath.Dir(p.UnboundConfig)
+	}
+	return RunIn(dir, 60*time.Second, p.UnboundCheckconf, args...)
 }
 
 // Service restarts or reloads a backend the platform manages. On OPNsense the
