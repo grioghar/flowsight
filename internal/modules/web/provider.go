@@ -5,10 +5,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/grioghar/flowsight/internal/core"
@@ -130,6 +132,7 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 	params := squidParams{
 		HTTPPort: core.Int(s, "http_port", 3128), HTTPSPort: core.Int(s, "https_port", 3129),
 		Dir: m.dir, LogDir: m.logDir, RunDir: m.runDir, User: core.Str(s, "squid_user", "squid"),
+		Group:     pfGroup(m.ctx.Platform),
 		LocalNets: nets, CAPath: caPath, CertDB: filepath.Join(m.ctx.Platform.DataDir, "ssl_db"),
 		CertgenBin: m.certgenBin(), BlockPageURL: firstNonEmpty(doc.Options.BlockPageURL, m.blockPageURL()),
 		PeekServerCert: core.Bool(s, "peek_server_cert", false), Policies: pols, Exclusions: excluded,
@@ -154,6 +157,21 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 		note += ", interception off"
 	}
 	return core.Artifact{Files: out, Note: note}, nil
+}
+
+// pfGroup returns the group that may open /dev/pf, when one is set up.
+func pfGroup(p *core.Platform) string {
+	if p.Family != "freebsd" {
+		return ""
+	}
+	if st, err := os.Stat("/dev/pf"); err == nil {
+		if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+			if g, err := user.LookupGroupId(fmt.Sprint(sys.Gid)); err == nil && g.Name != "wheel" && g.Name != "root" {
+				return g.Name
+			}
+		}
+	}
+	return ""
 }
 
 func firstNonEmpty(a, b string) string {
@@ -230,12 +248,21 @@ func (p *provider) Apply(a core.Artifact) (string, error) {
 		return "interception off; proxy stopped", nil
 	}
 	if err := m.reloadSquid(); err != nil {
+		// Keep the rejected configuration beside the live one for inspection.
+		_ = os.WriteFile(filepath.Join(m.dir, "squid.conf.rejected"), []byte(a.Files[filepath.Join(m.dir, "squid.conf")]), 0o644)
 		restore()
 		if m.fw != nil {
 			_ = m.fw.FlushAnchor("web")
 		}
 		m.setErr(err.Error())
 		return "", err
+	}
+	if !m.waitListening(15 * time.Second) {
+		if m.fw != nil {
+			_ = m.fw.FlushAnchor("web")
+		}
+		m.setErr("proxy accepted the configuration but is not listening; interception withheld")
+		return "", fmt.Errorf("proxy is not accepting connections on its ports; interception withheld (see %s/cache.log)", m.logDir)
 	}
 	m.setErr("")
 	if m.fw != nil {

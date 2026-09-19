@@ -517,8 +517,9 @@ func (m *Module) localNets() []*net.IPNet {
 	if err != nil {
 		return out
 	}
+	wan := defaultRouteInterface()
 	for _, ifc := range ifaces {
-		if ifc.Flags&net.FlagLoopback != 0 || ifc.Flags&net.FlagUp == 0 {
+		if ifc.Flags&net.FlagLoopback != 0 || ifc.Flags&net.FlagUp == 0 || ifc.Name == wan {
 			continue
 		}
 		addrs, _ := ifc.Addrs()
@@ -542,6 +543,27 @@ func (m *Module) localNets() []*net.IPNet {
 		}
 	}
 	return out
+}
+
+// defaultRouteInterface names the interface carrying the default route: the
+// WAN, whose network is never "local" even when it happens to be RFC1918.
+func defaultRouteInterface() string {
+	if out, err := core.Run(5*time.Second, "/sbin/route", "-n", "get", "default"); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			if f := strings.Fields(line); len(f) == 2 && f[0] == "interface:" {
+				return f[1]
+			}
+		}
+	}
+	if out, err := core.Run(5*time.Second, "ip", "-4", "route", "show", "default"); err == nil {
+		f := strings.Fields(out)
+		for i := 0; i+1 < len(f); i++ {
+			if f[i] == "dev" {
+				return f[i+1]
+			}
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------- OUI

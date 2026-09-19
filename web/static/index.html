@@ -1,1 +1,38 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Flowsight</title></head><body>Flowsight UI placeholder</body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flowsight</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div id="app">
+  <aside id="nav">
+    <div class="brand"><span class="logo"></span><span>Flowsight</span><span id="site" class="muted"></span></div>
+    <nav id="menu"></nav>
+    <div class="navfoot">
+      <div id="health-pill" class="pill">…</div>
+      <div id="version" class="muted"></div>
+    </div>
+  </aside>
+  <main id="main">
+    <header id="topbar">
+      <button id="navtoggle" class="iconbtn" aria-label="Menu">☰</button>
+      <h1 id="title">Flowsight</h1>
+      <div class="spacer"></div>
+      <div id="range" class="seg"></div>
+      <input id="search" type="search" placeholder="Find host, domain, app…" autocomplete="off">
+    </header>
+    <section id="view"></section>
+  </main>
+</div>
+<div id="toast"></div>
+<div id="modal" hidden><div class="modal-card"><div id="modal-body"></div></div></div>
+<script src="/static/lib.js"></script>
+<script src="/static/pages.js"></script>
+<script src="/static/pages2.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

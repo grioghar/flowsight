@@ -195,6 +195,33 @@ func (m *Module) running() bool {
 	return p.Signal(syscallSignal0()) == nil
 }
 
+// listening reports whether the proxy accepts connections on its ports. Only
+// a proxy that answers may have traffic redirected to it; anything else would
+// take the network's web access down with it.
+func (m *Module) listening() bool {
+	s := m.ctx.Settings()
+	for _, port := range []int{core.Int(s, "http_port", 3128), core.Int(s, "https_port", 3129)} {
+		c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 2*time.Second)
+		if err != nil {
+			return false
+		}
+		c.Close()
+	}
+	return true
+}
+
+// waitListening polls for the listeners after a start or reconfigure.
+func (m *Module) waitListening(d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if m.listening() {
+			return true
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return false
+}
+
 // supervise keeps the proxy in the state the configuration asks for.
 func (m *Module) supervise() error {
 	wantRunning := m.wanted()
@@ -211,7 +238,23 @@ func (m *Module) supervise() error {
 	if !m.running() {
 		if err := m.startSquid(); err != nil {
 			m.setErr(err.Error())
+			if m.fw != nil {
+				_ = m.fw.FlushAnchor("web")
+			}
 			return err
+		}
+	}
+	if !m.waitListening(10 * time.Second) {
+		// Running but deaf: pull the redirects rather than blackhole the LAN.
+		if m.fw != nil {
+			_ = m.fw.FlushAnchor("web")
+		}
+		m.setErr("proxy process is up but not accepting connections; interception withdrawn (see squid cache.log)")
+		return fmt.Errorf("proxy not listening")
+	}
+	if m.fw != nil {
+		if rdr, err := os.ReadFile(filepath.Join(m.dir, "pf-web.conf")); err == nil {
+			_ = m.fw.LoadAnchor("web", string(rdr))
 		}
 	}
 	m.setErr("")
@@ -280,12 +323,25 @@ func (m *Module) stopSquid() {
 	m.ctx.Event("system", "proxy stopped", nil)
 }
 
+// tailLines picks the lines that explain a squid failure: the FATAL and
+// ERROR lines, or the last few when there are none.
 func tailLines(s string, n int) string {
-	lines := strings.Split(strings.TrimSpace(s), "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
+	var picked []string
+	for _, l := range strings.Split(strings.TrimSpace(s), "\n") {
+		if strings.Contains(l, "FATAL") || strings.Contains(l, "ERROR") || strings.Contains(l, "Bungled") {
+			if i := strings.Index(l, "| "); i > 0 {
+				l = l[i+2:]
+			}
+			picked = append(picked, l)
+		}
 	}
-	return strings.Join(lines, " | ")
+	if len(picked) == 0 {
+		picked = strings.Split(strings.TrimSpace(s), "\n")
+	}
+	if len(picked) > n {
+		picked = picked[len(picked)-n:]
+	}
+	return strings.Join(picked, " | ")
 }
 
 // ensurePlaceholderCert creates the self-signed certificate squid needs to

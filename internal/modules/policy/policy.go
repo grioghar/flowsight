@@ -89,6 +89,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
 	m.path = filepath.Join(ctx.Platform.EtcDir, "policy.json")
 	m.load()
+	ctx.Publish("policy_doc", m)
 	every := time.Duration(core.Int(ctx.Settings(), "reconcile_seconds", 60)) * time.Second
 	if every < 15*time.Second {
 		every = 15 * time.Second
