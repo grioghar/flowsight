@@ -484,3 +484,16 @@ type Identity interface {
 	IsLocal(ip string) bool
 	LocalNetworks() []string
 }
+
+// AppInfo describes one nDPI application.
+type AppInfo struct {
+	Category string `json:"category"`
+	Breed    string `json:"breed"`
+	ID       int    `json:"id"`
+}
+
+// AppCatalog is the service the visibility module publishes.
+type AppCatalog interface {
+	Apps() map[string]AppInfo
+	AppCategory(app string) string
+}

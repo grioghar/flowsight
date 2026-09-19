@@ -1,0 +1,55 @@
+<?php
+
+/*
+ * Flowsight: OPNsense integration hooks.
+ *
+ * Registers the service so the GUI can start, stop and show it, and gives
+ * the daemon two pf anchors it owns outright: "flowsight/*" as a quick
+ * filter anchor at the head of the ruleset, so a policy block wins over any
+ * later pass rule, and the same anchor for rdr at the tail, so interception
+ * only sees traffic no port forward already claimed (NAT reflection is an
+ * rdr too, and must match first). Everything inside the anchors is loaded by
+ * flowsightd with pfctl -a; nothing here writes rules itself.
+ */
+
+function flowsight_enabled()
+{
+    global $config;
+    return isset($config['OPNsense']['flowsight']['general']['enabled']) &&
+        $config['OPNsense']['flowsight']['general']['enabled'] == '1';
+}
+
+function flowsight_services()
+{
+    $services = [];
+    if (flowsight_enabled()) {
+        $services[] = [
+            'description' => gettext('Flowsight'),
+            'configd' => [
+                'restart' => ['flowsight restart'],
+                'start' => ['flowsight start'],
+                'stop' => ['flowsight stop'],
+            ],
+            'name' => 'flowsight',
+            'pidfile' => '/var/run/flowsight/flowsightd.pid',
+        ];
+    }
+    return $services;
+}
+
+function flowsight_firewall(\OPNsense\Firewall\Plugin $fw)
+{
+    if (!flowsight_enabled()) {
+        return;
+    }
+    $fw->registerAnchor('flowsight/*', 'rdr', 0, 'tail');
+    $fw->registerAnchor('flowsight/*', 'nat', 0, 'tail');
+    $fw->registerAnchor('flowsight/*', 'fw', 0, 'head', true);
+}
+
+function flowsight_syslog()
+{
+    $logfacilities = [];
+    $logfacilities['flowsight'] = ['facility' => ['flowsightd']];
+    return $logfacilities;
+}

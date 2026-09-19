@@ -1,0 +1,634 @@
+// Package policy owns the declarative policy document: editing, validation,
+// compilation onto every registered provider, and continuous reconciliation.
+//
+// Nothing is written to a backend until the operator turns enforcement on.
+// From then on the module keeps providers in step with the document: a
+// schedule window opening, a category feed refreshing or a file edited by
+// hand all converge back within a minute, and every apply is recorded with
+// its diff.
+package policy
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/grioghar/flowsight/internal/core"
+	"gopkg.in/yaml.v3"
+)
+
+func init() { core.Register(func() core.Module { return &Module{} }) }
+
+type Module struct {
+	ctx      *core.Context
+	path     string
+	mu       sync.RWMutex
+	doc      *core.PolicyDoc
+	loadErr  string
+	lastPlan *Plan
+	applying bool
+}
+
+// Plan is what apply would do, per provider.
+type Plan struct {
+	At        int64          `json:"at"`
+	Enforce   bool           `json:"enforce"`
+	Providers []ProviderPlan `json:"providers"`
+	Unmet     []string       `json:"unmet"` // capabilities no provider offers
+	Errors    []string       `json:"errors"`
+	Changes   int            `json:"changes"`
+	Policies  []PolicyStatus `json:"policies"`
+}
+
+type ProviderPlan struct {
+	Name         string   `json:"name"`
+	Capabilities []string `json:"capabilities"`
+	Files        []string `json:"files"`
+	Changed      bool     `json:"changed"`
+	Diff         string   `json:"diff"`
+	Error        string   `json:"error,omitempty"`
+	Note         string   `json:"note,omitempty"`
+	Hash         string   `json:"hash"`
+}
+
+type PolicyStatus struct {
+	Name     string   `json:"name"`
+	Enabled  bool     `json:"enabled"`
+	Active   bool     `json:"active"` // schedule in effect now
+	Action   string   `json:"action"`
+	Requires []string `json:"requires"`
+	Unmet    []string `json:"unmet"`
+	Members  int      `json:"members"`
+}
+
+func (m *Module) Info() core.ModuleInfo {
+	return core.ModuleInfo{
+		Name: "policy", Version: "1.0",
+		Description: "The declarative policy document, its compiler and continuous reconciliation onto every backend.",
+		After:       []string{"identity", "categories", "dns", "web", "appcontrol", "tls"},
+		Defaults: map[string]any{
+			"enforce":           false,
+			"reconcile_seconds": 60,
+		},
+		Schema: []core.SettingField{
+			{Key: "enforce", Label: "Enforce policy", Type: "bool",
+				Help: "Off: the document is compiled and planned but never written to a backend. On: every provider is kept in step with it."},
+			{Key: "reconcile_seconds", Label: "Reconcile interval (s)", Type: "int"},
+		},
+	}
+}
+
+func (m *Module) Setup(ctx *core.Context) error {
+	m.ctx = ctx
+	m.path = filepath.Join(ctx.Platform.EtcDir, "policy.json")
+	m.load()
+	every := time.Duration(core.Int(ctx.Settings(), "reconcile_seconds", 60)) * time.Second
+	if every < 15*time.Second {
+		every = 15 * time.Second
+	}
+	ctx.Every("reconcile", every, m.reconcile, core.Delayed())
+	ctx.Route("GET", "/api/policy", m.apiGet, core.Doc("The policy document, its status and the last plan"))
+	ctx.Route("POST", "/api/policy", m.apiPut, core.Write(), core.Doc("Replace the whole policy document (validated first)"))
+	ctx.Route("GET", "/api/policy/plan", m.apiPlan, core.Doc("Compile onto every provider and show what would change"))
+	ctx.Route("POST", "/api/policy/apply", m.apiApply, core.Write(), core.Doc("Apply the plan now (requires enforce)"))
+	ctx.Route("POST", "/api/policy/policy", m.apiSavePolicy, core.Write(), core.Doc("Create or update one policy"))
+	ctx.Route("POST", "/api/policy/policy/delete", m.apiDeletePolicy, core.Write(), core.Doc("Delete one policy"))
+	ctx.Route("POST", "/api/policy/policy/move", m.apiMovePolicy, core.Write(), core.Doc("Reorder a policy"))
+	ctx.Route("POST", "/api/policy/group", m.apiSaveGroup, core.Write(), core.Doc("Create or update a group"))
+	ctx.Route("POST", "/api/policy/group/delete", m.apiDeleteGroup, core.Write(), core.Doc("Delete a group"))
+	ctx.Route("POST", "/api/policy/schedule", m.apiSaveSchedule, core.Write(), core.Doc("Create or update a schedule"))
+	ctx.Route("POST", "/api/policy/schedule/delete", m.apiDeleteSchedule, core.Write(), core.Doc("Delete a schedule"))
+	ctx.Route("POST", "/api/policy/exclusions", m.apiExclusions, core.Write(), core.Doc("Replace exclusions and options"))
+	ctx.Route("GET", "/api/policy/export", m.apiExport, core.Doc("The document as YAML"))
+	ctx.Route("POST", "/api/policy/import", m.apiImport, core.Write(), core.Doc("Replace the document from YAML or JSON text"))
+	ctx.Route("GET", "/api/policy/capabilities", m.apiCapabilities, core.Doc("Providers, capabilities and what each policy needs"))
+	ctx.Panel(core.Panel{ID: "policy", Title: "Policies", Group: "Policy", Order: 100, Icon: "policy"})
+	ctx.Panel(core.Panel{ID: "groups", Title: "Groups & schedules", Group: "Policy", Order: 110, Icon: "groups"})
+	return nil
+}
+
+func (m *Module) Health() core.Health {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.loadErr != "" {
+		return core.Health{OK: false, Detail: "policy document: " + m.loadErr}
+	}
+	if m.lastPlan != nil && len(m.lastPlan.Errors) > 0 {
+		return core.Health{OK: false, Detail: strings.Join(m.lastPlan.Errors, "; ")}
+	}
+	n := 0
+	if m.doc != nil {
+		n = len(m.doc.Policies)
+	}
+	state := "monitor"
+	if core.Bool(m.ctx.Settings(), "enforce", false) {
+		state = "enforcing"
+	}
+	return core.Health{OK: true, Detail: fmt.Sprintf("%d policies, %s", n, state)}
+}
+
+// ---------------------------------------------------------------- document
+
+func emptyDoc() *core.PolicyDoc {
+	return &core.PolicyDoc{Version: 1, Groups: map[string]core.Group{}, Schedules: map[string]core.Schedule{}}
+}
+
+func (m *Module) load() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, err := os.ReadFile(m.path)
+	if os.IsNotExist(err) {
+		m.doc = emptyDoc()
+		m.loadErr = ""
+		return
+	}
+	if err != nil {
+		m.loadErr = err.Error()
+		if m.doc == nil {
+			m.doc = emptyDoc()
+		}
+		return
+	}
+	doc := emptyDoc()
+	if err := json.Unmarshal(b, doc); err != nil {
+		m.loadErr = err.Error()
+		if m.doc == nil {
+			m.doc = emptyDoc()
+		}
+		return
+	}
+	if err := doc.Validate(); err != nil {
+		m.loadErr = err.Error()
+	} else {
+		m.loadErr = ""
+	}
+	m.doc = doc
+}
+
+// Doc returns a deep copy for editing.
+func (m *Module) Doc() *core.PolicyDoc {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	b, _ := json.Marshal(m.doc)
+	out := emptyDoc()
+	_ = json.Unmarshal(b, out)
+	if out.Groups == nil {
+		out.Groups = map[string]core.Group{}
+	}
+	if out.Schedules == nil {
+		out.Schedules = map[string]core.Schedule{}
+	}
+	return out
+}
+
+// save validates, records the change with a diff, and writes atomically.
+func (m *Module) save(doc *core.PolicyDoc, actor, summary string) error {
+	if err := doc.Validate(); err != nil {
+		return core.BadRequest("%v", err)
+	}
+	after, _ := json.MarshalIndent(doc, "", "  ")
+	before, _ := json.MarshalIndent(m.Doc(), "", "  ")
+	if string(before) == string(after) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(m.path), 0o755); err != nil {
+		return err
+	}
+	if b, err := os.ReadFile(m.path); err == nil {
+		_ = os.WriteFile(m.path+".bak", b, 0o600)
+	}
+	if err := os.WriteFile(m.path+".tmp", append(after, '\n'), 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(m.path+".tmp", m.path); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.doc = doc
+	m.loadErr = ""
+	m.mu.Unlock()
+	_ = m.ctx.Store.RecordChange("policy", "policy.json", actor, hash(before), hash(after),
+		unifiedDiff(string(before), string(after), "policy.json"), summary)
+	m.ctx.Event("audit", "policy changed: "+summary, map[string]any{"actor_name": actor})
+	go func() { _, _ = m.plan(true) }()
+	return nil
+}
+
+func hash(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:8])
+}
+
+// ---------------------------------------------------------------- compile
+
+func (m *Module) providers() []core.Provider { return m.ctx.Core.ProviderList() }
+
+// plan compiles the document onto every provider. With apply=true and
+// enforcement on, changed providers are applied, one after another, each
+// validating and reverting on its own failure.
+func (m *Module) plan(apply bool) (*Plan, error) {
+	doc := m.Doc()
+	m.mu.RLock()
+	loadErr := m.loadErr
+	m.mu.RUnlock()
+	enforce := core.Bool(m.ctx.Settings(), "enforce", false)
+	p := &Plan{At: time.Now().Unix(), Enforce: enforce}
+	if loadErr != "" {
+		p.Errors = append(p.Errors, "policy document invalid: "+loadErr)
+		m.setPlan(p)
+		return p, nil
+	}
+	provs := m.providers()
+	have := map[string]bool{}
+	for _, pr := range provs {
+		for _, c := range pr.Capabilities() {
+			have[c] = true
+		}
+	}
+	res, _ := m.ctx.Service("member_resolver").(core.MemberResolver)
+	now := time.Now()
+	unmet := map[string]bool{}
+	for i := range doc.Policies {
+		pol := &doc.Policies[i]
+		ps := PolicyStatus{Name: pol.Name, Enabled: pol.Enabled, Action: pol.Action,
+			Active: pol.Enabled && doc.Active(pol.Schedule, now), Requires: pol.Requirements(),
+			Members: len(doc.Members(pol, res))}
+		for _, c := range ps.Requires {
+			if !have[c] {
+				ps.Unmet = append(ps.Unmet, c)
+				if pol.Enabled {
+					unmet[c] = true
+				}
+			}
+		}
+		p.Policies = append(p.Policies, ps)
+	}
+	for c := range unmet {
+		p.Unmet = append(p.Unmet, c)
+	}
+	sort.Strings(p.Unmet)
+
+	m.mu.Lock()
+	if m.applying {
+		m.mu.Unlock()
+		return m.lastPlan, fmt.Errorf("an apply is already running")
+	}
+	m.applying = apply
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.applying = false
+		m.mu.Unlock()
+	}()
+
+	for _, pr := range provs {
+		pp := ProviderPlan{Name: pr.Name(), Capabilities: pr.Capabilities()}
+		desired, err := pr.Compile(doc)
+		if err != nil {
+			pp.Error = err.Error()
+			p.Errors = append(p.Errors, pr.Name()+": "+err.Error())
+			p.Providers = append(p.Providers, pp)
+			continue
+		}
+		current, err := pr.Current()
+		if err != nil {
+			pp.Error = "cannot read current state: " + err.Error()
+			p.Errors = append(p.Errors, pr.Name()+": "+pp.Error)
+			p.Providers = append(p.Providers, pp)
+			continue
+		}
+		pp.Note = desired.Note
+		var diffs []string
+		files := make([]string, 0, len(desired.Files))
+		for f := range desired.Files {
+			files = append(files, f)
+		}
+		sort.Strings(files)
+		var all strings.Builder
+		for _, f := range files {
+			all.WriteString(f)
+			all.WriteString("\n")
+			all.WriteString(desired.Files[f])
+			if strings.TrimSpace(desired.Files[f]) != strings.TrimSpace(current.Files[f]) {
+				diffs = append(diffs, unifiedDiff(current.Files[f], desired.Files[f], f))
+			}
+		}
+		pp.Files = files
+		pp.Hash = hash([]byte(all.String()))
+		pp.Changed = len(diffs) > 0
+		pp.Diff = strings.Join(diffs, "\n")
+		if len(pp.Diff) > 200000 {
+			pp.Diff = pp.Diff[:200000] + "\n... (truncated)"
+		}
+		if pp.Changed {
+			p.Changes++
+		}
+		if apply && enforce && pp.Changed {
+			note, err := pr.Apply(desired)
+			if err != nil {
+				pp.Error = "apply failed: " + err.Error()
+				p.Errors = append(p.Errors, pr.Name()+": "+pp.Error)
+				m.ctx.Event("policy", "apply failed on "+pr.Name()+": "+err.Error(),
+					map[string]any{"severity": "high", "verdict": "observed"})
+			} else {
+				pp.Note = note
+				pp.Changed = false
+				_ = m.ctx.Store.Exec(`INSERT OR REPLACE INTO policy_state(provider,hash,applied_ts,artifact,note)
+					VALUES(?,?,?,?,?)`, pr.Name(), pp.Hash, time.Now().Unix(), all.String(), note)
+				_ = m.ctx.Store.RecordChange("policy", "provider:"+pr.Name(), "flowsightd", "", pp.Hash,
+					strings.Join(diffs, "\n"), "applied to "+pr.Name()+": "+note)
+				m.ctx.Event("policy", "applied to "+pr.Name()+": "+note, nil)
+			}
+		}
+		p.Providers = append(p.Providers, pp)
+	}
+	m.setPlan(p)
+	return p, nil
+}
+
+func (m *Module) setPlan(p *Plan) {
+	m.mu.Lock()
+	m.lastPlan = p
+	m.mu.Unlock()
+}
+
+// reconcile runs on the interval: plan, and apply when enforcing.
+func (m *Module) reconcile() error {
+	p, err := m.plan(true)
+	if err != nil {
+		return err
+	}
+	if len(p.Errors) > 0 {
+		return fmt.Errorf("%s", strings.Join(p.Errors, "; "))
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------- API
+
+func (m *Module) apiGet(r *core.Req) (any, error) {
+	m.mu.RLock()
+	plan := m.lastPlan
+	loadErr := m.loadErr
+	m.mu.RUnlock()
+	return map[string]any{"document": m.Doc(), "error": loadErr, "plan": plan,
+		"enforce": core.Bool(m.ctx.Settings(), "enforce", false), "path": m.path}, nil
+}
+
+func (m *Module) apiPut(r *core.Req) (any, error) {
+	doc := emptyDoc()
+	if err := r.Decode(doc); err != nil {
+		return nil, err
+	}
+	if err := m.save(doc, r.User, "document replaced"); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+func (m *Module) apiPlan(r *core.Req) (any, error) {
+	p, err := m.plan(false)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"plan": p}, nil
+}
+
+func (m *Module) apiApply(r *core.Req) (any, error) {
+	if !core.Bool(m.ctx.Settings(), "enforce", false) {
+		return nil, core.Forbidden("enforcement is off: turn on 'Enforce policy' in the policy module settings first")
+	}
+	p, err := m.plan(true)
+	if err != nil {
+		return nil, err
+	}
+	ok := len(p.Errors) == 0
+	return map[string]any{"ok": ok, "plan": p, "error": strings.Join(p.Errors, "; ")}, nil
+}
+
+func (m *Module) apiSavePolicy(r *core.Req) (any, error) {
+	var in struct {
+		Original string      `json:"original"` // name being edited, "" for new
+		Policy   core.Policy `json:"policy"`
+	}
+	if err := r.Decode(&in); err != nil {
+		return nil, err
+	}
+	doc := m.Doc()
+	idx := -1
+	for i, p := range doc.Policies {
+		if p.Name == in.Original && in.Original != "" {
+			idx = i
+		}
+	}
+	if idx >= 0 {
+		doc.Policies[idx] = in.Policy
+	} else {
+		for _, p := range doc.Policies {
+			if p.Name == in.Policy.Name {
+				return nil, core.BadRequest("a policy named %q already exists", p.Name)
+			}
+		}
+		doc.Policies = append(doc.Policies, in.Policy)
+	}
+	verb := "updated"
+	if idx < 0 {
+		verb = "created"
+	}
+	if err := m.save(doc, r.User, "policy "+in.Policy.Name+" "+verb); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+func (m *Module) apiDeletePolicy(r *core.Req) (any, error) {
+	name, _ := r.Body()["name"].(string)
+	doc := m.Doc()
+	var kept []core.Policy
+	for _, p := range doc.Policies {
+		if p.Name != name {
+			kept = append(kept, p)
+		}
+	}
+	if len(kept) == len(doc.Policies) {
+		return nil, core.NotFound("no policy named %q", name)
+	}
+	doc.Policies = kept
+	if err := m.save(doc, r.User, "policy "+name+" deleted"); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+func (m *Module) apiMovePolicy(r *core.Req) (any, error) {
+	b := r.Body()
+	name, _ := b["name"].(string)
+	dir, _ := b["direction"].(string)
+	doc := m.Doc()
+	for i, p := range doc.Policies {
+		if p.Name != name {
+			continue
+		}
+		j := i - 1
+		if dir == "down" {
+			j = i + 1
+		}
+		if j < 0 || j >= len(doc.Policies) {
+			return map[string]any{"ok": true}, nil
+		}
+		doc.Policies[i], doc.Policies[j] = doc.Policies[j], doc.Policies[i]
+		return map[string]any{"ok": true}, m.save(doc, r.User, "policy "+name+" moved "+dir)
+	}
+	return nil, core.NotFound("no policy named %q", name)
+}
+
+func (m *Module) apiSaveGroup(r *core.Req) (any, error) {
+	var in struct {
+		Original string     `json:"original"`
+		Name     string     `json:"name"`
+		Group    core.Group `json:"group"`
+	}
+	if err := r.Decode(&in); err != nil {
+		return nil, err
+	}
+	doc := m.Doc()
+	if in.Original != "" && in.Original != in.Name {
+		delete(doc.Groups, in.Original)
+		for i := range doc.Policies {
+			for j, g := range doc.Policies[i].Match.Groups {
+				if g == in.Original {
+					doc.Policies[i].Match.Groups[j] = in.Name
+				}
+			}
+		}
+	}
+	doc.Groups[in.Name] = in.Group
+	return map[string]any{"ok": true}, m.save(doc, r.User, "group "+in.Name+" saved")
+}
+
+func (m *Module) apiDeleteGroup(r *core.Req) (any, error) {
+	name, _ := r.Body()["name"].(string)
+	doc := m.Doc()
+	if _, ok := doc.Groups[name]; !ok {
+		return nil, core.NotFound("no group named %q", name)
+	}
+	for _, p := range doc.Policies {
+		for _, g := range p.Match.Groups {
+			if g == name {
+				return nil, core.BadRequest("group %q is used by policy %q", name, p.Name)
+			}
+		}
+	}
+	delete(doc.Groups, name)
+	return map[string]any{"ok": true}, m.save(doc, r.User, "group "+name+" deleted")
+}
+
+func (m *Module) apiSaveSchedule(r *core.Req) (any, error) {
+	var in struct {
+		Original string        `json:"original"`
+		Name     string        `json:"name"`
+		Schedule core.Schedule `json:"schedule"`
+	}
+	if err := r.Decode(&in); err != nil {
+		return nil, err
+	}
+	doc := m.Doc()
+	if in.Original != "" && in.Original != in.Name {
+		delete(doc.Schedules, in.Original)
+		for i := range doc.Policies {
+			if doc.Policies[i].Schedule == in.Original {
+				doc.Policies[i].Schedule = in.Name
+			}
+		}
+	}
+	doc.Schedules[in.Name] = in.Schedule
+	return map[string]any{"ok": true}, m.save(doc, r.User, "schedule "+in.Name+" saved")
+}
+
+func (m *Module) apiDeleteSchedule(r *core.Req) (any, error) {
+	name, _ := r.Body()["name"].(string)
+	doc := m.Doc()
+	if _, ok := doc.Schedules[name]; !ok {
+		return nil, core.NotFound("no schedule named %q", name)
+	}
+	for _, p := range doc.Policies {
+		if p.Schedule == name {
+			return nil, core.BadRequest("schedule %q is used by policy %q", name, p.Name)
+		}
+	}
+	delete(doc.Schedules, name)
+	return map[string]any{"ok": true}, m.save(doc, r.User, "schedule "+name+" deleted")
+}
+
+func (m *Module) apiExclusions(r *core.Req) (any, error) {
+	var in struct {
+		Exclusions core.Exclusions `json:"exclusions"`
+		Options    core.Options    `json:"options"`
+	}
+	if err := r.Decode(&in); err != nil {
+		return nil, err
+	}
+	doc := m.Doc()
+	doc.Exclusions = in.Exclusions
+	doc.Options = in.Options
+	return map[string]any{"ok": true}, m.save(doc, r.User, "exclusions and options saved")
+}
+
+func (m *Module) apiExport(r *core.Req) (any, error) {
+	b, err := yaml.Marshal(m.Doc())
+	if err != nil {
+		return nil, err
+	}
+	return core.Raw{ContentType: "application/yaml; charset=utf-8", Filename: "flowsight-policy.yaml", Body: b}, nil
+}
+
+func (m *Module) apiImport(r *core.Req) (any, error) {
+	text, _ := r.Body()["text"].(string)
+	if strings.TrimSpace(text) == "" {
+		return nil, core.BadRequest("text is required")
+	}
+	doc := emptyDoc()
+	if err := yaml.Unmarshal([]byte(text), doc); err != nil {
+		return nil, core.BadRequest("cannot parse: %v", err)
+	}
+	if err := m.save(doc, r.User, "document imported"); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "policies": len(doc.Policies)}, nil
+}
+
+func (m *Module) apiCapabilities(r *core.Req) (any, error) {
+	var provs []map[string]any
+	for _, p := range m.providers() {
+		provs = append(provs, map[string]any{"name": p.Name(), "capabilities": p.Capabilities()})
+	}
+	var cats []core.CategoryInfo
+	if c, ok := m.ctx.Service("categories").(core.Categories); ok {
+		cats = c.List()
+	}
+	var apps []map[string]any
+	appCats := map[string]bool{}
+	if ac, ok := m.ctx.Service("app_catalog").(core.AppCatalog); ok {
+		for name, a := range ac.Apps() {
+			apps = append(apps, map[string]any{"app": name, "category": a.Category, "breed": a.Breed})
+			if a.Category != "" {
+				appCats[a.Category] = true
+			}
+		}
+		sort.Slice(apps, func(i, j int) bool { return apps[i]["app"].(string) < apps[j]["app"].(string) })
+	}
+	var appCatList []string
+	for c := range appCats {
+		appCatList = append(appCatList, c)
+	}
+	sort.Strings(appCatList)
+	return map[string]any{"providers": provs, "capabilities": m.ctx.Core.Capabilities(),
+		"categories": cats, "apps": apps, "app_categories": appCatList}, nil
+}

@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# PROVIDE: flowsight
+# REQUIRE: LOGIN unbound
+# KEYWORD: shutdown
+#
+# flowsight_enable (bool):  Set to YES to run the Flowsight daemon.
+
+. /etc/rc.subr
+
+name=flowsight
+rcvar=flowsight_enable
+
+load_rc_config $name
+
+: ${flowsight_enable:=NO}
+: ${flowsight_config:=/usr/local/etc/flowsight/flowsight.json}
+
+pidfile=/var/run/flowsight/flowsightd.pid
+procname=/usr/local/sbin/flowsightd
+command=/usr/sbin/daemon
+supervisor_pidfile=/var/run/flowsight/daemon.pid
+command_args="-S -T flowsightd -R 5 -P ${supervisor_pidfile} -p ${pidfile} -o /var/log/flowsight/daemon.out ${procname} -config ${flowsight_config}"
+start_precmd=flowsight_precmd
+extra_commands=reload
+
+flowsight_precmd()
+{
+    install -d -m 755 /var/run/flowsight /var/log/flowsight /var/db/flowsight
+}
+
+run_rc_command "$1"

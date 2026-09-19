@@ -160,6 +160,13 @@ func (c *Core) setup(m Module, ctx *Context) (err error) {
 	return m.Setup(ctx)
 }
 
+// ProviderList returns a snapshot of registered providers.
+func (c *Core) ProviderList() []Provider {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]Provider(nil), c.Providers...)
+}
+
 // Capabilities returns capability -> modules offering it.
 func (c *Core) Capabilities() map[string][]string {
 	c.mu.RLock()

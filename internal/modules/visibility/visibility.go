@@ -65,11 +65,7 @@ type flowState struct {
 	seenAt            time.Time
 }
 
-type appInfo struct {
-	Category string `json:"category"`
-	Breed    string `json:"breed"`
-	ID       int    `json:"id"`
-}
+type appInfo = core.AppInfo
 
 type iface struct {
 	ID   int    `json:"ifid"`
@@ -191,6 +187,15 @@ func (m *Module) Apps() map[string]appInfo {
 // ---------------------------------------------------------------- polling
 
 func (m *Module) loadCatalog() error {
+	var rawCats json.RawMessage
+	catNames := map[int]string{}
+	if err := m.nt.get("l7/category/consts.lua", nil, &rawCats); err == nil {
+		for _, c := range asList(rawCats) {
+			if n := c.str("name", "cat_name"); n != "" {
+				catNames[int(c.num("cat_id", "id"))] = n
+			}
+		}
+	}
 	var raw json.RawMessage
 	if err := m.nt.get("l7/application/consts.lua", nil, &raw); err != nil {
 		return err
@@ -201,11 +206,29 @@ func (m *Module) loadCatalog() error {
 		if name == "" {
 			continue
 		}
-		cat := a.str("cat_name", "category")
+		cat := a.str("cat_name")
 		if c := a.sub("category"); c != nil {
 			cat = c.str("name", "cat_name")
 		}
-		apps[name] = appInfo{Category: cat, Breed: a.str("breed"), ID: int(a.num("id", "app_id"))}
+		if cat == "" {
+			cat = catNames[int(a.num("cat_id"))]
+		}
+		apps[name] = appInfo{Category: cat, Breed: a.str("breed"), ID: int(a.num("appl_id", "id", "app_id"))}
+	}
+	// Breeds (Safe/Acceptable/Fun/Unsafe/Dangerous) come from the interface
+	// l7 breakdown, which lists only apps seen so far; merge what it knows.
+	var rawL7 json.RawMessage
+	if err := m.nt.get("interface/l7/data.lua", url.Values{"ifid": {"0"}}, &rawL7); err == nil {
+		for _, a := range asList(rawL7) {
+			app := a.sub("application")
+			if app == nil {
+				continue
+			}
+			if ai, ok := apps[app.str("name")]; ok {
+				ai.Breed = a.str("breed")
+				apps[app.str("name")] = ai
+			}
+		}
 	}
 	if len(apps) == 0 {
 		return fmt.Errorf("ntopng returned an empty application catalog")
@@ -295,9 +318,24 @@ func (m *Module) poll() error {
 		}
 		d := obj(data)
 		lab := map[string]string{"interface": ifc.Name}
+		bps, pps := d.num("throughput_bps"), d.num("throughput_pps")
+		if th := d.sub("throughput"); th != nil {
+			for _, dir := range []string{"upload", "download"} {
+				if x := th.sub(dir); x != nil {
+					bps += x.num("bps")
+					pps += x.num("pps")
+				}
+			}
+			if up := th.sub("upload"); up != nil {
+				metrics = append(metrics, core.Metric{Name: "throughput_upload_bps", Labels: lab, Value: up.num("bps")})
+			}
+			if dn := th.sub("download"); dn != nil {
+				metrics = append(metrics, core.Metric{Name: "throughput_download_bps", Labels: lab, Value: dn.num("bps")})
+			}
+		}
 		metrics = append(metrics,
-			core.Metric{Name: "throughput_bps", Labels: lab, Value: d.num("throughput_bps")},
-			core.Metric{Name: "throughput_pps", Labels: lab, Value: d.num("throughput_pps")},
+			core.Metric{Name: "throughput_bps", Labels: lab, Value: bps},
+			core.Metric{Name: "throughput_pps", Labels: lab, Value: pps},
 			core.Metric{Name: "active_flows", Labels: lab, Value: d.num("num_flows")},
 			core.Metric{Name: "active_hosts", Labels: lab, Value: d.num("num_hosts", "num_local_hosts")},
 			core.Metric{Name: "active_devices", Labels: lab, Value: d.num("num_devices")},
@@ -413,13 +451,20 @@ func (m *Module) decodeFlow(f obj, ifname string, now int64) (core.Flow, bool) {
 	if i := strings.Index(app, "."); i > 0 && i < len(app)-1 {
 		app = app[i+1:]
 	}
-	bytes := f.sub("bytes")
 	var in, out int64
-	if bytes != nil {
+	if bytes := f.sub("bytes"); bytes != nil {
 		out = bytes.i64("sent", "cli2srv")
 		in = bytes.i64("rcvd", "srv2cli")
 		if in == 0 && out == 0 {
 			out = bytes.i64("total")
+		}
+	} else if total := f.i64("bytes"); total > 0 {
+		// ntopng 6 gives a total plus a percentage breakdown per direction.
+		if bd := f.sub("breakdown"); bd != nil {
+			out = total * bd.i64("cli2srv") / 100
+			in = total - out
+		} else {
+			out = total
 		}
 	} else {
 		out = f.i64("cli2srv_bytes", "bytes_sent")
@@ -437,6 +482,11 @@ func (m *Module) decodeFlow(f obj, ifname string, now int64) (core.Flow, bool) {
 		key = ifname + "/" + key
 	}
 	domain := strings.TrimSpace(f.str("info", "server_name", "host_server_name", "sni"))
+	if domain == "" {
+		if n := srv.str("name"); n != "" && n != dstIP && net.ParseIP(n) == nil && !strings.Contains(n, "@") {
+			domain = strings.ToLower(strings.TrimSuffix(n, "."))
+		}
+	}
 	if strings.HasPrefix(domain, "http") {
 		if u, err := url.Parse(domain); err == nil {
 			domain = u.Host
