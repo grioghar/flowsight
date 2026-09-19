@@ -78,7 +78,7 @@ type Module struct {
 	dir    string
 	mu     sync.RWMutex
 	info   map[string]core.CategoryInfo
-	index  map[uint64]uint64   // fnv(domain) -> category bitmask (for Classify)
+	index  []indexEntry        // sorted by hash: fnv(domain) -> category bitmask (for Classify)
 	bits   []string            // bit -> category name
 	custom map[string][]string // operator-defined categories from settings
 }
@@ -112,7 +112,6 @@ func (m *Module) Setup(ctx *core.Context) error {
 		return err
 	}
 	m.info = map[string]core.CategoryInfo{}
-	m.index = map[uint64]uint64{}
 	m.loadCustom()
 	m.scan()
 	m.rebuildIndex()
@@ -352,7 +351,7 @@ func fetch(client *http.Client, url string) ([]string, error) {
 func (m *Module) rebuildIndex() {
 	if !core.Bool(m.ctx.Settings(), "classify", true) {
 		m.mu.Lock()
-		m.index, m.bits = map[uint64]uint64{}, nil
+		m.index, m.bits = nil, nil
 		m.mu.Unlock()
 		return
 	}
@@ -369,7 +368,7 @@ func (m *Module) rebuildIndex() {
 	custom := m.custom
 	m.mu.RUnlock()
 	sort.Slice(order, func(i, j int) bool { return order[i].n < order[j].n })
-	index := map[uint64]uint64{}
+	var entries []indexEntry
 	var bits []string
 	total := 0
 	for _, o := range order {
@@ -380,7 +379,7 @@ func (m *Module) rebuildIndex() {
 		bits = append(bits, o.name)
 		if list, ok := custom[o.name]; ok {
 			for _, d := range list {
-				index[fnv(d)] |= bit
+				entries = append(entries, indexEntry{fnv(d), bit})
 			}
 			total += len(list)
 			continue
@@ -393,15 +392,40 @@ func (m *Module) rebuildIndex() {
 		sc.Buffer(make([]byte, 64<<10), 1<<20)
 		for sc.Scan() {
 			if d := sc.Bytes(); len(d) > 0 {
-				index[fnvBytes(d)] |= bit
+				entries = append(entries, indexEntry{fnvBytes(d), bit})
 			}
 		}
 		f.Close()
 		total += o.n
 	}
+	// Sort and merge duplicates (a domain in several categories) so lookups
+	// are a binary search over 16 bytes per entry: two million names in
+	// about 32 MB, a third of what a map needs.
+	sort.Slice(entries, func(i, j int) bool { return entries[i].h < entries[j].h })
+	merged := entries[:0]
+	for _, e := range entries {
+		if n := len(merged); n > 0 && merged[n-1].h == e.h {
+			merged[n-1].mask |= e.mask
+			continue
+		}
+		merged = append(merged, e)
+	}
 	m.mu.Lock()
-	m.index, m.bits = index, bits
+	m.index, m.bits = merged, bits
 	m.mu.Unlock()
+}
+
+type indexEntry struct {
+	h    uint64
+	mask uint64
+}
+
+func (m *Module) lookup(h uint64) uint64 {
+	i := sort.Search(len(m.index), func(i int) bool { return m.index[i].h >= h })
+	if i < len(m.index) && m.index[i].h == h {
+		return m.index[i].mask
+	}
+	return 0
 }
 
 // fnv is a 64-bit FNV-1a hash; the index keys on it rather than on the
@@ -474,7 +498,7 @@ func (m *Module) Classify(domain string) []string {
 	var mask uint64
 	d := domain
 	for d != "" {
-		mask |= m.index[fnv(d)]
+		mask |= m.lookup(fnv(d))
 		i := strings.Index(d, ".")
 		if i < 0 {
 			break

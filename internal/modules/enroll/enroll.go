@@ -452,9 +452,8 @@ func (m *Module) reconcile() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.zones == nil || m.zones.Zones == nil {
-		return nil
-	}
+	// Zones are optional: without any, devices are still identified and
+	// listed; they simply have no zone to be placed in.
 
 	// Gather signals from all sources
 	signals := m.gatherSignals()
@@ -501,7 +500,10 @@ func (m *Module) reconcile() error {
 			delete(m.pendingAssign, mac)
 		} else if d.Zone == "" {
 			d.Zone = zone
-			if d.Zone == "" {
+			// Unidentified devices go to the captive zone only when such a
+			// zone is actually defined; with no zones at all they simply
+			// stay unassigned.
+			if d.Zone == "" && m.hasZone(m.zones.CaptiveZone) {
 				d.Zone = m.zones.CaptiveZone
 			}
 		}
@@ -512,17 +514,84 @@ func (m *Module) reconcile() error {
 	return nil
 }
 
-// gatherSignals collects device information from leases, ARP, identity service, etc.
+// hasZone reports whether a zone with this id is defined.
+func (m *Module) hasZone(id string) bool {
+	if id == "" || m.zones == nil {
+		return false
+	}
+	for _, z := range m.zones.Zones {
+		if z != nil && z.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// gatherSignals folds every source of device identity into one record per
+// MAC: the hosts table (which the identity module fills from leases, ARP and
+// NDP), the OUI registry, and the DHCP transactions parsed from the dnsmasq
+// log, which alone carry the vendor class and option fingerprint.
 func (m *Module) gatherSignals() map[string]*Signal {
 	signals := map[string]*Signal{}
-
-	// From identity service
-	if m.identity != nil {
-		// Get all known addresses and their MACs
-		// This is a simplification; a real implementation would query
-		// the identity service's known hosts more thoroughly
+	rows, _ := m.ctx.Store.Rows(`SELECT ip, mac, name, vendor, last_seen FROM hosts
+		WHERE mac IS NOT NULL AND mac<>'' AND is_local=1 AND last_seen >= ? ORDER BY last_seen DESC`,
+		time.Now().Add(-7*24*time.Hour).Unix())
+	for _, r := range rows {
+		mac := strings.ToLower(getStr(r, "mac"))
+		if mac == "" || isPseudoMAC(strings.ToUpper(mac)) {
+			continue
+		}
+		sig := signals[mac]
+		if sig == nil {
+			sig = &Signal{MAC: mac}
+			signals[mac] = sig
+		}
+		ip := getStr(r, "ip")
+		if strings.Contains(ip, ":") {
+			if sig.IP6 == "" {
+				sig.IP6 = ip
+			}
+		} else if sig.IP == "" {
+			sig.IP = ip
+		}
+		if sig.Hostname == "" {
+			sig.Hostname = getStr(r, "name")
+		}
+		if sig.Vendor == "" {
+			sig.Vendor = getStr(r, "vendor")
+		}
 	}
-
+	if m.identity != nil {
+		for mac, sig := range signals {
+			if sig.Vendor == "" {
+				sig.Vendor = m.identity.Vendor(mac)
+			}
+		}
+	}
+	m.txnMu.Lock()
+	for _, t := range m.txnState {
+		if t.mac == "" {
+			continue
+		}
+		sig := signals[t.mac]
+		if sig == nil {
+			sig = &Signal{MAC: t.mac}
+			signals[t.mac] = sig
+		}
+		if t.ip != "" && sig.IP == "" {
+			sig.IP = t.ip
+		}
+		if t.hostname != "" {
+			sig.Hostname = t.hostname
+		}
+		if t.vendorClass != "" {
+			sig.VendorClass = t.vendorClass
+		}
+		if t.fingerprint != "" {
+			sig.Fingerprint = t.fingerprint
+		}
+	}
+	m.txnMu.Unlock()
 	return signals
 }
 
@@ -886,8 +955,10 @@ func (m *Module) apiDevices(r *core.Req) (any, error) {
 	sort.Slice(devices, func(i, j int) bool {
 		return devices[i].MAC < devices[j].MAC
 	})
-
-	return devices, nil
+	if devices == nil {
+		devices = []*Device{}
+	}
+	return map[string]any{"devices": devices}, nil
 }
 
 func (m *Module) matchesQuery(d *Device, q string) bool {

@@ -271,10 +271,14 @@ func (c *Core) apiInfo(r *Req) (any, error) {
 	if site == "" {
 		site = host
 	}
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
 	return map[string]any{"version": c.Version, "platform": c.Platform, "hostname": host,
 		"site": site, "started": c.Started.Unix(), "uptime": int(time.Since(c.Started).Seconds()),
 		"user": r.User, "go": runtime.Version(), "auth": cs.APIToken != "",
-		"read_only": c.ReadOnly()}, nil
+		"read_only": c.ReadOnly(), "goroutines": runtime.NumGoroutine(),
+		"memory": map[string]any{"heap_alloc": ms.HeapAlloc, "heap_sys": ms.HeapSys, "heap_inuse": ms.HeapInuse,
+			"heap_released": ms.HeapReleased, "sys": ms.Sys, "num_gc": ms.NumGC}}, nil
 }
 
 func (c *Core) apiHealth(r *Req) (any, error) {

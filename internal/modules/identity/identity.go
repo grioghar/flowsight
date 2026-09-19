@@ -128,7 +128,7 @@ func (m *Module) IsLocal(ip string) bool {
 	if p == nil {
 		return false
 	}
-	if p.IsLoopback() || p.IsLinkLocalUnicast() || p.IsPrivate() {
+	if p.IsLoopback() || p.IsLinkLocalUnicast() {
 		return true
 	}
 	m.mu.RLock()
@@ -138,7 +138,11 @@ func (m *Module) IsLocal(ip string) bool {
 			return true
 		}
 	}
-	return false
+	// Before the interface scan has run there is nothing to compare against;
+	// RFC1918 is the best guess then. Once local networks are known, an
+	// RFC1918 address outside them (a double-NAT WAN, an upstream router) is
+	// not local.
+	return len(m.nets) == 0 && p.IsPrivate()
 }
 
 func (m *Module) LocalNetworks() []string {

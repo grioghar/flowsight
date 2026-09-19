@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -348,28 +349,27 @@ func (m *Module) analyse() error {
 	return nil
 }
 
-// getRulesetLoadTime extracts the load time from `pfctl -si` output.
-// Example: "State Table                          Total             Rate"
-//
-//	"  current entries                        0"
-//
-// And later: "Loaded at Thu Mar 15 14:30:45 2026 by root"
+// getRulesetLoadTime returns the unix time the ruleset was loaded, or 0 when
+// pfctl does not say. FreeBSD prints "Status: Enabled for 0 days 01:32:10";
+// some builds print "Loaded at <date> by <user>". Unknown means "not long
+// enough": counters that cannot be dated must not produce findings.
 func getRulesetLoadTime(infoOut string) int64 {
-	re := regexp.MustCompile(`Loaded at (.+) by`)
-	if m := re.FindStringSubmatch(infoOut); m != nil {
-		// Try to parse various time formats.
-		layouts := []string{
-			"Mon Jan 2 15:04:05 2006",
-			"Mon Jan _2 15:04:05 2006",
-		}
-		for _, layout := range layouts {
-			if t, err := time.Parse(layout, m[1]); err == nil {
-				return time.Now().Unix() - int64(time.Since(t).Seconds())
+	if m := regexp.MustCompile(`Enabled for (\d+) days (\d+):(\d+):(\d+)`).FindStringSubmatch(infoOut); m != nil {
+		d, _ := strconv.Atoi(m[1])
+		h, _ := strconv.Atoi(m[2])
+		mi, _ := strconv.Atoi(m[3])
+		sec, _ := strconv.Atoi(m[4])
+		elapsed := int64(d*86400 + h*3600 + mi*60 + sec)
+		return time.Now().Unix() - elapsed
+	}
+	if m := regexp.MustCompile(`Loaded at (.+) by`).FindStringSubmatch(infoOut); m != nil {
+		for _, layout := range []string{"Mon Jan 2 15:04:05 2006", "Mon Jan _2 15:04:05 2006"} {
+			if t, err := time.Parse(layout, strings.TrimSpace(m[1])); err == nil {
+				return t.Unix()
 			}
 		}
 	}
-	// Fallback: assume recent if we can't parse.
-	return int64(time.Now().Unix() - 3600)
+	return 0
 }
 
 // findIssues analyses rules for policy issues.
@@ -390,6 +390,14 @@ func (m *Module) findIssues(rules []Rule, rulesetLoadedSec int64) AnalysisResult
 		Findings:         make(map[string][]Finding),
 		RulesetLoadedSec: rulesetLoadedSec,
 	}
+	// rulesetLoadedSec is the load time; counters are only meaningful for the
+	// time elapsed since then, and not at all when it is unknown.
+	var elapsed int64
+	if rulesetLoadedSec > 0 {
+		elapsed = time.Now().Unix() - rulesetLoadedSec
+	}
+	elapsedDays := float64(elapsed) / 86400
+	oldEnough := elapsed >= minLoadHours*3600
 
 	// Iterate rules and identify issues.
 	for i, rule := range rules {
@@ -400,30 +408,32 @@ func (m *Module) findIssues(rules []Rule, rulesetLoadedSec int64) AnalysisResult
 
 		result.RulesAnalysed++
 
-		// Check for shadowing (never evaluated).
-		if rule.Evaluations == 0 && rulesetLoadedSec >= minLoadHours*3600 {
+		// Never evaluated: pf skips a rule whose interface or direction does not
+		// match, so zero evaluations usually means "no such traffic", not "an
+		// earlier rule wins". Report it as informational, not as shadowing;
+		// real shadowing needs a coverage comparison that is not done yet.
+		if rule.Evaluations == 0 && oldEnough {
 			findings := result.Findings[rule.Text]
 			findings = append(findings, Finding{
-				Kind:     "shadowed",
-				Severity: "medium",
+				Kind:     "never-evaluated",
+				Severity: "info",
 				Subject:  fmt.Sprintf("rule %d", i),
-				Title:    "Rule never evaluated—an earlier rule always matches",
-				Detail:   fmt.Sprintf("pf has not evaluated this rule once in %.1f days. It cannot affect traffic while an earlier rule matches first.", float64(rulesetLoadedSec)/86400),
+				Title:    "Rule never evaluated since the ruleset was loaded",
+				Detail:   fmt.Sprintf("pf has not considered this rule in %.1f days: no traffic matched its interface and direction, or an earlier quick rule always wins.", elapsedDays),
 			})
 			result.Findings[rule.Text] = findings
-			result.RiskScore += 4 // medium
 			continue
 		}
 
-		// Check for unused (high evals, zero packets).
-		if rule.Packets == 0 && rule.Evaluations >= minEvals && rulesetLoadedSec >= minLoadHours*3600 {
+		// Evaluated often, never matched: a candidate for removal.
+		if rule.Packets == 0 && rule.Evaluations >= minEvals && oldEnough {
 			findings := result.Findings[rule.Text]
 			findings = append(findings, Finding{
 				Kind:     "unused",
 				Severity: "low",
 				Subject:  fmt.Sprintf("rule %d", i),
 				Title:    fmt.Sprintf("Evaluated %d times, never matched", rule.Evaluations),
-				Detail:   fmt.Sprintf("Considered often but matched no traffic in %.1f days. Could be dead weight or an intentional catch-all.", float64(rulesetLoadedSec)/86400),
+				Detail:   fmt.Sprintf("Considered often but matched no traffic in %.1f days. Could be dead weight or an intentional catch-all.", elapsedDays),
 			})
 			result.Findings[rule.Text] = findings
 			result.RiskScore += 1 // low
