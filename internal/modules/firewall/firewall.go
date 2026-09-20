@@ -277,7 +277,13 @@ func (m *Module) refreshLocal() error {
 	// that references it) would give each anchor its own empty copy, and
 	// "to ! <local>" would then match everything.
 	if !m.legacyLocalFlushed {
+		// Earlier releases defined the table inside anchors; a persist
+		// table outlives the rules that defined it, so kill those copies
+		// or they keep shadowing the root table.
 		_ = m.FlushAnchor("local")
+		for _, a := range []string{"local", "policy", "web"} {
+			_, _ = m.pfctl("-a", rootAnchor+"/"+a, "-t", m.LocalTable(), "-T", "kill")
+		}
 		m.legacyLocalFlushed = true
 	}
 	return m.tableCmd("", m.LocalTable(), "replace", nets)
