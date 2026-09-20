@@ -34,6 +34,9 @@ type squidParams struct {
 	ExclDomains         []string
 	DNSServers          []string
 	Workers             int
+	// V6Listener is an address the firewall owns on the LAN (a unique local
+	// address works well); pf cannot redirect LAN traffic to [::1].
+	V6Listener string
 }
 
 type squidPolicy struct {
@@ -100,6 +103,10 @@ func (p squidParams) render() (string, map[string]string) {
 	}
 	w("https_port 127.0.0.1:%d intercept%s", p.HTTPSPort, ssl)
 	w("https_port [::1]:%d intercept%s", p.HTTPSPort, ssl)
+	if p.V6Listener != "" {
+		w("http_port [%s]:%d intercept", p.V6Listener, p.HTTPPort)
+		w("https_port [%s]:%d intercept%s", p.V6Listener, p.HTTPSPort, ssl)
+	}
 	w("")
 	if p.CAPath != "" {
 		w("sslcrtd_program %s -s %s -M 16MB", p.CertgenBin, p.CertDB)
@@ -285,8 +292,10 @@ func pfRules(lanIfaces []string, nets []string, exclusions []string, httpPort, h
 		fmt.Fprintf(&b, "rdr %sinet proto tcp from %s to ! <%s> port 80 -> 127.0.0.1 port %d\n", on, src, localTable, httpPort)
 		fmt.Fprintf(&b, "rdr %sinet proto tcp from %s to ! <%s> port 443 -> 127.0.0.1 port %d\n", on, src, localTable, httpsPort)
 		if v6Listener != "" {
-			fmt.Fprintf(&b, "rdr %sinet6 proto tcp from any to ! <%s> port 80 -> %s port %d\n", on, localTable, v6Listener, httpPort)
-			fmt.Fprintf(&b, "rdr %sinet6 proto tcp from any to ! <%s> port 443 -> %s port %d\n", on, localTable, v6Listener, httpsPort)
+			// IPv6 clients hold global addresses, so the local table (which
+			// carries the LAN prefixes) is the source, not a literal list.
+			fmt.Fprintf(&b, "rdr %sinet6 proto tcp from <%s> to ! <%s> port 80 -> %s port %d\n", on, localTable, localTable, v6Listener, httpPort)
+			fmt.Fprintf(&b, "rdr %sinet6 proto tcp from <%s> to ! <%s> port 443 -> %s port %d\n", on, localTable, localTable, v6Listener, httpsPort)
 		}
 	}
 	_ = core.CapWebBlock

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -137,6 +138,7 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 		CertgenBin: m.certgenBin(), BlockPageURL: firstNonEmpty(doc.Options.BlockPageURL, m.blockPageURL()),
 		PeekServerCert: core.Bool(s, "peek_server_cert", false), Policies: pols, Exclusions: excluded,
 		ExclDomains: doc.Exclusions.Domains, DNSServers: dns, Workers: core.Int(s, "workers", 1),
+		V6Listener: v6Listener(s),
 	}
 	_, files := params.render()
 	out := map[string]string{}
@@ -149,7 +151,7 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 	}
 	rdr := ""
 	if m.wanted() {
-		rdr = pfRules(core.Strs(s, "interfaces"), v4nets, excluded, params.HTTPPort, params.HTTPSPort, localTable, "")
+		rdr = pfRules(core.Strs(s, "interfaces"), v4nets, excluded, params.HTTPPort, params.HTTPSPort, localTable, params.V6Listener)
 	}
 	out[filepath.Join(m.dir, "pf-web.conf")] = rdr
 	note := fmt.Sprintf("%d web polic(ies)", len(pols))
@@ -157,6 +159,27 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 		note += ", interception off"
 	}
 	return core.Artifact{Files: out, Note: note}, nil
+}
+
+// v6Listener returns the configured IPv6 listener address when it is a valid,
+// non-loopback IPv6 address the firewall actually holds; anything else is
+// ignored so a typo cannot blackhole IPv6 web traffic.
+func v6Listener(s map[string]any) string {
+	v := strings.TrimSpace(core.Str(s, "ipv6_listener", ""))
+	if v == "" {
+		return ""
+	}
+	ip := net.ParseIP(v)
+	if ip == nil || ip.To4() != nil || ip.IsLoopback() {
+		return ""
+	}
+	addrs, _ := net.InterfaceAddrs()
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && n.IP.Equal(ip) {
+			return ip.String()
+		}
+	}
+	return ""
 }
 
 // pfGroup returns the group that may open /dev/pf, when one is set up.

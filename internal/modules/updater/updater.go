@@ -36,6 +36,7 @@ type Module struct {
 
 	latest    *Manifest
 	lastCheck time.Time
+	noRelease bool
 	lastError string
 }
 
@@ -123,6 +124,9 @@ func (m *Module) Health() core.Health {
 	if m.lastCheck.IsZero() {
 		return core.Health{OK: true, Detail: "checking for updates"}
 	}
+	if m.noRelease {
+		return core.Health{OK: true, Detail: "no release published at the manifest URL yet"}
+	}
 	return core.Health{OK: true, Detail: fmt.Sprintf("last checked %s ago",
 		time.Since(m.lastCheck).Round(time.Second))}
 }
@@ -130,9 +134,18 @@ func (m *Module) Health() core.Health {
 func (m *Module) checkForUpdates() error {
 	manifest, err := m.fetchManifest()
 	if err != nil {
+		// No release published yet is the normal state of a development
+		// install, not a fault.
+		if strings.Contains(err.Error(), "404") {
+			m.lastError = ""
+			m.lastCheck = time.Now()
+			m.noRelease = true
+			return nil
+		}
 		m.lastError = fmt.Sprintf("manifest fetch failed: %v", err)
 		return nil
 	}
+	m.noRelease = false
 
 	m.latest = manifest
 	m.lastCheck = time.Now()

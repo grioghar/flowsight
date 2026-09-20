@@ -45,8 +45,9 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 	for _, c := range doc.ExcludedCIDRs(res) {
 		excluded[c] = true
 	}
+	// Deliberately not defined here: the firewall module keeps it in the
+	// root ruleset and anchor rules resolve to it by name.
 	local := p.m.LocalTable()
-	fmt.Fprintf(&b, "table <%s> persist\n", local)
 	var rules []string
 	tables := 0
 	for i := range doc.Policies {

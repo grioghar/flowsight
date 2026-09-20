@@ -28,12 +28,13 @@ func init() { core.Register(func() core.Module { return &Module{} }) }
 const rootAnchor = "flowsight"
 
 type Module struct {
-	ctx      *core.Context
-	dir      string
-	mu       sync.Mutex
-	lastErr  string
-	identity core.Identity
-	loaded   map[string]string // anchor -> hash of rules loaded
+	legacyLocalFlushed bool
+	ctx                *core.Context
+	dir                string
+	mu                 sync.Mutex
+	lastErr            string
+	identity           core.Identity
+	loaded             map[string]string // anchor -> hash of rules loaded
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -270,8 +271,16 @@ func (m *Module) refreshLocal() error {
 	}
 	nets = append(nets, "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7", "fe80::/10",
 		"127.0.0.0/8", "::1/128", "169.254.0.0/16", "224.0.0.0/4", "ff00::/8")
-	rules := "table <" + m.LocalTable() + "> persist { " + strings.Join(nets, ", ") + " }\n"
-	return m.LoadAnchor("local", rules)
+	// The table must live in the root ruleset: a rule inside an anchor that
+	// names a table the anchor does not define falls through to the root
+	// table of that name. Defining it inside an anchor (or inside the anchor
+	// that references it) would give each anchor its own empty copy, and
+	// "to ! <local>" would then match everything.
+	if !m.legacyLocalFlushed {
+		_ = m.FlushAnchor("local")
+		m.legacyLocalFlushed = true
+	}
+	return m.tableCmd("", m.LocalTable(), "replace", nets)
 }
 
 // checkAnchor verifies the main ruleset references our anchor and records a
