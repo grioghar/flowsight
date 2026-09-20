@@ -32,13 +32,6 @@ never increments a counter.
 
 ## IPv6
 
-Interception of IPv6 needs a listener that is not `::1` (pf cannot redirect
-across interfaces to an IPv6 loopback) and a stable address, so the module
-expects a unique local address on the LAN when IPv6 interception is enabled.
-Until that setting exists, IPv6 web traffic is observed by nDPI and DNS only.
-
-## IPv6
-
 pf cannot redirect LAN traffic to `[::1]`, so IPv6 interception needs an
 address the firewall holds on the LAN. Set the web module's
 **IPv6 listener address** (`ipv6_listener`) to one, typically a unique local
