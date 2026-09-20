@@ -22,9 +22,14 @@ import (
 
 func init() { core.Register(func() core.Module { return &Module{} }) }
 
-// PublicKeyBase64 holds the base64-encoded ed25519 public key for signature verification.
-// This must be set by the release pipeline before building. An empty value refuses updates.
-const PublicKeyBase64 = ""
+// PublicKeyBase64 holds the base64-encoded ed25519 public key that release
+// assets are verified against. Release builds set it with
+//
+//	-ldflags "-X github.com/grioghar/flowsight/internal/modules/updater.PublicKeyBase64=<key>"
+//
+// (see packaging/release/release.sh). A build without it refuses to apply
+// updates, so a developer build can never be replaced by an unsigned binary.
+var PublicKeyBase64 = ""
 
 // Module checks for and applies updates to the daemon.
 type Module struct {
@@ -150,11 +155,26 @@ func (m *Module) checkForUpdates() error {
 	m.latest = manifest
 	m.lastCheck = time.Now()
 	m.lastError = ""
+	if core.Bool(m.ctx.Settings(), "auto_apply", false) && PublicKeyBase64 != "" &&
+		compareVersions(m.ctx.Core.Version, manifest.Version) < 0 {
+		if _, err := m.apiApply(nil); err != nil {
+			m.lastError = fmt.Sprintf("automatic update to %s failed: %v", manifest.Version, err)
+		}
+	}
 	return nil
 }
 
+// url returns the manifest URL as currently configured, so a change made in
+// the settings page takes effect at the next check without a restart.
+func (m *Module) url() string {
+	if u := strings.TrimSpace(core.Str(m.ctx.Settings(), "manifest_url", "")); u != "" {
+		m.manifestURL = u
+	}
+	return m.manifestURL
+}
+
 func (m *Module) fetchManifest() (*Manifest, error) {
-	req, _ := http.NewRequest("GET", m.manifestURL, nil)
+	req, _ := http.NewRequest("GET", m.url(), nil)
 	resp, err := m.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -193,6 +213,9 @@ func (m *Module) apiStatus(req *core.Req) (any, error) {
 	if m.lastError != "" {
 		status["error"] = m.lastError
 	}
+	status["manifest_url"] = m.url()
+	status["no_release"] = m.noRelease
+	status["signed_builds"] = PublicKeyBase64 != ""
 
 	return status, nil
 }
@@ -211,7 +234,11 @@ func (m *Module) apiApply(req *core.Req) (any, error) {
 
 	if PublicKeyBase64 == "" {
 		return nil, core.Errorf(403, "update signature verification not configured "+
-			"(PublicKeyBase64 is empty; release pipeline must set it)")
+			"(this build carries no release public key)")
+	}
+	if compareVersions(m.ctx.Core.Version, m.latest.Version) >= 0 {
+		return nil, core.BadRequest("already running %s; the manifest offers %s",
+			m.ctx.Core.Version, m.latest.Version)
 	}
 
 	asset := m.findAsset()

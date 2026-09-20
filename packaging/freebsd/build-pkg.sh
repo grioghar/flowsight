@@ -113,5 +113,8 @@ fi
 EOF
 
 (cd "$STAGE" && find usr -type f | sed 's#^#/#' | sort > "$STAGE/plist")
-pkg create -r "$STAGE" -m "$STAGE" -p "$STAGE/plist" -o "$OUT" -f txz
-ls -la "$OUT"/os-flowsight-"$VERSION".*
+mkdir -p "$STAGE/pkgout"
+pkg create -r "$STAGE" -m "$STAGE" -p "$STAGE/plist" -o "$STAGE/pkgout" -f txz
+# One file name per architecture, so several can sit in one release directory.
+mv "$STAGE"/pkgout/os-flowsight-"$VERSION".* "$OUT/os-flowsight-$VERSION-$ARCH.pkg"
+ls -la "$OUT/os-flowsight-$VERSION-$ARCH.pkg"
