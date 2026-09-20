@@ -49,16 +49,16 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 
 	// Run scheduler job every 10 minutes
-	ctx.Every("scheduler", 10*time.Minute, m.sendDueReports)
+	ctx.Every("scheduler", 10*time.Minute, m.sendDueReports, core.NeedsJob("reports.schedule"))
 
 	// API routes
 	ctx.Route("GET", "/api/reports/preview", m.apiPreview, core.Doc("Generate and preview a report as HTML"),
 		core.Params("hours", "window"))
-	ctx.Route("GET", "/api/reports/export", m.apiExport, core.Doc("Export data as CSV"),
+	ctx.Route("GET", "/api/reports/export", m.apiExport, core.Needs("reports.schedule"), core.Doc("Export data as CSV"),
 		core.Params("kind", "flows|dns|alerts|hosts", "hours", "window"))
-	ctx.Route("GET", "/api/reports/schedules", m.apiGetSchedules, core.Doc("List report schedules"))
-	ctx.Route("POST", "/api/reports/schedules", m.apiSetSchedules, core.Write(), core.Doc("Replace report schedules"))
-	ctx.Route("POST", "/api/reports/run", m.apiRunReport, core.Write(), core.Doc("Generate and send a report now"))
+	ctx.Route("GET", "/api/reports/schedules", m.apiGetSchedules, core.Needs("reports.schedule"), core.Doc("List report schedules"))
+	ctx.Route("POST", "/api/reports/schedules", m.apiSetSchedules, core.Needs("reports.schedule"), core.Write(), core.Doc("Replace report schedules"))
+	ctx.Route("POST", "/api/reports/run", m.apiRunReport, core.Needs("reports.schedule"), core.Write(), core.Doc("Generate and send a report now"))
 
 	ctx.Panel(core.Panel{ID: "reports", Title: "Reports", Group: "Operations", Order: 180, Icon: "reports"})
 

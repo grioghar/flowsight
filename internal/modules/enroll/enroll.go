@@ -213,7 +213,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("POST", "/api/enroll/rules", m.apiSetRules, core.Write(), core.Doc("Update rules"))
 	ctx.Route("POST", "/api/enroll/assign", m.apiAssign, core.Write(), core.Doc("Assign device to zone"))
 	ctx.Route("POST", "/api/enroll/reconcile", m.apiReconcile, core.Write(), core.Doc("Re-classify devices"))
-	ctx.Route("POST", "/api/enroll/apply", m.apiApply, core.Write(), core.Doc("Apply enforcement"))
+	ctx.Route("POST", "/api/enroll/apply", m.apiApply, core.Write(), core.Needs("device.enroll"), core.Doc("Apply enforcement"))
 	ctx.Route("GET", "/api/enroll/plan", m.apiPlan, core.Doc("Plan of what apply would do"))
 	ctx.Route("POST", "/api/enroll/mode", m.apiSetMode, core.Write(), core.Doc("Set monitor/enforce mode"))
 
@@ -1125,6 +1125,11 @@ func (m *Module) apiSetMode(r *core.Req) (any, error) {
 
 	if req.Mode != "monitor" && req.Mode != "enforce" {
 		return nil, core.BadRequest("mode must be monitor or enforce")
+	}
+	if req.Mode == "enforce" {
+		if err := m.ctx.License().Allowed("device.enroll"); err != nil {
+			return nil, err
+		}
 	}
 
 	m.mu.Lock()

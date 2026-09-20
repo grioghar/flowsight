@@ -68,7 +68,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Publish("ca", m)
 	ctx.Every("findings", 15*time.Minute, m.findings, core.Delayed())
 	ctx.Route("GET", "/api/tls/ca", m.apiCA, core.Doc("The inspection CA: subject, fingerprint, validity, whether it exists"))
-	ctx.Route("POST", "/api/tls/ca/create", m.apiCreate, core.Write(), core.Doc("Create (or replace) the inspection CA"))
+	ctx.Route("POST", "/api/tls/ca/create", m.apiCreate, core.Write(), core.Needs("tls.inspect"), core.Doc("Create (or replace) the inspection CA"))
 	ctx.Route("POST", "/api/tls/ca/delete", m.apiDelete, core.Write(), core.Doc("Delete the inspection CA; inspection stops"))
 	ctx.Route("GET", "/api/tls/ca/download", m.apiDownload, core.Doc("The CA certificate in PEM (or DER with ?format=der) for installing on devices"))
 	ctx.Route("GET", "/api/tls/certs", m.apiCerts, core.Doc("Certificates seen on the network"),

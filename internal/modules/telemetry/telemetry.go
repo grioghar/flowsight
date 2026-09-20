@@ -32,6 +32,7 @@ func (m *Module) Info() core.ModuleInfo {
 	return core.ModuleInfo{
 		Name:        "telemetry",
 		Version:     "1.0",
+		Tier:        "business",
 		Description: "Export metrics, events and alerts to an OpenTelemetry/HTTP endpoint (Grafana Mimir/Loki).",
 		Defaults: map[string]any{
 			"enabled":          false,
@@ -84,7 +85,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.lastShipped = time.Now().Unix()
 
 	interval := time.Duration(core.Int(settings, "interval_seconds", 30)) * time.Second
-	ctx.Every("export", interval, m.export, core.Delayed())
+	ctx.Every("export", interval, m.export, core.NeedsJob("telemetry.export"), core.Delayed())
 
 	ctx.Route("GET", "/api/telemetry/status", m.apiStatus,
 		core.Doc("Last telemetry export status"))

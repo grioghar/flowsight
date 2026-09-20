@@ -9,8 +9,10 @@ names `os-flowsight-<arch>.pkg`), the Debian packages `flowsight_<ver>_<arch>.de
 
 ## Keys
 
-Release binaries carry the ed25519 public key `packaging/release/signing.pub`,
-injected at build time; the private key never enters the repo (default path
+Release binaries carry two ed25519 public keys injected at build time:
+`packaging/release/signing.pub` (release assets, checked by the updater) and
+`packaging/release/license.pub` (license documents, checked by the license
+module; the matching private key lives on the license server); the private key never enters the repo (default path
 `~/.config/flowsight-release/signing.key`, or `$FLOWSIGHT_SIGNING_KEY`). A
 binary built without the key refuses to self-update. Rotating the key means
 shipping one release signed by the old key that carries the new public key.

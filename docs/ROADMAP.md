@@ -46,3 +46,10 @@
 - Reimplementing DPI. nDPI is better than anything this project would write.
 - A packet engine of our own in the forwarding path.
 - A cloud dependency of any kind.
+
+## Licensing (done 2026-09-20)
+
+- Tiers Community / Pro / Business with a feature catalogue, limits and soft expiry (`docs/LICENSING.md`).
+- Online activation with seat counting, lease refresh and revocation; offline signed license files.
+- License server `flowsight-licensed` (SQLite, admin API and CLI).
+- Follow-ups: Business features that are gated but not built yet (directory identity, multiple administrators) and a shop/billing hook on the admin API.

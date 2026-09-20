@@ -2,7 +2,7 @@
 'use strict';
 (function () {
   const { $, $$, esc, get } = FS;
-  const ICONS = { overview: '◉', hosts: '▣', flows: '⇄', apps: '◇', web: '◍', dns: '◎', threats: '⚠', tls: '🔒', policy: '☰', groups: '⦿', categories: '▤', firewall: '▦', enroll: '⌂', reports: '▥', alerts: '🔔', system: '⚙', findings: '✓', events: '≡', modules: '⚙', audit: '≡' };
+  const ICONS = { license: '◈', overview: '◉', hosts: '▣', flows: '⇄', apps: '◇', web: '◍', dns: '◎', threats: '⚠', tls: '🔒', policy: '☰', groups: '⦿', categories: '▤', firewall: '▦', enroll: '⌂', reports: '▥', alerts: '🔔', system: '⚙', findings: '✓', events: '≡', modules: '⚙', audit: '≡' };
   const ORDER = { Visibility: 1, Security: 2, Policy: 3, Operations: 4 };
   let timer = null;
 
@@ -17,10 +17,10 @@
       { id: 'system', title: 'System', group: 'Operations', order: 220 }, { id: 'modules', title: 'Settings', group: 'Operations', order: 230 });
     const groups = {};
     panels.forEach(x => { (groups[x.group || 'Other'] = groups[x.group || 'Other'] || []).push(x); });
-    const html = Object.keys(groups).sort((a, b) => (ORDER[a] || 9) - (ORDER[b] || 9)).map(g => `<div class="group">${esc(g)}</div>` + groups[g].sort((a, b) => a.order - b.order).map(x => `<a href="#${esc(x.id)}" data-page="${esc(x.id)}"><span class="ico">${ICONS[x.icon || x.id] || '•'}</span>${esc(x.title)}</a>`).join('')).join('');
+    const html = Object.keys(groups).sort((a, b) => (ORDER[a] || 9) - (ORDER[b] || 9)).map(g => `<div class="group">${esc(g)}</div>` + groups[g].sort((a, b) => a.order - b.order).map(x => `<a href="#${esc(x.id)}" data-page="${esc(x.id)}" ${x.locked ? 'title="Requires the ' + esc(x.required) + ' tier"' : ''}><span class="ico">${ICONS[x.icon || x.id] || '•'}</span>${esc(x.title)}${x.locked ? '<span class="lock">🔒</span>' : ''}</a>`).join('')).join('');
     $('#menu').innerHTML = html;
     $('#site').textContent = info.site || '';
-    $('#version').textContent = 'v' + (info.version || '');
+    $('#version').textContent = 'v' + (info.version || '') + (p.tier && p.tier !== 'community' ? ' · ' + FS.tierName(p.tier) : '');
     if (info.read_only) $('#version').textContent += ' · read-only';
   }
 

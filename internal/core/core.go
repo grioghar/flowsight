@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/grioghar/flowsight/internal/licensing"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -209,7 +210,9 @@ func (c *Core) Run(stop <-chan struct{}) error {
 	c.Scheduler.Add(&Job{Name: "rollup", Module: "core", Every: 5 * time.Minute,
 		Fn: c.Store.Rollup, nextRun: time.Now().Add(20 * time.Second)})
 	c.Scheduler.Add(&Job{Name: "prune", Module: "core", Every: time.Hour,
-		Fn:      func() error { return c.Store.Prune(c.Config.Core().Retention) },
+		Fn: func() error {
+			return c.Store.Prune(CapRetention(c.Config.Core().Retention, c.License().Limit(licensing.LimitRetentionDays)))
+		},
 		nextRun: time.Now().Add(2 * time.Minute)})
 	c.Scheduler.Start()
 	_ = c.Store.AddEvents([]Event{{TS: time.Now().Unix(), Kind: "system", Source: "core",
@@ -353,7 +356,18 @@ func (c *Core) apiPanels(r *Req) (any, error) {
 		}
 		return ps[i].Title < ps[j].Title
 	})
-	return map[string]any{"panels": ps}, nil
+	lic := c.License()
+	out := make([]map[string]any, 0, len(ps))
+	for _, p := range ps {
+		row := map[string]any{"id": p.ID, "title": p.Title, "group": p.Group, "order": p.Order, "icon": p.Icon, "detail": p.Detail}
+		if p.Feature != "" {
+			row["feature"] = p.Feature
+			row["required"] = licensing.FeatureTier(p.Feature)
+			row["locked"] = lic.Allowed(p.Feature) != nil
+		}
+		out = append(out, row)
+	}
+	return map[string]any{"panels": out, "tier": lic.Tier()}, nil
 }
 
 func (c *Core) apiModules(r *Req) (any, error) {
@@ -448,6 +462,17 @@ func (c *Core) apiModuleSave(r *Req) (any, error) {
 		case "list":
 			if _, ok := v.([]any); !ok {
 				return nil, BadRequest("%s must be a list", k)
+			}
+		}
+	}
+	if info.Tier != "" {
+		if en, ok := in.Settings["enabled"].(bool); ok && en {
+			if cur := c.License().Tier(); licensing.Rank(cur) < licensing.Rank(info.Tier) {
+				return nil, &Error{Status: 402, Message: fmt.Sprintf("the %s module requires the %s tier (this installation is %s)", in.Module, info.Tier, cur),
+					Extra: map[string]any{"locked": true, "required": info.Tier, "tier": cur}}
+			}
+			if c.License().Expired() {
+				return nil, ExpiredError("module:" + in.Module)
 			}
 		}
 	}

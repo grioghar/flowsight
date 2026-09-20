@@ -17,8 +17,12 @@ FS.api = async function (path, opts) {
   if (!ct.includes('json')) { const t = await r.text(); return r.ok ? { text: t } : { error: t.slice(0, 200) || ('HTTP ' + r.status) }; }
   let d; try { d = await r.json(); } catch (e) { return { error: 'bad JSON from ' + path }; }
   if (!r.ok && !d.error) d.error = 'HTTP ' + r.status;
+  if (r.status === 402 && d.locked) FS.lastLock = d;
   return d;
 };
+FS.lastLock = null;
+FS.tierName = (t) => ({ community: 'Community', pro: 'Pro', business: 'Business' })[t] || t;
+FS.lockCard = (d) => `<div class="card lock"><h3>${FS.esc(FS.tierName(d.required || 'pro'))} feature</h3><p>${FS.esc(d.error || '')}</p><div class="actions"><a class="btn primary" href="#license">See license options</a></div></div>`;
 FS.get = (p) => FS.api(p);
 FS.post = (p, body) => FS.api(p, { body: body || {} });
 
@@ -50,7 +54,7 @@ FS.confirm = (text) => new Promise(res => { FS.modal(`<h2>Please confirm</h2><p>
 FS.card = (title, body, right) => `<div class="card"><h3>${FS.esc(title)}${right ? `<span class="right">${right}</span>` : ''}</h3>${body}</div>`;
 FS.kpi = (label, value, sub, kind) => `<div class="card kpi ${kind || ''}"><h3>${FS.esc(label)}</h3><div class="v">${value}</div><div class="s">${sub || ''}</div></div>`;
 FS.empty = (msg) => `<div class="empty">${FS.esc(msg || 'Nothing to show yet')}</div>`;
-FS.err = (msg) => `<div class="empty" style="color:var(--bad)">${FS.esc(msg)}</div>`;
+FS.err = (msg) => (FS.lastLock && msg === FS.lastLock.error) ? FS.lockCard(FS.lastLock) : `<div class="empty" style="color:var(--bad)">${FS.esc(msg)}</div>`;
 
 // Horizontal bar list: rows [{label, value, sub, href}], max derived.
 FS.bars = (rows, fmt) => {

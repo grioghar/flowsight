@@ -71,6 +71,11 @@ unit or rc script, and prints the API token for the web UI on
 require nftables support that is still in progress; visibility, DNS policy,
 reports and alerting work today.
 
+
+## Tiers
+
+Community is free and complete for a home network. Pro adds TLS inspection, rule hygiene, enrolment enforcement, scheduled reports, notification channels and removes the policy limits; Business adds telemetry export, directory identity, multiple administrators and commercial use. Licenses are signed documents, activated online or installed as a file for air-gapped firewalls, and expiry is soft. See [docs/LICENSING.md](docs/LICENSING.md).
+
 ## What you get
 
 | Area | Capability |

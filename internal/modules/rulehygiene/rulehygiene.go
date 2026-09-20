@@ -69,33 +69,34 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	if ctx.Platform.Firewall == "pf" && ctx.Platform.Pfctl != "" {
 		interval := time.Duration(core.Int(ctx.Settings(), "analyse_minutes", 15)) * time.Minute
-		ctx.Every("analyse", interval, m.analyse)
+		ctx.Every("analyse", interval, m.analyse, core.NeedsJob("firewall.analyse"))
 
 		// Track config changes on OPNsense.
 		if ctx.Platform.IsOPNsense() && ctx.Platform.ConfigXML != "" {
 			m.configPath = ctx.Platform.ConfigXML
-			ctx.Every("watch-config", 1*time.Minute, m.watchConfig, core.Delayed())
+			ctx.Every("watch-config", 1*time.Minute, m.watchConfig, core.NeedsJob("firewall.analyse"), core.Delayed())
 		}
 	}
 
 	// Routes.
-	ctx.Route("GET", "/api/rulehygiene/summary", m.apiSummary,
+	ctx.Route("GET", "/api/rulehygiene/summary", m.apiSummary, core.Needs("firewall.analyse"),
 		core.Doc("Risk score, finding counts, rules analysed, ruleset loaded since"))
-	ctx.Route("GET", "/api/rulehygiene/rules", m.apiRules,
+	ctx.Route("GET", "/api/rulehygiene/rules", m.apiRules, core.Needs("firewall.analyse"),
 		core.Doc("Every rule with counters, description, interface and findings"))
-	ctx.Route("GET", "/api/rulehygiene/findings", m.apiFindings,
+	ctx.Route("GET", "/api/rulehygiene/findings", m.apiFindings, core.Needs("firewall.analyse"),
 		core.Doc("Open findings"))
-	ctx.Route("GET", "/api/rulehygiene/changes", m.apiChanges,
+	ctx.Route("GET", "/api/rulehygiene/changes", m.apiChanges, core.Needs("firewall.analyse"),
 		core.Doc("Configuration changes from the changes table"))
-	ctx.Route("POST", "/api/rulehygiene/run", m.apiRun,
+	ctx.Route("POST", "/api/rulehygiene/run", m.apiRun, core.Needs("firewall.analyse"),
 		core.Write(), core.Doc("Run analysis now"))
 
 	ctx.Panel(core.Panel{
-		ID:    "firewall",
-		Title: "Firewall hygiene",
-		Group: "Security",
-		Order: 80,
-		Icon:  "firewall",
+		ID:      "firewall",
+		Title:   "Firewall hygiene",
+		Group:   "Security",
+		Order:   80,
+		Icon:    "firewall",
+		Feature: "firewall.analyse",
 	})
 
 	return nil

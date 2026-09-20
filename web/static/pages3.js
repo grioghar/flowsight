@@ -108,4 +108,41 @@
       FS.$('#rf', el).onsubmit = async (e) => { e.preventDefault(); let doc; try { doc = JSON.parse(e.target.doc.value); } catch (x) { FS.toast('Invalid JSON: ' + x.message, true); return; } const r = await post('/api/enroll/rules', doc); FS.toast(r.error || 'Rules saved', !!r.error); };
     }
   });
+
+  // ------------------------------------------------------------- License
+  FS.registerPage('license', {
+    title: 'License', refresh: 0,
+    async render(el) {
+      const [d, f] = await Promise.all([get('/api/license'), get('/api/license/features')]);
+      if (d.error) { el.innerHTML = FS.err(d.error); return; }
+      const lic = d.license, tier = d.tier || 'community';
+      const feats = (f.features || []);
+      const byTier = (t) => feats.filter(x => FS.tierName(x.tier) && ({ community: 0, pro: 1, business: 2 })[x.tier] <= ({ community: 0, pro: 1, business: 2 })[t]);
+      const limits = f.limits_by_tier || {};
+      const lim = (t, k, unit) => { const v = (limits[t] || {})[k]; return v === 0 ? 'unlimited' : (v == null ? '—' : v + (unit ? ' ' + unit : '')); };
+      const tierCard = (t, blurb) => `<div class="tier ${t === tier ? 'current' : ''}"><h4>${esc(FS.tierName(t))}${t === tier ? ' ' + pill('current', 'ok') : ''}</h4><div class="small muted">${esc(blurb)}</div><ul>
+        <li>Policies: ${lim(t, 'policies')} · schedules: ${lim(t, 'schedules')}</li><li>History: ${lim(t, 'retention_days', 'days')}</li><li>Installations per key: ${lim(t, 'installations')}</li>
+        ${feats.map(x => `<li class="${({ community: 0, pro: 1, business: 2 })[x.tier] <= ({ community: 0, pro: 1, business: 2 })[t] ? '' : 'no'}">${esc(x.title)}</li>`).join('')}</ul></div>`;
+      const status = lic
+        ? `${kpi('Tier', esc(FS.tierName(lic.tier)), d.expired ? 'expired ' + esc(lic.expires) : (lic.expires ? 'valid until ' + esc(lic.expires) + ' (' + d.days_left + ' days)' : 'does not expire'), d.expired ? 'warn' : 'ok')}
+           ${kpi('Licensed to', esc(lic.licensee), esc(lic.email || '') + (lic.seats ? ' · ' + lic.seats + ' installation' + (lic.seats > 1 ? 's' : '') : ''))}
+           ${kpi(d.source === 'online' ? 'Activation' : 'License file', d.source === 'online' ? 'key ' + esc(d.key_hint || '') : esc(lic.id), d.source === 'online' ? (d.last_refresh ? 'lease refreshed ' + ago(d.last_refresh) : '') : 'installed offline, never contacts a server')}`
+        : `${kpi('Tier', 'Community', d.revoked ? 'license withdrawn: ' + esc(d.revoked) : 'free, unlicensed; every module keeps running', d.revoked ? 'warn' : '')}
+           ${kpi('Installation', `<span class="mono small">${esc(d.installation)}</span>`, 'quote this id when asking for an offline license file')}
+           ${kpi('Verification', d.verifiable ? 'signed builds' : 'unsigned build', d.verifiable ? 'licenses are verified against the release key' : 'this build cannot verify licenses; install a release build')}`;
+      el.innerHTML = `<div class="grid cols-3">${status}</div>
+      ${d.last_error ? `<div style="margin-top:14px">${card('Last problem', `<div class="sev-medium small">${esc(d.last_error)}</div>`)}</div>` : ''}
+      <div class="grid cols-2" style="margin-top:14px">
+        ${card('Activate online', `<form class="f" id="act"><label>Activation key</label><input name="key" placeholder="FSP-XXXX-XXXX-XXXX-XXXX" autocomplete="off" ${d.verifiable ? '' : 'disabled'}><div class="actions"><button class="btn primary" ${d.verifiable ? '' : 'disabled'}>Activate</button>${lic && d.source === 'online' ? '<button class="btn" type="button" id="refresh">Refresh lease</button>' : ''}</div><div class="help">The key is sent to <span class="mono">${esc(d.server_url)}</span> together with this installation id, the hostname and the version; the server returns a signed license bound to this installation. Change the server under Settings › license.</div></form>`)}
+        ${card('Install a license file (offline)', `<form class="f" id="inst"><label>License file contents</label><textarea name="token" rows="4" placeholder="FSL1.…" ${d.verifiable ? '' : 'disabled'}></textarea><div class="actions"><button class="btn primary" ${d.verifiable ? '' : 'disabled'}>Install</button></div><div class="help">For air-gapped firewalls. Ask for a file issued to installation <span class="mono">${esc(d.installation)}</span>; it is verified here and never phones home.</div></form>`)}
+      </div>
+      <div style="margin-top:14px">${card('Tiers', `<div class="tiers">${tierCard('community', 'Everything needed to see and shape a home network. Free, no registration.')}${tierCard('pro', 'For power users: TLS inspection, rule hygiene, enrolment, scheduled reports, notifications, no limits.')}${tierCard('business', 'For networks run for others: directory identity, telemetry export, multiple administrators, SLA support, commercial use.')}</div>
+        <div class="help" style="margin-top:10px">Expiry is soft: when a license lapses nothing switches off, but tier features cannot be reconfigured until it is renewed.</div>`)}</div>
+      ${lic ? `<div style="margin-top:14px">${card('Remove', `<div class="actions"><button class="btn danger" id="remove">Remove license and return to Community</button></div><div class="help">${d.source === 'online' ? 'Frees this installation\'s seat on the key.' : 'Deletes the installed file from this firewall.'} Tier features keep their current state but cannot be changed afterwards.</div>`)}</div>` : ''}`;
+      FS.$('#act', el).onsubmit = async (e) => { e.preventDefault(); const r = await post('/api/license/activate', { key: e.target.key.value }); if (r.error) { FS.toast(r.error, true); return; } FS.toast('Activated: ' + FS.tierName(r.tier) + ' for ' + r.licensee); location.reload(); };
+      FS.$('#inst', el).onsubmit = async (e) => { e.preventDefault(); const r = await post('/api/license/install', { token: e.target.token.value }); if (r.error) { FS.toast(r.error, true); return; } FS.toast('Installed: ' + FS.tierName(r.tier) + ' for ' + r.licensee); location.reload(); };
+      const rf = FS.$('#refresh', el); if (rf) rf.onclick = async () => { const r = await post('/api/license/refresh', {}); FS.toast(r.error || 'Lease refreshed', !!r.error); FS.render(); };
+      const rm = FS.$('#remove', el); if (rm) rm.onclick = async () => { if (!await FS.confirm('Remove the license from this installation?')) return; const r = await post('/api/license/remove', {}); FS.toast(r.error || 'Removed', !!r.error); location.reload(); };
+    }
+  });
 })();

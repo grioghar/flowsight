@@ -110,3 +110,13 @@ pre.code .add { color: var(--ok); } pre.code .del { color: var(--bad); }
 .section-title { font-size: 15px; font-weight: 650; margin: 22px 0 10px; }
 .sev-critical { color: var(--bad); font-weight: 700; } .sev-high { color: var(--bad); } .sev-medium { color: var(--warn); } .sev-low { color: var(--info); } .sev-info { color: var(--muted); }
 .login { max-width: 360px; margin: 80px auto; }
+
+/* licensing */
+#menu a .lock { margin-left: auto; font-size: 11px; opacity: .7; }
+.card.lock { border-color: var(--warn); }
+.tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.tier { border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.tier.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.tier h4 { margin: 0 0 6px; font-size: 15px; }
+.tier ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+.tier li.no { color: var(--muted); text-decoration: line-through; }

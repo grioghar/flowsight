@@ -11,6 +11,7 @@ import (
 	_ "github.com/grioghar/flowsight/internal/modules/firewall"
 	_ "github.com/grioghar/flowsight/internal/modules/identity"
 	_ "github.com/grioghar/flowsight/internal/modules/ids"
+	_ "github.com/grioghar/flowsight/internal/modules/license"
 	_ "github.com/grioghar/flowsight/internal/modules/policy"
 	_ "github.com/grioghar/flowsight/internal/modules/reports"
 	_ "github.com/grioghar/flowsight/internal/modules/rulehygiene"

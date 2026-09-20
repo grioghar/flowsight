@@ -113,6 +113,9 @@ type Panel struct {
 	Order  int    `json:"order"`
 	Icon   string `json:"icon"`
 	Detail bool   `json:"detail"` // reached by link, not from the menu
+	// Feature, when set, is the tier feature the panel belongs to; the menu
+	// shows it locked below that tier.
+	Feature string `json:"feature,omitempty"`
 }
 
 // Context is what a module sees of the core.
@@ -138,6 +141,10 @@ func (c *Context) Every(name string, every time.Duration, fn func() error, opts 
 	j := &Job{Name: name, Module: c.Name, Every: every, Fn: fn, nextRun: time.Now()}
 	for _, o := range opts {
 		o(j)
+	}
+	if j.Feature != "" {
+		core, feature := c.Core, j.Feature
+		j.gate = func() error { return core.License().Allowed(feature) }
 	}
 	c.Core.Scheduler.Add(j)
 }
@@ -194,6 +201,10 @@ type Job struct {
 	Module string        `json:"module"`
 	Every  time.Duration `json:"-"`
 	Fn     func() error  `json:"-"`
+	// Feature gates the job on a license tier; gate is set by the context.
+	Feature string `json:"feature,omitempty"`
+	gate    func() error
+	locked  bool
 
 	mu        sync.Mutex
 	nextRun   time.Time
@@ -216,7 +227,7 @@ func (j *Job) state() map[string]any {
 	return map[string]any{"name": j.Name, "module": j.Module, "every": j.Every.Seconds(),
 		"runs": j.Runs, "failures": j.Failures, "ok": ok, "error": j.LastError,
 		"last_run": j.LastRun.Unix(), "duration": j.LastDur, "running": j.running,
-		"next_run": j.nextRun.Unix()}
+		"next_run": j.nextRun.Unix(), "feature": j.Feature, "locked": j.locked}
 }
 
 type Scheduler struct {
@@ -322,6 +333,22 @@ func (s *Scheduler) loop() {
 }
 
 func (s *Scheduler) run(j *Job) {
+	if j.gate != nil {
+		if gerr := j.gate(); gerr != nil {
+			// Not licensed: do not run, do not count a failure, try again
+			// next interval in case a license arrived.
+			j.mu.Lock()
+			j.locked = true
+			j.LastError = "locked: " + gerr.Error()
+			j.running = false
+			j.nextRun = time.Now().Add(j.Every)
+			j.mu.Unlock()
+			return
+		}
+		j.mu.Lock()
+		j.locked = false
+		j.mu.Unlock()
+	}
 	t0 := time.Now()
 	var err error
 	func() {

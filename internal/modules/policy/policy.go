@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/grioghar/flowsight/internal/core"
+	"github.com/grioghar/flowsight/internal/licensing"
 	"gopkg.in/yaml.v3"
 )
 
@@ -487,6 +488,9 @@ func (m *Module) apiSavePolicy(r *core.Req) (any, error) {
 				return nil, core.BadRequest("a policy named %q already exists", p.Name)
 			}
 		}
+		if lim := m.ctx.License().Limit(licensing.LimitPolicies); lim > 0 && len(doc.Policies) >= lim {
+			return nil, core.LimitError("policies", lim, "policy.unlimited")
+		}
 		doc.Policies = append(doc.Policies, in.Policy)
 	}
 	verb := "updated"
@@ -597,6 +601,11 @@ func (m *Module) apiSaveSchedule(r *core.Req) (any, error) {
 			if doc.Policies[i].Schedule == in.Original {
 				doc.Policies[i].Schedule = in.Name
 			}
+		}
+	}
+	if _, exists := doc.Schedules[in.Name]; !exists {
+		if lim := m.ctx.License().Limit(licensing.LimitSchedules); lim > 0 && len(doc.Schedules) >= lim {
+			return nil, core.LimitError("schedules", lim, "policy.unlimited")
 		}
 	}
 	doc.Schedules[in.Name] = in.Schedule

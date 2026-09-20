@@ -52,6 +52,7 @@ type Route struct {
 	Handler              Handler
 	Description          string
 	Write                bool
+	Feature              string // tier feature this route belongs to ("" = free)
 	Params               map[string]string
 }
 
@@ -411,6 +412,27 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if route.Feature != "" {
+		lic := a.core.License()
+		if err := lic.Allowed(route.Feature); err != nil {
+			e := err.(*Error)
+			doc := map[string]any{"error": e.Message}
+			for k, v := range e.Extra {
+				doc[k] = v
+			}
+			a.writeJSON(w, e.Status, doc)
+			return
+		}
+		if route.Write && lic.Expired() {
+			e := ExpiredError(route.Feature).(*Error)
+			doc := map[string]any{"error": e.Message}
+			for k, v := range e.Extra {
+				doc[k] = v
+			}
+			a.writeJSON(w, e.Status, doc)
+			return
+		}
+	}
 	result, err := a.call(route, req)
 	if err != nil {
 		var e *Error

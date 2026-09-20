@@ -26,6 +26,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 CMD="${1:?build|manifest}"; VERSION="${2:?version}"; OUT="${3:-$ROOT/dist/$VERSION}"
 PUB="$(tr -d '\n' < "$HERE/signing.pub")"
+LICPUB="$(tr -d '\n' < "$HERE/license.pub")"
 KEY="${FLOWSIGHT_SIGNING_KEY:-$HOME/.config/flowsight-release/signing.key}"
 TARGETS="freebsd/amd64 freebsd/arm64 linux/amd64 linux/arm64"
 
@@ -39,8 +40,13 @@ build)
         os="${t%/*}"; arch="${t#*/}"
         echo "building $os/$arch"
         (cd "$ROOT" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
-            -ldflags "-s -w -X main.Version=$VERSION -X github.com/grioghar/flowsight/internal/modules/updater.PublicKeyBase64=$PUB" \
+            -ldflags "-s -w -X main.Version=$VERSION -X github.com/grioghar/flowsight/internal/modules/updater.PublicKeyBase64=$PUB -X github.com/grioghar/flowsight/internal/modules/license.PublicKeyBase64=$LICPUB" \
             -o "$OUT/flowsightd-$os-$arch" ./cmd/flowsightd)
+    done
+    # The license server is Linux-only and carries no keys of its own.
+    for arch in amd64 arm64; do
+        echo "building flowsight-licensed linux/$arch"
+        (cd "$ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$OUT/flowsight-licensed-linux-$arch" ./cmd/flowsight-licensed)
     done
     cp "$ROOT/install.sh" "$OUT/install.sh"
     ls -la "$OUT"

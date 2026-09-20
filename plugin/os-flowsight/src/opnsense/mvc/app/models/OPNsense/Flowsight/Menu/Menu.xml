@@ -1,20 +1,23 @@
 <menu>
-    <Services>
-        <Flowsight VisibleName="Flowsight" cssClass="fa fa-eye fa-fw" url="/flowsight.php" order="150">
-            <Overview VisibleName="Overview" url="/flowsight.php?page=overview"/>
-            <Hosts VisibleName="Hosts" url="/flowsight.php?page=hosts"/>
-            <Sessions VisibleName="Sessions" url="/flowsight.php?page=flows"/>
-            <Applications VisibleName="Applications" url="/flowsight.php?page=apps"/>
-            <Web VisibleName="Web" url="/flowsight.php?page=web"/>
-            <DNS VisibleName="DNS" url="/flowsight.php?page=dns"/>
-            <Threats VisibleName="Threats" url="/flowsight.php?page=threats"/>
-            <TLS VisibleName="TLS" url="/flowsight.php?page=tls"/>
-            <Policies VisibleName="Policies" url="/flowsight.php?page=policy"/>
-            <Devices VisibleName="Devices &amp; zones" url="/flowsight.php?page=enroll"/>
-            <Firewall VisibleName="Firewall hygiene" url="/flowsight.php?page=firewall"/>
-            <Reports VisibleName="Reports" url="/flowsight.php?page=reports"/>
-            <System VisibleName="System" url="/flowsight.php?page=system"/>
-            <Settings VisibleName="Settings" url="/flowsight.php?page=modules"/>
-        </Flowsight>
-    </Services>
+    <Flowsight VisibleName="Flowsight" cssClass="fa fa-eye fa-fw" order="65">
+        <Overview VisibleName="Overview" url="/flowsight.php?page=overview" order="10"/>
+        <Hosts VisibleName="Hosts" url="/flowsight.php?page=hosts" order="20"/>
+        <Sessions VisibleName="Sessions" url="/flowsight.php?page=flows" order="30"/>
+        <Applications VisibleName="Applications" url="/flowsight.php?page=apps" order="40"/>
+        <Web VisibleName="Web" url="/flowsight.php?page=web" order="50"/>
+        <DNS VisibleName="DNS" url="/flowsight.php?page=dns" order="60"/>
+        <Threats VisibleName="Threats" url="/flowsight.php?page=threats" order="70"/>
+        <TLS VisibleName="TLS" url="/flowsight.php?page=tls" order="80"/>
+        <Policies VisibleName="Policies" url="/flowsight.php?page=policy" order="100"/>
+        <Groups VisibleName="Groups &amp; schedules" url="/flowsight.php?page=groups" order="110"/>
+        <Categories VisibleName="Categories" url="/flowsight.php?page=categories" order="120"/>
+        <Devices VisibleName="Devices &amp; zones" url="/flowsight.php?page=enroll" order="130"/>
+        <Firewall VisibleName="Firewall hygiene" url="/flowsight.php?page=firewall" order="140"/>
+        <Reports VisibleName="Reports" url="/flowsight.php?page=reports" order="180"/>
+        <Alerting VisibleName="Alerting" url="/flowsight.php?page=alerts" order="190"/>
+        <Updates VisibleName="Updates" url="/flowsight.php?page=updates" order="240"/>
+        <License VisibleName="License" url="/flowsight.php?page=license" order="250"/>
+        <System VisibleName="System" url="/flowsight.php?page=system" order="260"/>
+        <Settings VisibleName="Settings" url="/flowsight.php?page=modules" order="270"/>
+    </Flowsight>
 </menu>
