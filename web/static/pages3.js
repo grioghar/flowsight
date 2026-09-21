@@ -1,7 +1,7 @@
 /* FlowSight pages: firewall hygiene, alerting, reports, updates, devices & zones. */
 'use strict';
 (function () {
-  const { esc, num, bytes, ago, when, pill, card, kpi, table, bars, get, post } = FS;
+  const { esc, num, bytes, ago, when, pill, card, kpi, table, bars, hostLink, domainLink, get, post } = FS;
 
   // ------------------------------------------------------------- Firewall hygiene
   FS.registerPage('firewall', {

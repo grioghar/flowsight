@@ -189,6 +189,9 @@ func (m *Module) Doc() *core.PolicyDoc {
 	if out.Schedules == nil {
 		out.Schedules = map[string]core.Schedule{}
 	}
+	if out.Policies == nil {
+		out.Policies = []core.Policy{} // an empty document must never reach the API as null
+	}
 	return out
 }
 

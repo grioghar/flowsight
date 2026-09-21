@@ -1,7 +1,7 @@
 /* FlowSight pages: policy, categories, findings, system. */
 'use strict';
 (function () {
-  const { esc, num, bytes, ago, when, pill, card, kpi, table, bars, get, post } = FS;
+  const { esc, num, bytes, ago, when, pill, card, kpi, table, bars, hostLink, domainLink, get, post } = FS;
 
   // ------------------------------------------------------------- Policy list
   FS.registerPage('policy', {
@@ -9,7 +9,7 @@
     async render(el) {
       const [d, caps] = await Promise.all([get('/api/policy'), get('/api/policy/capabilities')]);
       if (d.error && !d.document) { el.innerHTML = FS.err(d.error); return; }
-      const doc = d.document || { policies: [], groups: {}, schedules: {} };
+      const doc = Object.assign({ policies: [], groups: {}, schedules: {}, exclusions: {}, options: {} }, d.document || {}); doc.policies = doc.policies || []; doc.groups = doc.groups || {}; doc.schedules = doc.schedules || {};
       const plan = d.plan || {}; const status = {}; (plan.policies || []).forEach(p => status[p.name] = p);
       const provs = (caps.providers || []).map(p => `${esc(p.name)} <span class="muted small">${(p.capabilities || []).join(', ')}</span>`).join(' · ');
       const enforce = d.enforce;
@@ -110,7 +110,7 @@
   // Quick "block this app for a group" entry from the Applications page.
   FS.quickPolicy = async function (deny) {
     const [d, caps] = await Promise.all([get('/api/policy'), get('/api/policy/capabilities')]);
-    const doc = d.document || { groups: {}, schedules: {}, policies: [] };
+    const doc = Object.assign({ groups: {}, schedules: {}, policies: [] }, d.document || {}); doc.policies = doc.policies || []; doc.groups = doc.groups || {}; doc.schedules = doc.schedules || {};
     FS.policyEditor(null, doc, caps);
     setTimeout(() => { const f = FS.$('#modal form'); if (!f) return; if (deny.apps) { f.apps.value = deny.apps.join('\n'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); } }, 50);
   };
