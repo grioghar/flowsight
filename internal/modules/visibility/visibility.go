@@ -814,6 +814,8 @@ func (m *Module) apiHost(r *core.Req) (any, error) {
 		GROUP BY bucket ORDER BY bucket`, since, ip)
 	dns, _ := st.Rows(`SELECT domain, action, MAX(list) AS list, SUM(queries) AS queries FROM rollup_dns
 		WHERE bucket>=? AND client=? GROUP BY domain, action ORDER BY queries DESC LIMIT 50`, since, ip)
+	dnsBlocked, _ := st.Rows(`SELECT ts, domain, qtype, list, rcode, source FROM dns WHERE client=? AND action<>'pass' AND ts>=?
+		ORDER BY ts DESC LIMIT 100`, ip, since)
 	dnsTotals, _ := st.Row(`SELECT SUM(queries) AS queries, SUM(CASE WHEN action<>'pass' THEN queries ELSE 0 END) AS blocked,
 		COUNT(DISTINCT domain) AS domains FROM rollup_dns WHERE bucket>=? AND client=?`, since, ip)
 	alerts, _ := st.Rows(`SELECT * FROM alerts WHERE ts>=? AND (src_ip=? OR dst_ip=?) ORDER BY ts DESC LIMIT 50`,
@@ -828,7 +830,7 @@ func (m *Module) apiHost(r *core.Req) (any, error) {
 		since, ip)
 	findings, _ := st.Rows(`SELECT * FROM findings WHERE resolved_ts IS NULL AND subject=? ORDER BY ts DESC LIMIT 20`, ip)
 	return map[string]any{"host": host, "device": device, "apps": apps, "domains": domains, "destinations": dsts,
-		"timeline": timeline, "dns": dns, "dns_totals": dnsTotals, "alerts": alerts, "flows": flows, "tls": tls,
+		"timeline": timeline, "dns": dns, "dns_blocked": dnsBlocked, "dns_totals": dnsTotals, "alerts": alerts, "flows": flows, "tls": tls,
 		"totals": totals, "findings": findings, "hours": r.Hours(24)}, nil
 }
 

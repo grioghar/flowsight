@@ -423,6 +423,22 @@ func (s *Store) AddDNS(recs []DNSRecord) error {
 	if len(recs) == 0 {
 		return nil
 	}
+	// Rows older than the rollup's rolling window (a Pi-hole import, a log
+	// read after downtime) would never be aggregated; mark the window dirty
+	// back to the oldest one so the next rollup re-aggregates from there.
+	var oldest int64
+	for _, r := range recs {
+		if r.TS > 0 && (oldest == 0 || r.TS < oldest) {
+			oldest = r.TS
+		}
+	}
+	if oldest > 0 && oldest < time.Now().Unix()-600 {
+		var dirty int64
+		s.KVGet("rollup.dirty", &dirty)
+		if dirty == 0 || oldest < dirty {
+			_ = s.KVSet("rollup.dirty", oldest)
+		}
+	}
 	return s.Tx(func(tx *sql.Tx) error {
 		st, err := tx.Prepare(`INSERT INTO dns(ts,client,domain,qtype,action,list,rcode,answer_source,
 			dnssec,ms,answers,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
@@ -742,6 +758,11 @@ func (s *Store) Rollup() error {
 	if last > 0 {
 		start = last - 600
 	}
+	var dirty int64
+	s.KVGet("rollup.dirty", &dirty)
+	if dirty > 0 && bucketOf(dirty) < start {
+		start = bucketOf(dirty)
+	}
 	end := bucketOf(now)
 	if start >= end {
 		return nil
@@ -778,6 +799,9 @@ func (s *Store) Rollup() error {
 	})
 	if err != nil {
 		return err
+	}
+	if dirty > 0 {
+		_ = s.KVSet("rollup.dirty", int64(0))
 	}
 	return s.KVSet("rollup.last", end)
 }

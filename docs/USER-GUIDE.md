@@ -53,8 +53,11 @@ opens its host page; a host page shows the device's class and zone.
 
 **Host page** (click a host): identity details and how each was learned;
 throughput over time; applications, sites and DNS names with bytes and
-counts; the session list; alerts and blocks; the policies that match it
-and which group brought it in; enrolment class and zone.
+counts; the session list; alerts and blocks; a **Blocked queries** card
+listing the most recent DNS blocks for the host with the list that blocked
+each (FlowSight policy or Pi-hole gravity, regex, denylist) and the
+resolver they came through; the policies that match it and which group
+brought it in; enrolment class and zone.
 
 ### Sessions
 

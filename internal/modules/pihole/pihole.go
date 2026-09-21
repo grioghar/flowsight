@@ -586,7 +586,7 @@ func (m *Module) store(s *serverState, recs []rec) error {
 		action := "pass"
 		if blocked {
 			action = "block"
-			if r.listID != "" {
+			if r.listID != "" && !strings.HasPrefix(r.listID, "-") { // negative ids are Pi-hole's built-ins
 				list += " #" + r.listID
 			}
 		}
