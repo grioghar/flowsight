@@ -207,8 +207,12 @@ means the license tier does not include it), and the platform paths in use.
 ### Settings
 
 One page per module: enable or disable it (restart to apply), and its
-settings with help text. Saving applies immediately unless the setting is
-marked restart. A module above the current tier shows its tier and cannot
+settings with help text. A setting left empty that means "use the platform
+default" shows what is actually in use beneath the field (*Using: …*), such
+as the detected local networks, the resolver log being followed or the
+interfaces interception applies to; the field itself stays empty so the
+default keeps following the platform. Saving applies immediately unless the
+setting is marked restart. A module above the current tier shows its tier and cannot
 be enabled. Every setting is listed in the
 [Configuration reference](CONFIGURATION.md).
 

@@ -736,3 +736,20 @@ func nz(s string) any {
 	}
 	return s
 }
+
+// EffectiveSettings reports what the empty interception settings resolve to.
+func (m *Module) EffectiveSettings() map[string]any {
+	out := map[string]any{"interfaces": "every interface", "ipv6_listener": "none: IPv6 web traffic is not intercepted"}
+	if m.identity != nil {
+		var v4 []string
+		for _, n := range m.identity.LocalNetworks() {
+			if !strings.Contains(n, ":") {
+				v4 = append(v4, n)
+			}
+		}
+		if len(v4) > 0 {
+			out["networks"] = v4
+		}
+	}
+	return out
+}

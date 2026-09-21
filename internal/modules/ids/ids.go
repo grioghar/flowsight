@@ -19,6 +19,7 @@ import (
 func init() { core.Register(func() core.Module { return &Module{} }) }
 
 type Module struct {
+	evePath  string
 	ctx      *core.Context
 	tail     *core.Tailer
 	mu       sync.Mutex
@@ -56,6 +57,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		path = ctx.Platform.SuricataEve
 	}
 	m.tail = core.NewTailer(path)
+	m.evePath = path
 	every := time.Duration(core.Int(ctx.Settings(), "poll_seconds", 5)) * time.Second
 	ctx.Every("tail", every, m.poll)
 	ctx.Route("GET", "/api/ids/summary", m.apiSummary, core.Doc("Alert counts by severity, category, signature and host"),
@@ -393,3 +395,6 @@ func (m *Module) apiAck(r *core.Req) (any, error) {
 	}
 	return map[string]any{"ok": true}, nil
 }
+
+// EffectiveSettings reports the EVE log actually followed.
+func (m *Module) EffectiveSettings() map[string]any { return map[string]any{"eve_path": m.evePath} }

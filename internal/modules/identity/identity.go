@@ -151,6 +151,24 @@ func (m *Module) LocalNetworks() []string {
 	return append([]string(nil), m.netStrs...)
 }
 
+// EffectiveSettings reports what empty settings resolve to on this platform.
+func (m *Module) EffectiveSettings() map[string]any {
+	var files []string
+	for _, f := range m.ctx.Platform.DHCPLeases {
+		if _, err := os.Stat(f); err == nil {
+			files = append(files, f)
+		}
+	}
+	if len(files) == 0 {
+		files = append([]string(nil), m.ctx.Platform.DHCPLeases...)
+	}
+	nets := m.LocalNetworks()
+	if len(nets) == 0 {
+		nets = []string{"(none detected yet)"}
+	}
+	return map[string]any{"local_networks": nets, "extra_lease_files": files}
+}
+
 // Resolve implements core.MemberResolver for mac:, device: and all.
 func (m *Module) Resolve(ref string) []string {
 	switch {

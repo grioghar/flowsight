@@ -174,6 +174,13 @@ FS.go = (hash) => { location.hash = hash; };
 // Settings form renderer for module schemas.
 FS.settingsForm = (mod) => {
   const s = mod.settings || {};
+  const eff = mod.effective || {};
+  const empty = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  const using = (f) => {
+    const v = s[f.key]; if (!empty(v) || eff[f.key] == null || eff[f.key] === '') return '';
+    const e = Array.isArray(eff[f.key]) ? eff[f.key].join(', ') : String(eff[f.key]);
+    return `<div class="help using">Using: <span class="mono">${FS.esc(e)}</span></div>`;
+  };
   const field = (f) => {
     const v = s[f.key];
     let input;
@@ -186,7 +193,7 @@ FS.settingsForm = (mod) => {
       case 'secret': input = `<input type="text" name="${f.key}" value="${FS.esc(v)}" autocomplete="off">`; break;
       default: input = `<input type="text" name="${f.key}" value="${FS.esc(v == null ? '' : v)}" placeholder="${FS.esc(f.placeholder || '')}">`;
     }
-    return `<label>${FS.esc(f.label)}${f.restart ? ' <span class="muted">(restart)</span>' : ''}</label>${input}${f.help ? `<div class="help">${FS.esc(f.help)}</div>` : ''}`;
+    return `<label>${FS.esc(f.label)}${f.restart ? ' <span class="muted">(restart)</span>' : ''}</label>${input}${f.help ? `<div class="help">${FS.esc(f.help)}</div>` : ''}${using(f)}`;
   };
   return `<form class="f" data-module="${FS.esc(mod.name)}">${(mod.schema || []).map(field).join('')}<div class="actions"><button class="btn primary" type="submit">Save</button></div></form>`;
 };

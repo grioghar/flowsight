@@ -86,6 +86,13 @@ type Health struct {
 	Extra  any    `json:"extra,omitempty"`
 }
 
+// Effective is optional: a module that treats an empty setting as "use the
+// platform default" reports what it is actually using, so the settings page
+// can say so next to the empty field instead of leaving the operator to guess.
+type Effective interface {
+	EffectiveSettings() map[string]any
+}
+
 // Provider is a backend a policy can be compiled onto.
 type Provider interface {
 	Name() string

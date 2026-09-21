@@ -31,6 +31,7 @@ import (
 func init() { core.Register(func() core.Module { return &Module{} }) }
 
 type Module struct {
+	logPath  string
 	ctx      *core.Context
 	tail     *core.Tailer
 	mu       sync.Mutex
@@ -77,6 +78,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		path = "/var/log/unbound.log"
 	}
 	m.tail = core.NewTailer(path)
+	m.logPath = path
 	ctx.Every("tail", 5*time.Second, m.pollLog)
 	every := time.Duration(core.Int(ctx.Settings(), "cache_names_seconds", 60)) * time.Second
 	if every > 0 {
@@ -507,3 +509,6 @@ func sortedKeys(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// EffectiveSettings reports the resolver log actually followed.
+func (m *Module) EffectiveSettings() map[string]any { return map[string]any{"log_path": m.logPath} }

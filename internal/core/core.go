@@ -381,7 +381,7 @@ func (c *Core) apiModules(r *Req) (any, error) {
 	var out []map[string]any
 	for _, n := range names {
 		info := c.Infos[n]
-		_, loaded := c.Modules[n]
+		m, loaded := c.Modules[n]
 		settings := c.Config.Module(n)
 		for _, f := range info.Schema {
 			if f.Type == "secret" {
@@ -390,7 +390,11 @@ func (c *Core) apiModules(r *Req) (any, error) {
 				}
 			}
 		}
-		out = append(out, map[string]any{"name": n, "loaded": loaded, "version": info.Version,
+		var effective map[string]any
+		if e, ok := m.(Effective); ok && m != nil {
+			effective = e.EffectiveSettings()
+		}
+		out = append(out, map[string]any{"name": n, "loaded": loaded, "version": info.Version, "effective": effective,
 			"description": info.Description, "capabilities": info.Capabilities,
 			"requires": info.Requires, "settings": settings, "schema": info.Schema,
 			"tier": info.Tier, "error": c.Errors[n]})

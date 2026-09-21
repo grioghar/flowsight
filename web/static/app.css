@@ -126,3 +126,5 @@ pre.code .add { color: var(--ok); } pre.code .del { color: var(--bad); }
 .tier h4 { margin: 0 0 6px; font-size: 15px; }
 .tier ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
 .tier li.no { color: var(--muted); text-decoration: line-through; }
+
+.help.using { color: var(--ink); opacity: .85; }

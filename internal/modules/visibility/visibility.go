@@ -851,3 +851,12 @@ func (m *Module) apiCatalog(r *core.Req) (any, error) {
 }
 
 func hostname() string { h, _ := os.Hostname(); return h }
+
+// EffectiveSettings reports the ntopng endpoint in use when the setting is empty.
+func (m *Module) EffectiveSettings() map[string]any {
+	base := core.Str(m.ctx.Settings(), "ntopng_url", "")
+	if base == "" {
+		base = "http://127.0.0.1:3000"
+	}
+	return map[string]any{"ntopng_url": base}
+}
