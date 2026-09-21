@@ -33,7 +33,7 @@ func init() { core.Register(func() core.Module { return &Module{} }) }
 // license and therefore runs Community.
 var PublicKeyBase64 = ""
 
-const defaultServer = "https://license.flowsight.grio.co"
+const defaultServer = "https://license.grio.co"
 
 // kv keys
 const (

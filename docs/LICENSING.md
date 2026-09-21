@@ -75,7 +75,7 @@ into a card that links to the License page.
 holds activation keys, records activations per installation, enforces seats,
 revokes, and mints documents. Run it behind TLS (a reverse proxy, or
 `-tls-cert/-tls-key`) at the address release builds default to
-(`https://license.flowsight.grio.co`; change it in the license module
+(`https://license.grio.co`; change it in the license module
 settings if you host your own).
 
 ```sh
@@ -83,7 +83,7 @@ settings if you host your own).
 go run ./cmd/flowsight-sign gen           # -> packaging/release/license.pub + server key file
 
 flowsight-licensed serve  -db /var/lib/flowsight-licensed/licenses.db -key /etc/flowsight-licensed/license.key \
-                          -listen 127.0.0.1:8770 -admin-token "$ADMIN" -issuer license.flowsight.grio.co
+                          -listen 127.0.0.1:8770 -admin-token "$ADMIN" -issuer license.grio.co
 flowsight-licensed create -db ... -tier pro -licensee "Ada Lovelace" -email ada@example.org -expires +365d
 flowsight-licensed list   -db ...
 flowsight-licensed revoke -db ... -key FSP-... -reason "refunded"
