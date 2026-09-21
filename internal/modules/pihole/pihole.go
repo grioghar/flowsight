@@ -54,6 +54,7 @@ type Module struct {
 
 	mu      sync.Mutex
 	servers map[string]*serverState
+	pulling sync.Mutex // one pull at a time: overlapping pulls double-import and race on the session
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -177,6 +178,10 @@ func (m *Module) save() {
 }
 
 func (m *Module) pull() error {
+	if !m.pulling.TryLock() {
+		return nil // a pull is already running (settings change and timer can coincide)
+	}
+	defer m.pulling.Unlock()
 	urls := core.Strs(m.ctx.Settings(), "servers")
 	if len(urls) == 0 {
 		return nil
