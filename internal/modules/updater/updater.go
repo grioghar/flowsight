@@ -2,6 +2,8 @@
 package updater
 
 import (
+	"regexp"
+	"strconv"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -420,50 +422,48 @@ func (m *Module) restartDaemon() {
 
 // compareVersions returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2.
 // "dev" is always older than any released version.
-// Semver-ish comparison.
+//
+// Versions are major.minor.patch with an optional revision suffix
+// "r<YYYYMMDDHHMM>" (a fix issued without a version increment, e.g.
+// 0.9.8r202609211730). A revision is newer than its base and revisions order
+// by their timestamp; anything after the numbers (a "-dev" tag) is ignored.
 func compareVersions(v1, v2 string) int {
 	if v1 == v2 {
 		return 0
 	}
-
-	// "dev" is always older
 	if v1 == "dev" && v2 != "dev" {
 		return -1
 	}
 	if v2 == "dev" && v1 != "dev" {
 		return 1
 	}
-
-	// Parse simple semver: major.minor.patch
-	parts1 := parseVersion(v1)
-	parts2 := parseVersion(v2)
-
-	for i := 0; i < len(parts1) && i < len(parts2); i++ {
-		if parts1[i] < parts2[i] {
+	a, b := parseVersion(v1), parseVersion(v2)
+	for i := 0; i < 4; i++ {
+		if a[i] < b[i] {
 			return -1
 		}
-		if parts1[i] > parts2[i] {
+		if a[i] > b[i] {
 			return 1
 		}
 	}
-
-	// If all compared parts are equal, shorter version is older
-	if len(parts1) < len(parts2) {
-		return -1
-	}
-	if len(parts1) > len(parts2) {
-		return 1
-	}
-
 	return 0
 }
 
-func parseVersion(v string) []int {
-	var parts []int
-	for _, s := range strings.Split(v, ".") {
-		var n int
-		fmt.Sscanf(s, "%d", &n)
-		parts = append(parts, n)
+var versionRe = regexp.MustCompile(`^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:r(\d{8,14}))?`)
+
+// parseVersion returns [major, minor, patch, revision]; missing parts are 0.
+func parseVersion(v string) [4]int64 {
+	var out [4]int64
+	m := versionRe.FindStringSubmatch(strings.TrimSpace(v))
+	if m == nil {
+		return out
 	}
-	return parts
+	for i := 1; i <= 4 && i < len(m); i++ {
+		if m[i] == "" {
+			continue
+		}
+		n, _ := strconv.ParseInt(m[i], 10, 64)
+		out[i-1] = n
+	}
+	return out
 }

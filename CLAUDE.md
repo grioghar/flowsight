@@ -50,6 +50,13 @@ header `X-Flowsight-Token`, the GUI user header `X-Flowsight-User`.
 - Test on the PVE2 test bed (VM 9100) before the live gateway; deploy to
   the live gateway only what the test bed has run.
 
+## Version numbers
+
+The version increments only when the product owner approves it. Until then,
+every fix or change is released as a revision of the current version:
+`<current>r<YYYYMMDDHHMM>` (UTC), tagged the same way, for example
+`0.9.8r202609211730`. See docs/RELEASING.md.
+
 ## Releasing
 
 `docs/RELEASING.md` is the procedure. Both public keys

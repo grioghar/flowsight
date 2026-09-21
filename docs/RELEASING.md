@@ -14,6 +14,16 @@ Every change ships with its documentation (see `CLAUDE.md` at the repository
 root); a release is the moment that promise reaches customers, so check
 `docs/` before tagging.
 
+## Version numbers
+
+Versions are `major.minor.patch`. **The version number only increments when
+the product owner approves it.** Until then every fix or update ships as a
+revision of the current version: `0.9.8r<YYYYMMDDHHMM>` (UTC time of the
+build), for example `0.9.8r202609211730`, tagged `v0.9.8r202609211730`. The
+updater orders a revision after its base and revisions by their timestamp;
+package managers (pkg, dpkg, rpm) order them the same way. Release notes for
+a revision start with what it fixes.
+
 ## Keys
 
 Release binaries carry two ed25519 public keys injected at build time:
