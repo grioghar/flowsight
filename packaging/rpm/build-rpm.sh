@@ -4,11 +4,14 @@
 #   build-rpm.sh <version> <arch: x86_64|aarch64> <flowsightd binary> <out dir> [docs dir]
 # The docs dir (output of packaging/docs/build-docs.sh) is installed under
 # /usr/share/doc/flowsight when given.
+# Building the aarch64 package on an x86_64 host needs rpmbuild told that the
+# target is acceptable (the binary is already cross-compiled):
+#   printf 'buildarch_compat: x86_64: aarch64\narch_compat: x86_64: aarch64\n' >> ~/.rpmrc
 set -eu
 VERSION="${1:?}"; ARCH="${2:?}"; BIN="${3:?}"; OUT="${4:?}"; DOCS="${5:-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TOP="$(mktemp -d)"; trap 'rm -rf "$TOP"' EXIT
-mkdir -p "$TOP"/{BUILD,RPMS,SOURCES,SPECS,SRPMS,root} "$OUT"
+mkdir -p "$TOP/BUILD" "$TOP/RPMS" "$TOP/SOURCES" "$TOP/SPECS" "$TOP/SRPMS" "$TOP/root" "$OUT"
 R="$TOP/root"
 install -D -m 755 "$BIN" "$R/usr/local/sbin/flowsightd"
 install -D -m 644 "$HERE/../systemd/flowsight.service" "$R/usr/lib/systemd/system/flowsight.service"

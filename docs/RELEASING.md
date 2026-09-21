@@ -38,7 +38,8 @@ sh packaging/freebsd/build-pkg.sh 0.9.3 aarch64 dist/0.9.3/flowsightd-freebsd-ar
 sh packaging/debian/build-deb.sh 0.9.3 amd64 dist/0.9.3/flowsightd-linux-amd64 dist/0.9.3
 sh packaging/debian/build-deb.sh 0.9.3 arm64 dist/0.9.3/flowsightd-linux-arm64 dist/0.9.3
 
-# 3b. RPMs on a host with rpmbuild (docs dir optional, as for the others)
+# 3b. RPMs on a host with rpmbuild (docs dir optional, as for the others; for the
+#     aarch64 build on an x86_64 host first: printf 'buildarch_compat: x86_64: aarch64\narch_compat: x86_64: aarch64\n' >> ~/.rpmrc)
 sh packaging/rpm/build-rpm.sh 0.9.3 x86_64  dist/0.9.3/flowsightd-linux-amd64 dist/0.9.3 dist/0.9.3/docs
 sh packaging/rpm/build-rpm.sh 0.9.3 aarch64 dist/0.9.3/flowsightd-linux-arm64 dist/0.9.3 dist/0.9.3/docs
 

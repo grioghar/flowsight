@@ -16,6 +16,8 @@
 #   html/*.html                              the same as HTML (linked, offline)
 #   md/*.md                                  the sources, for the package
 set -eu
+# pandoc and weasyprint read arguments and files in the locale's encoding.
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
 VERSION="${1:?version}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -38,7 +40,7 @@ title_of() { sed -n 's/^# //p' "$DOCS/$1.md" | head -1; }
 
 # Rewrite cross links so they resolve inside the HTML set and the merged PDF.
 prep() { # file slug -> stdout
-    sed -E "s#\]\(([A-Z-]+)\.md(#[^)]*)?\)#](\1.html\2)#g" "$DOCS/$1.md"
+    sed -E 's|\]\(([A-Z-]+)\.md(#[^)]*)?\)|](\1.html\2)|g' "$DOCS/$1.md"
 }
 
 n=0
@@ -59,7 +61,7 @@ for c in $CHAPTERS; do
     # merged: demote headings by one level under a chapter heading
     {
         printf '\n\n<div class="chapter"></div>\n\n# %s\n\n' "$t"
-        sed -E '1{/^# /d;}; s/^(#+) /\1# /' "$WORK/$c.md" | sed -E "s#\]\(([A-Z-]+)\.html(#[^)]*)?\)#](\2)#g"
+        sed -E '1{/^# /d;}; s/^(#+) /\1# /' "$WORK/$c.md" | sed -E 's|\]\(([A-Z-]+)\.html(#[^)]*)?\)|](\2)|g' | sed -E 's|\]\(\)|](#)|g'
     } >> "$ALL"
 done
 cp "$CSS" "$OUT/html/docs.css"
