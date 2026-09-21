@@ -80,10 +80,21 @@ Settings › web.
 
 ### DNS
 
-Resolver activity from the Unbound reply log: queries over time, top names,
-top clients, response codes, blocked names with the policy that blocked
-them. If clients use another resolver (a Pi-hole, a public resolver) this
-page shows only what reaches Unbound; that is by design and not a fault.
+Resolver activity: queries over time, top names, top clients, response
+codes, blocked names with the policy or list that blocked them. Records
+come from the Unbound reply log and, when configured, from Pi-hole servers;
+the *Via* column of the query log says which. If clients use a resolver
+FlowSight does not read (a public resolver, DoH in a browser) those queries
+are simply not seen.
+
+**Pi-hole.** *Settings › pihole*: list the servers (`https://192.168.1.53`)
+and give the app password (Pi-hole v6: Settings › Web interface / API ›
+Configure app password; v5: the API token). FlowSight pulls the query log
+every 30 seconds, going back 24 hours on first contact, deduplicates by
+Pi-hole's query ids, and files each query under its client with the
+verdict and list (gravity, regex, denylist, upstream blocked). Client
+names Pi-hole knows are used for hosts FlowSight has no name for. Nothing is
+written to the Pi-holes.
 
 ## Security
 
@@ -231,6 +242,8 @@ default keeps following the platform. Saving applies immediately unless the
 setting is marked restart. A module above the current tier shows its tier and cannot
 be enabled. Every setting is listed in the
 [Configuration reference](CONFIGURATION.md).
+
+**pihole** pulls Pi-hole query logs (see the DNS page above).
 
 Two modules hold interface behaviour rather than network function:
 **enrich** (reverse-DNS names and country lookup for bare addresses, both

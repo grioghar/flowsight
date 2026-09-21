@@ -24,6 +24,7 @@ flowsightd
 ├── visibility  ntopng REST → flows, hosts, apps, throughput; publishes a flow bus
 ├── web         owns a transparent squid: SNI on every session, web.block, tls.inspect, block page
 ├── dns         Unbound reply log → DNS log; cache → address names; provider dns.block (RPZ + views)
+├── pihole      Pi-hole query log (v6 REST API, v5 api.php) → the same DNS log, with blocks, lists, client names
 ├── firewall    pf anchors flowsight/*; provider net.block and the tables for app.block
 ├── appcontrol  subscribes to the flow bus; denied apps → pf table + state kill
 ├── tls         inspection CA (EC, generated in Go), certificate inventory, findings

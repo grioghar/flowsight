@@ -33,6 +33,7 @@ the UI, and services other modules can consume. Each can be disabled.
 | identity | Names and MACs for addresses: DHCP leases (dnsmasq, ISC, Kea), ARP and NDP, reservations, resolver answers, OUI vendor lookup. Publishes the list of local networks. |
 | visibility | Reads ntopng's REST API: flows, hosts, applications, throughput. Publishes a flow bus. |
 | dns | Reads the Unbound reply log; snapshots its cache for names; provides `dns.block` (RPZ zones and views). |
+| pihole | Pulls the query log from Pi-hole servers (v6 API or v5) into the same DNS history, with blocks, lists and client names. |
 | web | Owns a transparent squid: the server name of every web session, `web.block`, `tls.inspect`, the block page. |
 | firewall | Owns the pf anchors `flowsight/*`; provides `net.block` and the tables for `app.block`; maintains the local-networks table. |
 | appcontrol | Subscribes to the flow bus; a denied application's far end goes into a pf table and the state is killed. |

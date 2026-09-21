@@ -406,7 +406,7 @@ func (m *Module) apiLog(r *core.Req) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	q := `SELECT ts, client, domain, qtype, action, list, rcode, answer_source, ms FROM dns WHERE 1=1`
+	q := `SELECT ts, client, domain, qtype, action, list, rcode, answer_source, ms, source FROM dns WHERE 1=1`
 	args := []any{}
 	if client != "" {
 		q += ` AND client=?`
