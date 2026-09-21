@@ -533,7 +533,7 @@ func (m *Module) localNets() []*net.IPNet {
 		}
 	}
 	if len(out) > 0 {
-		return out
+		return dedupeNets(out)
 	}
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -563,6 +563,22 @@ func (m *Module) localNets() []*net.IPNet {
 			nn := &net.IPNet{IP: n.IP.Mask(n.Mask), Mask: n.Mask}
 			out = append(out, nn)
 		}
+	}
+	return dedupeNets(out)
+}
+
+// dedupeNets drops repeats (an alias address, a second interface on the
+// same subnet) while keeping the first occurrence's order.
+func dedupeNets(in []*net.IPNet) []*net.IPNet {
+	seen := map[string]bool{}
+	out := in[:0]
+	for _, n := range in {
+		k := n.String()
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, n)
 	}
 	return out
 }
