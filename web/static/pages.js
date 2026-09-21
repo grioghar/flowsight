@@ -28,7 +28,7 @@
         ${card('Traffic', chart([{ name: 'download', points: traffic.map(p => [p.t, p.bytes_in]) }, { name: 'upload', points: traffic.map(p => [p.t, p.bytes_out]) }], { fmt: bytes, area: true, tall: true }) + FS.legend(['download', 'upload']))}
         ${card('Throughput', chart(((ts.throughput_download_bps || []).length || (ts.throughput_upload_bps || []).length)
           ? [{ name: 'inbound (download)', points: (ts.throughput_download_bps || []).map(p => [p.t, p.v]) }, { name: 'outbound (upload)', points: (ts.throughput_upload_bps || []).map(p => [p.t, p.v]) }]
-          : [{ name: 'bps', points: (ts.throughput_bps || []).map(p => [p.t, p.v]) }], { fmt: bps, area: true, tall: true }), 'inbound and outbound')}
+          : [{ name: 'bps', points: (ts.throughput_bps || []).map(p => [p.t, p.v]) }], { fmt: bps, area: true, tall: true }) + FS.legend(['inbound (download)', 'outbound (upload)']), 'inbound and outbound')}
       </div>
       <div class="grid cols-3" style="margin-top:14px">
         ${card('Top hosts', bars((top.hosts || []).map(h => ({ label: h.name || h.ip, sub: h.name ? h.ip : '', value: (h.bytes_in || 0) + (h.bytes_out || 0), href: '#host/' + h.ip })), bytes))}
