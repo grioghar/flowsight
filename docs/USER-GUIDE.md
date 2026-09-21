@@ -43,6 +43,14 @@ and out, sessions, blocked requests, last seen. Sort by any column; filter
 by name or address. A host that stops appearing is not deleted, it just
 falls out of the window.
 
+Hosts and Devices overlap on purpose and answer different questions.
+**Hosts** is what the traffic shows: one row per address seen in flows and
+DNS within the window, with its traffic, and it includes far ends and
+transient visitors. **Devices** (under Policy) is the enrolment inventory:
+one row per physical device known by its MAC from DHCP, with a class and a
+zone, listed whether or not it is talking right now. A device's address
+opens its host page; a host page shows the device's class and zone.
+
 **Host page** (click a host): identity details and how each was learned;
 throughput over time; applications, sites and DNS names with bytes and
 counts; the session list; alerts and blocks; the policies that match it
