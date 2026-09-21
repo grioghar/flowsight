@@ -4,7 +4,7 @@
 # REQUIRE: LOGIN unbound
 # KEYWORD: shutdown
 #
-# flowsight_enable (bool):  Set to YES to run the Flowsight daemon.
+# flowsight_enable (bool):  Set to YES to run the FlowSight daemon.
 
 . /etc/rc.subr
 

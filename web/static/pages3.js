@@ -1,4 +1,4 @@
-/* Flowsight pages: firewall hygiene, alerting, reports, updates, devices & zones. */
+/* FlowSight pages: firewall hygiene, alerting, reports, updates, devices & zones. */
 'use strict';
 (function () {
   const { esc, num, bytes, ago, when, pill, card, kpi, table, bars, get, post } = FS;
@@ -81,7 +81,7 @@
       el.innerHTML = `<div class="grid cols-3">${kpi('Installed', esc(d.current_version), d.last_check > 0 ? 'checked ' + ago(d.last_check) : 'not checked yet')}${kpi('Latest', esc(d.latest_version || '—'), d.available ? (d.applicable ? 'update available' : 'available but not verifiable') : 'up to date', d.available ? 'warn' : 'ok')}${card('Actions', `<div class="actions"><button class="btn" id="check">Check now</button><button class="btn primary" id="apply" ${d.applicable ? '' : 'disabled'}>Install update</button><button class="btn" id="rollback">Roll back</button></div><div class="help">Updates are downloaded from the release manifest, verified by checksum and signature, swapped in atomically and the service restarted. The previous binary is kept for roll back.</div>`)}</div>
       ${d.notes ? `<div style="margin-top:14px">${card('Release notes', `<pre class="code">${esc(d.notes)}</pre>`)}</div>` : ''}${d.error ? `<div style="margin-top:14px">${card('Last error', `<div class="sev-high small">${esc(d.error)}</div>`)}</div>` : ''}`;
       FS.$('#check', el).onclick = async () => { const r = await post('/api/updater/check', {}); FS.toast(r.error || 'Checked', !!r.error); FS.render(); };
-      FS.$('#apply', el).onclick = async () => { if (!await FS.confirm('Install the update and restart Flowsight?')) return; const r = await post('/api/updater/apply', {}); FS.toast(r.error || 'Updating… the service will restart', !!r.error); };
+      FS.$('#apply', el).onclick = async () => { if (!await FS.confirm('Install the update and restart FlowSight?')) return; const r = await post('/api/updater/apply', {}); FS.toast(r.error || 'Updating… the service will restart', !!r.error); };
       FS.$('#rollback', el).onclick = async () => { if (!await FS.confirm('Roll back to the previous binary and restart?')) return; const r = await post('/api/updater/rollback', {}); FS.toast(r.error || 'Rolling back…', !!r.error); };
     }
   });

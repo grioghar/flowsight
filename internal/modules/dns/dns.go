@@ -7,7 +7,7 @@
 //
 // Enforcement is a policy provider: per-group views that answer REFUSED for
 // denied domains, categories and TLDs, plus safe-search rewrites. REFUSED is
-// used rather than NXDOMAIN so a Flowsight block is distinguishable in the
+// used rather than NXDOMAIN so a FlowSight block is distinguishable in the
 // log from a name that genuinely does not exist.
 package dns
 
@@ -262,7 +262,7 @@ func (m *Module) ensureLogging() error {
 	return err
 }
 
-// IncludePaths returns where a Flowsight include must be written so that it
+// IncludePaths returns where a FlowSight include must be written so that it
 // is both live now and survives a resolver reconfigure. On OPNsense the
 // running config includes /var/unbound/etc/*.conf, and the GUI copies
 // /usr/local/etc/unbound.opnsense.d/*.conf there whenever it regenerates, so

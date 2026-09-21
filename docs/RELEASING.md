@@ -5,7 +5,14 @@ installed daemons read: `manifest.json` (signed asset list), the raw
 `flowsightd-<os>-<arch>` binaries the updater swaps in, the OPNsense packages
 `os-flowsight-<ver>-<amd64|aarch64>.pkg` (also uploaded under the stable
 names `os-flowsight-<arch>.pkg`), the Debian packages `flowsight_<ver>_<arch>.deb`,
-`install.sh` and `SHA256SUMS`.
+the RPMs `flowsight-<ver>-1.<x86_64|aarch64>.rpm`, the license server
+binaries, the manual (`flowsight-manual-<ver>.pdf`, one PDF per chapter under
+`chapters/`, and `flowsight-docs-<ver>.tar.gz` with Markdown and HTML),
+`install.sh` and `SHA256SUMS`. Every package also carries the manual inside.
+
+Every change ships with its documentation (see `CLAUDE.md` at the repository
+root); a release is the moment that promise reaches customers, so check
+`docs/` before tagging.
 
 ## Keys
 
@@ -31,12 +38,21 @@ sh packaging/freebsd/build-pkg.sh 0.9.3 aarch64 dist/0.9.3/flowsightd-freebsd-ar
 sh packaging/debian/build-deb.sh 0.9.3 amd64 dist/0.9.3/flowsightd-linux-amd64 dist/0.9.3
 sh packaging/debian/build-deb.sh 0.9.3 arm64 dist/0.9.3/flowsightd-linux-arm64 dist/0.9.3
 
+# 3b. RPMs on a host with rpmbuild (docs dir optional, as for the others)
+sh packaging/rpm/build-rpm.sh 0.9.3 x86_64  dist/0.9.3/flowsightd-linux-amd64 dist/0.9.3 dist/0.9.3/docs
+sh packaging/rpm/build-rpm.sh 0.9.3 aarch64 dist/0.9.3/flowsightd-linux-arm64 dist/0.9.3 dist/0.9.3/docs
+
+# 3c. the manual: Markdown -> HTML + PDF (full and per chapter), then into the release assets
+sh packaging/docs/build-docs.sh 0.9.3 dist/0.9.3/docs      # needs pandoc + weasyprint (see the script header)
+packaging/release/release.sh docs 0.9.3
+# pass dist/0.9.3/docs as the last argument of build-pkg.sh and build-deb.sh so the packages carry it
+
 # 4. sign and write manifest.json + SHA256SUMS
 NOTES="$(cat notes.md)" packaging/release/release.sh manifest 0.9.3
 
 # 5. publish
-git tag -a v0.9.3 -m "Flowsight 0.9.3" && git push origin v0.9.3
-gh release create v0.9.3 dist/0.9.3/* --title "Flowsight 0.9.3" --notes-file notes.md
+git tag -a v0.9.3 -m "FlowSight 0.9.3" && git push origin v0.9.3
+gh release create v0.9.3 dist/0.9.3/* --title "FlowSight 0.9.3" --notes-file notes.md
 ```
 
 Before publishing, prove the updater on a test box: serve `manifest.json`

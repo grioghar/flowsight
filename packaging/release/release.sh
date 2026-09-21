@@ -1,10 +1,13 @@
 #!/bin/sh
 #
-# Build and sign a Flowsight release.
+# Build and sign a FlowSight release.
 #
 #   release.sh build <version> [out dir]
 #       Cross-compile flowsightd for every supported target with the release
 #       public key baked in, into <out dir> (default dist/<version>).
+#   release.sh docs <version> [out dir]
+#       Copy a rendered manual (packaging/docs/build-docs.sh output in <out dir>/docs)
+#       into release assets: the full PDF, the chapter PDFs and a docs tarball.
 #   release.sh manifest <version> [out dir]
 #       Sign every flowsightd-<os>-<arch> in <out dir> and write manifest.json.
 #       Packages (os-flowsight-*.pkg, flowsight_*.deb) already in <out dir>
@@ -53,7 +56,7 @@ build)
     ;;
 manifest)
     [ -r "$KEY" ] || { echo "signing key not found at $KEY" >&2; exit 1; }
-    NOTES="${NOTES:-Flowsight $VERSION}"
+    NOTES="${NOTES:-FlowSight $VERSION}"
     assets=""
     for t in $TARGETS; do
         os="${t%/*}"; arch="${t#*/}"; f="$OUT/flowsightd-$os-$arch"
@@ -63,7 +66,7 @@ manifest)
         assets="$assets{\"os\":\"$os\",\"arch\":\"$arch\",\"url\":\"https://github.com/grioghar/flowsight/releases/download/v$VERSION/flowsightd-$os-$arch\",\"sha256\":\"$h\",\"size\":$(size "$f"),\"sig\":\"$sig\"},"
     done
     pkgs=""
-    for f in "$OUT"/os-flowsight-*.pkg "$OUT"/flowsight_*.deb; do
+    for f in "$OUT"/os-flowsight-*.pkg "$OUT"/flowsight_*.deb "$OUT"/flowsight-*.rpm "$OUT"/flowsight-manual-*.pdf "$OUT"/flowsight-docs-*.tar.gz; do
         [ -f "$f" ] || continue
         pkgs="$pkgs{\"name\":\"$(basename "$f")\",\"sha256\":\"$(sha "$f")\",\"size\":$(size "$f")},"
     done
@@ -74,5 +77,12 @@ manifest)
     (cd "$OUT" && for f in *; do [ "$f" = SHA256SUMS ] || printf '%s  %s\n' "$(sha "$f")" "$f"; done > SHA256SUMS)
     echo "wrote $OUT/manifest.json and SHA256SUMS"
     ;;
-*) echo "usage: release.sh build|manifest <version> [out dir]" >&2; exit 1 ;;
+docs)
+    D="$OUT/docs"; [ -d "$D" ] || { echo "no rendered docs at $D (run packaging/docs/build-docs.sh $VERSION $D)" >&2; exit 1; }
+    cp "$D"/flowsight-manual-"$VERSION".pdf "$OUT/"
+    mkdir -p "$OUT/chapters"; cp "$D"/chapters/*.pdf "$OUT/chapters/"
+    (cd "$D" && tar -czf "$OUT/flowsight-docs-$VERSION.tar.gz" md html chapters flowsight-manual-"$VERSION".pdf)
+    ls -la "$OUT"/flowsight-manual-"$VERSION".pdf "$OUT/flowsight-docs-$VERSION.tar.gz"; ls "$OUT/chapters" | wc -l
+    ;;
+*) echo "usage: release.sh build|docs|manifest <version> [out dir]" >&2; exit 1 ;;
 esac

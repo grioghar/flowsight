@@ -1,6 +1,6 @@
 # Licensing
 
-Flowsight has three tiers. Community is the free product and is complete for
+FlowSight has three tiers. Community is the free product and is complete for
 a home network; Pro and Business unlock features on top. Nothing in
 Community expires, phones home or needs registration.
 
@@ -9,7 +9,7 @@ Community expires, phones home or needs registration.
 | Visibility (flows, apps, web, DNS, TLS, hosts) | yes | yes | yes |
 | DNS, web and application policy | 3 policies, 2 schedules | unlimited | unlimited |
 | History kept | 7 days | 90 days | 365 days |
-| TLS inspection with a Flowsight CA | | yes | yes |
+| TLS inspection with a FlowSight CA | | yes | yes |
 | Firewall rule hygiene | | yes | yes |
 | Device enrolment: enforce mode | monitor only | yes | yes |
 | Scheduled reports, CSV export | on-screen reports | yes | yes |

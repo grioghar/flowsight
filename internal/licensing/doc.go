@@ -41,7 +41,7 @@ const Prefix = "FSL1"
 const dateLayout = "2006-01-02"
 
 var (
-	ErrFormat    = errors.New("not a Flowsight license")
+	ErrFormat    = errors.New("not a FlowSight license")
 	ErrSignature = errors.New("license signature does not verify")
 	ErrTier      = errors.New("license names an unknown tier")
 )

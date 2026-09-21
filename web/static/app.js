@@ -1,4 +1,4 @@
-/* Flowsight application shell: navigation, routing, refresh, login. */
+/* FlowSight application shell: navigation, routing, refresh, login. */
 'use strict';
 (function () {
   const { $, $$, esc, get } = FS;
@@ -6,7 +6,19 @@
   const ORDER = { Visibility: 1, Security: 2, Policy: 3, Operations: 4 };
   let timer = null;
 
-  FS.setTitle = (t) => { $('#title').textContent = t; document.title = t + ' · Flowsight'; };
+  FS.setTitle = (t) => { $('#title').textContent = t; document.title = t + ' · FlowSight'; };
+
+  // Theme: the installation's preference (auto | light | dark). In auto,
+  // follow the host GUI's theme when embedded in OPNsense, else the OS.
+  FS.theme = { pref: 'auto', host: window.FS_HOST_THEME || '' };
+  FS.applyTheme = () => {
+    const root = document.documentElement;
+    const want = FS.theme.pref !== 'auto' ? FS.theme.pref : (FS.theme.host || '');
+    if (want === 'light' || want === 'dark') root.setAttribute('data-theme', want); else root.removeAttribute('data-theme');
+  };
+  window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data && e.data.fsTheme) { FS.theme.host = e.data.fsTheme; FS.applyTheme(); } });
+  FS.applyTheme();
+  get('/api/ui/prefs').then(p => { if (p && p.theme) { FS.theme.pref = p.theme; FS.applyTheme(); } });
 
   async function buildMenu() {
     const [p, info] = await Promise.all([get('/api/system/panels'), get('/api/system/info')]);
@@ -22,6 +34,7 @@
     $('#site').textContent = info.site || '';
     $('#version').textContent = 'v' + (info.version || '') + (p.tier && p.tier !== 'community' ? ' · ' + FS.tierName(p.tier) : '');
     if (info.read_only) $('#version').textContent += ' · read-only';
+    get('/api/enrich/status').then(s => { const a = $('#attrib'); if (a) a.textContent = (s && s.attribution) || ''; });
   }
 
   async function healthPill() {
@@ -42,7 +55,7 @@
 
   FS.needLogin = function () {
     if ($('#login')) return;
-    $('#view').innerHTML = `<div class="card login" id="login"><h2>Sign in</h2><p class="small muted">This Flowsight instance requires its API token.</p><form class="f"><label>API token</label><input type="text" name="token" autocomplete="off" autofocus><div class="actions"><button class="btn primary">Sign in</button></div></form></div>`;
+    $('#view').innerHTML = `<div class="card login" id="login"><h2>Sign in</h2><p class="small muted">This FlowSight instance requires its API token.</p><form class="f"><label>API token</label><input type="text" name="token" autocomplete="off" autofocus><div class="actions"><button class="btn primary">Sign in</button></div></form></div>`;
     $('#login form').onsubmit = async (e) => { e.preventDefault(); const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'Flowsight' }, body: JSON.stringify({ token: e.target.token.value }) }); if (r.ok) { location.reload(); } else FS.toast('Invalid token', true); };
   };
 
@@ -55,7 +68,7 @@
     $('#nav').classList.remove('open');
     const view = $('#view');
     if (!view.dataset.page || view.dataset.page !== page + '/' + arg) { view.innerHTML = '<div class="empty">Loading…</div>'; view.dataset.page = page + '/' + arg; }
-    try { await def.render(view, { arg, params }); } catch (e) { view.innerHTML = FS.err('Page failed: ' + e.message); console.error(e); }
+    try { await def.render(view, { arg, params }); FS.enrichIn(view); } catch (e) { view.innerHTML = FS.err('Page failed: ' + e.message); console.error(e); }
     clearTimeout(timer);
     if (def.refresh && document.visibilityState === 'visible') timer = setTimeout(() => { if (FS.parseHash().page === page) FS.render(); }, def.refresh * 1000);
   };

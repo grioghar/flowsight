@@ -95,7 +95,7 @@ type TLSOpt struct {
 	Bypass  []string `json:"bypass,omitempty"`
 }
 
-// Exclusions bypass Flowsight entirely: no interception, no inspection, no
+// Exclusions bypass FlowSight entirely: no interception, no inspection, no
 // policy. Zenarmor gates these behind a paid edition; here they are core.
 type Exclusions struct {
 	Hosts   []string `json:"hosts,omitempty"`   // addresses, CIDRs, mac:

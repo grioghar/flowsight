@@ -5,7 +5,7 @@
 Compose, don't reimplement. Everything that touches packets is an existing,
 battle-tested engine: Unbound answers DNS, squid terminates and relays TLS,
 pf drops packets, nDPI (through ntopng) names applications, Suricata detects
-threats. Flowsight owns the layer above them, which is the layer that never
+threats. FlowSight owns the layer above them, which is the layer that never
 existed: one policy model, one store, one interface, and the reconciliation
 that keeps the engines in step with what the operator declared.
 
@@ -66,7 +66,7 @@ silently does nothing.
 
 ## Data path
 
-Flowsight is not inline. pf redirects port 80 and 443 from the local networks
+FlowSight is not inline. pf redirects port 80 and 443 from the local networks
 to squid on loopback; squid peeks at the ClientHello for the server name and
 splices (relays untouched) unless the policy says terminate or bump.
 Application blocking is reactive: nDPI names the application on the first

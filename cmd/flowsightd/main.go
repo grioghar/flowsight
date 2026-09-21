@@ -1,4 +1,4 @@
-// flowsightd is the Flowsight daemon: collection, storage, policy, API and UI
+// flowsightd is the FlowSight daemon: collection, storage, policy, API and UI
 // in one static binary.
 package main
 

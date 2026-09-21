@@ -52,7 +52,7 @@ func TestReportHTMLGeneration(t *testing.T) {
 	if !strings.Contains(html, "<!DOCTYPE html>") {
 		t.Errorf("report should be valid HTML")
 	}
-	if !strings.Contains(html, "<h1>Flowsight Report</h1>") {
+	if !strings.Contains(html, "<h1>FlowSight Report</h1>") {
 		t.Errorf("report should have title")
 	}
 	if !strings.Contains(html, "Executive Summary") {
@@ -256,7 +256,7 @@ func TestReportWithNoData(t *testing.T) {
 	if !strings.Contains(html, "<!DOCTYPE html>") {
 		t.Errorf("report should be valid HTML even with no data")
 	}
-	if !strings.Contains(html, "<h1>Flowsight Report</h1>") {
+	if !strings.Contains(html, "<h1>FlowSight Report</h1>") {
 		t.Errorf("report should have title")
 	}
 }

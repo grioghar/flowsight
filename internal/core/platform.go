@@ -1,4 +1,4 @@
-// Package core is the thin centre of Flowsight: configuration, the embedded
+// Package core is the thin centre of FlowSight: configuration, the embedded
 // store, the module registry, the scheduler and the HTTP API. Nothing
 // domain-specific lives here.
 package core
@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Platform describes where Flowsight is running and where the backends it
+// Platform describes where FlowSight is running and where the backends it
 // composes keep their files. Modules never branch on the OS themselves; they
 // ask the platform. Every path can be overridden in the config document.
 type Platform struct {

@@ -7,7 +7,9 @@
 # wraps them with a manifest. The result installs with `pkg add` and shows up
 # in System > Firmware > Plugins like any other plugin.
 #
-#   build-pkg.sh <version> <arch: amd64|aarch64> <flowsightd binary> <plugin src dir> <out dir>
+#   build-pkg.sh <version> <arch: amd64|aarch64> <flowsightd binary> <plugin src dir> <out dir> [docs dir]
+# The docs dir is the output of packaging/docs/build-docs.sh; when given, the
+# manual (Markdown, HTML, PDFs) is installed under /usr/local/share/flowsight/docs.
 #
 set -eu
 
@@ -16,6 +18,7 @@ ARCH="${2:?arch}"
 BIN="${3:?flowsightd binary}"
 SRC="${4:?plugin src dir}"
 OUT="${5:?out dir}"
+DOCS="${6:-}"
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -33,6 +36,14 @@ install -m 755 "$BIN" "$STAGE/usr/local/sbin/flowsightd"
     install -m "$mode" "$f" "$dest"
 done)
 
+if [ -n "$DOCS" ] && [ -d "$DOCS" ]; then
+    D="$STAGE/usr/local/share/flowsight/docs"; install -d "$D/chapters"
+    cp -R "$DOCS"/md "$DOCS"/html "$D/" 2>/dev/null || true
+    cp "$DOCS"/flowsight-manual-*.pdf "$D/" 2>/dev/null || true
+    cp "$DOCS"/chapters/*.pdf "$D/chapters/" 2>/dev/null || true
+    find "$D" -type f -exec chmod 644 {} +
+fi
+
 # OUI registry if the repo ships one; the identity module reads it from share.
 if [ -f "$(dirname "$0")/../oui.txt" ]; then
     install -m 644 "$(dirname "$0")/../oui.txt" "$STAGE/usr/local/share/flowsight/oui.txt"
@@ -42,9 +53,9 @@ cat > "$STAGE/+MANIFEST" <<EOF
 name: os-flowsight
 version: "$VERSION"
 origin: opnsense/os-flowsight
-comment: "Flowsight: L7 visibility, policy and enforcement"
+comment: "FlowSight: L7 visibility, policy and enforcement"
 desc: <<EOD
-Flowsight is an open alternative to Zenarmor for OPNsense: application and
+FlowSight is an open alternative to Zenarmor for OPNsense: application and
 web visibility per device, DNS, web and application policy compiled onto the
 firewall's own resolver, proxy and packet filter, TLS transparency with an
 optional inspection CA, firewall rule hygiene, reports and alerting. One
@@ -78,7 +89,7 @@ if [ -x /usr/local/sbin/configctl ]; then
 require_once("config.inc"); global $config;
 if (!isset($config["OPNsense"]["flowsight"]["general"]["enabled"])) {
     $config["OPNsense"]["flowsight"]["general"]["enabled"] = "1";
-    write_config("Flowsight: plugin installed");
+    write_config("FlowSight: plugin installed");
 }' 2>/dev/null || true
     rm -f /var/lib/php/tmp/opnsense_menu_cache.xml
     # Detach fully: pkg may be driven by something waiting on our descriptors.
@@ -87,7 +98,7 @@ if (!isset($config["OPNsense"]["flowsight"]["general"]["enabled"])) {
 fi
 service flowsight restart </dev/null >/dev/null 2>&1 || service flowsight start </dev/null >/dev/null 2>&1 || true
 echo ""
-echo "Flowsight is installed. Open Services > Flowsight in the GUI."
+echo "FlowSight is installed. Open Services > FlowSight in the GUI."
 echo "Nothing is enforced until you turn on policy enforcement there."
 EOF
 
@@ -95,7 +106,7 @@ cat > "$STAGE/+PRE_DEINSTALL" <<'EOF'
 #!/bin/sh
 service flowsight stop >/dev/null 2>&1 || true
 sysrc -q -x flowsight_enable >/dev/null 2>&1 || true
-# Withdraw everything Flowsight put in front of traffic; leave data and policy.
+# Withdraw everything FlowSight put in front of traffic; leave data and policy.
 pfctl -a flowsight/web -F nat >/dev/null 2>&1 || true
 pfctl -a flowsight/policy -F rules >/dev/null 2>&1 || true
 for f in /var/unbound/etc/flowsight-*.conf /var/unbound/etc/flowsight-*.rpz /usr/local/etc/unbound.opnsense.d/flowsight-*; do

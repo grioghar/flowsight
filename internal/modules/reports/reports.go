@@ -135,9 +135,9 @@ func (m *Module) buildReport(hours int) string {
 	var html bytes.Buffer
 	html.WriteString(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><style>`)
 	html.WriteString(reportCSS)
-	html.WriteString(`</style><title>Flowsight Report</title></head><body>`)
+	html.WriteString(`</style><title>FlowSight Report</title></head><body>`)
 
-	html.WriteString(fmt.Sprintf(`<h1>Flowsight Report</h1><p>Generated %s · Window: last %d hours</p>`, time.Now().Format("2006-01-02 15:04 MST"), hours))
+	html.WriteString(fmt.Sprintf(`<h1>FlowSight Report</h1><p>Generated %s · Window: last %d hours</p>`, time.Now().Format("2006-01-02 15:04 MST"), hours))
 
 	// Executive summary
 	html.WriteString(`<section><h2>Executive Summary</h2><div class="kpis">`)
@@ -500,7 +500,7 @@ func (m *Module) sendDueReports() error {
 
 		// Generate and send report
 		html := m.buildReport(sched.Window)
-		subject := fmt.Sprintf("Flowsight Report: %s", sched.Name)
+		subject := fmt.Sprintf("FlowSight Report: %s", sched.Name)
 
 		if emailer != nil {
 			if err := emailer.SendEmail(subject, html, sched.Recipients); err != nil {
@@ -607,7 +607,7 @@ func (m *Module) apiRunReport(r *core.Req) (any, error) {
 	}
 
 	html := m.buildReport(sched.Window)
-	subject := fmt.Sprintf("Flowsight Report: %s", sched.Name)
+	subject := fmt.Sprintf("FlowSight Report: %s", sched.Name)
 
 	emailer := m.getEmailer()
 	if emailer != nil && len(sched.Recipients) > 0 {

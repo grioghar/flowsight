@@ -2,7 +2,7 @@
 // configuration, keeps the process running, tails its log for per-request
 // visibility with server names, and provides web.block (terminate at the
 // ClientHello, block page for plain HTTP) and tls.inspect (bump with the
-// Flowsight CA for selected clients).
+// FlowSight CA for selected clients).
 //
 // Owning the instance rather than riding on a distribution's proxy plugin is
 // deliberate: ssl_bump rules are first-match and global, so per-client

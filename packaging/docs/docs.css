@@ -1,0 +1,32 @@
+/* FlowSight manual: screen and print. Kept plain so WeasyPrint and browsers agree. */
+@page { size: A4; margin: 22mm 18mm 20mm 18mm;
+  @bottom-center { content: "FlowSight · " string(chapter) " · " counter(page); font: 9pt "DejaVu Sans", sans-serif; color: #666; } }
+:root { --ink: #1b1f24; --muted: #5a6270; --line: #d9dee5; --accent: #2f6fed; --code: #f3f5f8; }
+html { font: 10.5pt/1.5 "DejaVu Sans", "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+body { max-width: 860px; margin: 0 auto; padding: 0 16px; }
+header#title-block-header { border-bottom: 2px solid var(--accent); margin-bottom: 18px; padding-bottom: 10px; }
+h1.title { font-size: 26pt; margin: 0 0 4px; letter-spacing: -0.3px; }
+p.subtitle { color: var(--muted); font-size: 12pt; margin: 0; }
+p.date { color: var(--muted); font-size: 9pt; margin: 2px 0 0; }
+h1 { font-size: 20pt; margin: 26px 0 8px; string-set: chapter content(); page-break-after: avoid; }
+h2 { font-size: 14.5pt; margin: 22px 0 6px; border-bottom: 1px solid var(--line); padding-bottom: 3px; page-break-after: avoid; }
+h3 { font-size: 12pt; margin: 16px 0 4px; page-break-after: avoid; }
+h4 { font-size: 10.5pt; margin: 12px 0 4px; }
+p, li { orphans: 3; widows: 3; }
+a { color: var(--accent); text-decoration: none; }
+code, pre { font: 9pt/1.4 "DejaVu Sans Mono", Menlo, Consolas, monospace; }
+code { background: var(--code); padding: 1px 4px; border-radius: 3px; }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; page-break-inside: avoid; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 9.5pt; page-break-inside: auto; }
+th, td { border: 1px solid var(--line); padding: 5px 8px; vertical-align: top; text-align: left; }
+th { background: #eef2f8; font-weight: 600; }
+tr { page-break-inside: avoid; }
+blockquote { border-left: 3px solid var(--accent); margin: 10px 0; padding: 2px 12px; color: var(--muted); }
+hr { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
+nav#TOC { background: #fafbfd; border: 1px solid var(--line); border-radius: 6px; padding: 10px 16px; margin: 0 0 20px; font-size: 9.5pt; }
+nav#TOC ul { margin: 4px 0; padding-left: 18px; }
+nav#TOC > ul { columns: 2; column-gap: 24px; }
+div.chapter { page-break-before: always; }
+img { max-width: 100%; }
+@media print { body { max-width: none; padding: 0; } a { color: inherit; } nav#TOC > ul { columns: 1; } }

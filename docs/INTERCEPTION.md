@@ -1,6 +1,6 @@
 # How interception works, and what can go wrong
 
-Flowsight owns a squid instance (`flowsight-proxy`) and two pf rules per
+FlowSight owns a squid instance (`flowsight-proxy`) and two pf rules per
 interface that send port 80 and 443 from the intercepted networks to it on
 loopback. The proxy peeks at the TLS ClientHello for the server name and
 splices the connection untouched unless a policy says terminate (denied) or
@@ -12,7 +12,7 @@ pf takes the *first* matching translation rule. NAT reflection, which lets a
 client reach an internally hosted service by its public name, is itself an
 `rdr`, so the interception rules must come after every port forward or that
 traffic is sent to the proxy, which then tries to reach the firewall's own
-WAN address and fails. Flowsight's `rdr-anchor "flowsight/*"` is registered
+WAN address and fails. FlowSight's `rdr-anchor "flowsight/*"` is registered
 at the tail of the translation rules for exactly this reason. Do not "fix" a
 reflection problem with a `no rdr` rule for the WAN address: it excludes the
 traffic from reflection too and the failure looks innocent because a `no rdr`

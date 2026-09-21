@@ -267,7 +267,7 @@ func (m *Module) recoverAuth() bool {
 	}
 	m.configure(m.ctx.Settings())
 	m.ctx.Log.Info("provisioned ntopng account 'flowsight' through redis")
-	m.ctx.Event("config", "provisioned an ntopng account for Flowsight", nil)
+	m.ctx.Event("config", "provisioned an ntopng account for FlowSight", nil)
 	return true
 }
 

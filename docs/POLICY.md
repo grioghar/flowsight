@@ -38,7 +38,7 @@ exclusions:
   domains: [bank.example]    # never intercepted or blocked
 options:
   dns_block_mode: nxdomain   # nxdomain | null | refused
-  block_page_url: ""         # empty: Flowsight's own page
+  block_page_url: ""         # empty: FlowSight's own page
 ```
 
 ## Members
@@ -48,7 +48,7 @@ options:
 | `10.0.1.20`, `2001:db8::5` | one address |
 | `10.0.1.0/24` | a network |
 | `mac:aa:bb:cc:dd:ee:ff` | the device with that MAC, whatever address it holds |
-| `device:<name>` | a device by the name Flowsight knows it under |
+| `device:<name>` | a device by the name FlowSight knows it under |
 | `zone:<id>` | an enrolment zone's subnet |
 | `all` (or `match.all: true`) | every local network |
 
@@ -60,7 +60,7 @@ options:
 | `apps`, `app_categories` | pf table per policy filled by app control from nDPI identifications | the first identified flow is cut and every later connection to that endpoint is dropped |
 | `ports`, `internet` | pf rules in `flowsight/policy` | the first packet |
 | `safe_search`, `youtube` | Unbound view with CNAME redirects | the DNS answer |
-| `tls.inspect` | squid bumps the client with the Flowsight CA | the handshake; bypassed names are spliced |
+| `tls.inspect` | squid bumps the client with the FlowSight CA | the handshake; bypassed names are spliced |
 
 A policy whose requirements no installed provider offers is reported as
 *unmet* and refused, because a policy that silently enforces nothing is worse

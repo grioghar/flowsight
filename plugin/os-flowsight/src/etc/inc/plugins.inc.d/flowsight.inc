@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Flowsight: OPNsense integration hooks.
+ * FlowSight: OPNsense integration hooks.
  *
  * Registers the service so the GUI can start, stop and show it, and gives
  * the daemon two pf anchors it owns outright: "flowsight/*" as a quick
@@ -24,7 +24,7 @@ function flowsight_services()
     $services = [];
     if (flowsight_enabled()) {
         $services[] = [
-            'description' => gettext('Flowsight'),
+            'description' => gettext('FlowSight'),
             'configd' => [
                 'restart' => ['flowsight restart'],
                 'start' => ['flowsight start'],

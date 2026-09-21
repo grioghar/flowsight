@@ -1,20 +1,27 @@
 #!/bin/sh
 # Build a .deb for Debian/Ubuntu with dpkg-deb alone.
-#   build-deb.sh <version> <arch: amd64|arm64> <flowsightd binary> <out dir>
+#   build-deb.sh <version> <arch: amd64|arm64> <flowsightd binary> <out dir> [docs dir]
 set -eu
-VERSION="${1:?}"; ARCH="${2:?}"; BIN="${3:?}"; OUT="${4:?}"
+VERSION="${1:?}"; ARCH="${2:?}"; BIN="${3:?}"; OUT="${4:?}"; DOCS="${5:-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/DEBIAN" "$STAGE/usr/local/sbin" "$STAGE/lib/systemd/system" "$STAGE/etc/flowsight" "$STAGE/usr/share/flowsight" "$OUT"
 install -m 755 "$BIN" "$STAGE/usr/local/sbin/flowsightd"
 install -m 644 "$HERE/../systemd/flowsight.service" "$STAGE/lib/systemd/system/flowsight.service"
+if [ -n "$DOCS" ] && [ -d "$DOCS" ]; then
+    D="$STAGE/usr/share/doc/flowsight"; install -d "$D/chapters"
+    cp -R "$DOCS"/md "$DOCS"/html "$D/" 2>/dev/null || true
+    cp "$DOCS"/flowsight-manual-*.pdf "$D/" 2>/dev/null || true
+    cp "$DOCS"/chapters/*.pdf "$D/chapters/" 2>/dev/null || true
+    find "$D" -type f -exec chmod 644 {} +
+fi
 cat > "$STAGE/DEBIAN/control" <<CTRL
 Package: flowsight
 Version: $VERSION
 Section: net
 Priority: optional
 Architecture: $ARCH
-Maintainer: Flowsight <flowsight@grio.co>
+Maintainer: FlowSight <flowsight@grio.co>
 Depends: unbound
 Recommends: squid-openssl | squid, ntopng, suricata
 Homepage: https://github.com/grioghar/flowsight
@@ -29,7 +36,7 @@ if [ ! -f /etc/flowsight/flowsight.json ]; then
     TOKEN="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)"
     printf '{\n  "api_token": "%s"\n}\n' "$TOKEN" > /etc/flowsight/flowsight.json
     chmod 600 /etc/flowsight/flowsight.json
-    echo "Flowsight API token (also in /etc/flowsight/flowsight.json): $TOKEN"
+    echo "FlowSight API token (also in /etc/flowsight/flowsight.json): $TOKEN"
 fi
 systemctl daemon-reload || true
 systemctl enable --now flowsight || true

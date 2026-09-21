@@ -230,7 +230,7 @@ func (a *API) OpenAPI() map[string]any {
 		paths[r.Path][strings.ToLower(r.Method)] = op
 	}
 	return map[string]any{"openapi": "3.0.3",
-		"info":    map[string]any{"title": "Flowsight API", "version": a.core.Version},
+		"info":    map[string]any{"title": "FlowSight API", "version": a.core.Version},
 		"servers": []map[string]any{{"url": "/"}}, "paths": paths}
 }
 

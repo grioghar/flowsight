@@ -47,7 +47,7 @@ type Feature struct {
 // Features is the catalogue. Everything not listed here is Community.
 var Features = []Feature{
 	{Key: "tls.inspect", Tier: TierPro, Title: "TLS inspection",
-		Desc: "Create a Flowsight CA and decrypt selected traffic for content policy and certificate transparency."},
+		Desc: "Create a FlowSight CA and decrypt selected traffic for content policy and certificate transparency."},
 	{Key: "firewall.analyse", Tier: TierPro, Title: "Firewall rule hygiene",
 		Desc: "Continuous analysis of the firewall ruleset: unused, shadowed and never-evaluated rules, with change tracking."},
 	{Key: "device.enroll", Tier: TierPro, Title: "Device enrolment (enforce)",

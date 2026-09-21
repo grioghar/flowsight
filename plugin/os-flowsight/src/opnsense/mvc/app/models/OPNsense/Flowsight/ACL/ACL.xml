@@ -1,6 +1,6 @@
 <acl>
     <page-flowsight>
-        <name>Flowsight: all pages</name>
+        <name>FlowSight: all pages</name>
         <patterns>
             <pattern>flowsight.php*</pattern>
         </patterns>

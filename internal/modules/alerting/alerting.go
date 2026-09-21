@@ -553,7 +553,7 @@ func (m *Module) evaluateRules() error {
 			count := st.Int(`SELECT COUNT(*) FROM events WHERE ts>=? AND kind='system'`, now-60)
 			if count > 0 {
 				shouldAlert = true
-				alertBody = "Flowsight daemon has started"
+				alertBody = "FlowSight daemon has started"
 			}
 		}
 
@@ -716,7 +716,7 @@ func (m *Module) apiTestChannel(r *core.Req) (any, error) {
 		return nil, core.NotFound("channel not found")
 	}
 
-	err := m.send(*target, "test", "Flowsight Test Alert", "This is a test message from your Flowsight alerting system.")
+	err := m.send(*target, "test", "FlowSight Test Alert", "This is a test message from your FlowSight alerting system.")
 	if err != nil {
 		m.mu.Lock()
 		m.lastErr = err.Error()

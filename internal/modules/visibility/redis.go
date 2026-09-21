@@ -14,7 +14,7 @@ import (
 )
 
 // A minimal RESP client: enough to read and write the handful of keys ntopng
-// keeps its users in. No dependency, no cgo, and it lets Flowsight provision
+// keeps its users in. No dependency, no cgo, and it lets FlowSight provision
 // its own ntopng account instead of asking the operator to click through
 // ntopng's password-change screen.
 type redis struct {
@@ -137,7 +137,7 @@ func provisionNtopngUser(addr, user string) (string, error) {
 	sets := map[string]string{
 		prefix + "password":         hex.EncodeToString(sum[:]),
 		prefix + "group":            "administrator",
-		prefix + "full_name":        "Flowsight",
+		prefix + "full_name":        "FlowSight",
 		prefix + "allowed_nets":     "0.0.0.0/0,::/0",
 		prefix + "allowed_ifname":   "",
 		prefix + "language":         "en",

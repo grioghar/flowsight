@@ -1,5 +1,5 @@
 [Unit]
-Description=Flowsight: L7 visibility, policy and enforcement
+Description=FlowSight: L7 visibility, policy and enforcement
 Documentation=https://github.com/grioghar/flowsight
 After=network-online.target unbound.service
 Wants=network-online.target

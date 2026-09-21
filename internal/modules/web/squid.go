@@ -8,13 +8,13 @@ import (
 	"github.com/grioghar/flowsight/internal/core"
 )
 
-// squidConf renders the configuration of the proxy instance Flowsight owns.
+// squidConf renders the configuration of the proxy instance FlowSight owns.
 //
 // The instance is transparent only: pf redirects port 80 and 443 from the
 // selected networks to its two loopback listeners. TLS is peeked for the
 // server name and then spliced (relayed untouched) unless a policy asks for
 // inspection of that client, in which case the connection is bumped with the
-// Flowsight CA. Denied names are terminated at the ClientHello, before a
+// FlowSight CA. Denied names are terminated at the ClientHello, before a
 // single application byte, which is what makes web blocking inline.
 type squidParams struct {
 	HTTPPort, HTTPSPort int

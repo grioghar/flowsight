@@ -20,7 +20,7 @@ import (
 // provider renders the proxy configuration and the interception rules from
 // the policy document. web.block terminates denied names at the ClientHello
 // and serves the block page for plain HTTP; tls.inspect bumps selected
-// clients with the Flowsight CA when the tls module has one.
+// clients with the FlowSight CA when the tls module has one.
 type provider struct {
 	m *Module
 }

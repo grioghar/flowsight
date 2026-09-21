@@ -1,13 +1,13 @@
 <?php
 
 /*
- * Flowsight inside the OPNsense web GUI.
+ * FlowSight inside the OPNsense web GUI.
  *
  * flowsightd binds to loopback and ships no authentication of its own; the
  * GUI has already authenticated the user, so this page is the only door:
  *
  *   flowsight.php            the page, inside the OPNsense chrome
- *   flowsight.php?app=1      the Flowsight application shell (in an iframe)
+ *   flowsight.php?app=1      the FlowSight application shell (in an iframe)
  *   flowsight.php?asset=…    static files of the shell
  *   flowsight.php?api=/api/… JSON API, GET and POST
  *
@@ -148,7 +148,9 @@ if (isset($_GET["app"])) {
         exit;
     }
     $csrf = (new LegacyCSRF())->getToken();
-    $boot = "<script>window.FS_API_BASE='flowsight.php?api=';window.FS_CSRF=" . json_encode($csrf["token"]) . ";</script>";
+    $hostTheme = (isset($_GET["theme"]) && in_array($_GET["theme"], ["light", "dark"], true)) ? $_GET["theme"] : "";
+    $boot = "<script>window.FS_API_BASE='flowsight.php?api=';window.FS_CSRF=" . json_encode($csrf["token"])
+        . ";window.FS_HOST_THEME=" . json_encode($hostTheme) . ";</script>";
     $html = str_replace("/static/", "flowsight.php?asset=", $out);
     $html = str_replace("<head>", "<head>" . $boot, $html);
     header("Content-Type: text/html; charset=utf-8");
@@ -159,21 +161,39 @@ if (isset($_GET["app"])) {
 }
 
 /* ---------------------------------------------------------------- page */
-$pgtitle = [gettext("Services"), gettext("Flowsight")];
+$pgtitle = [gettext("Services"), gettext("FlowSight")];
 include("head.inc");
 ?>
 <body>
 <?php include("fbegin.inc"); ?>
 <style>
-  #fs-frame { width: 100%; height: calc(100vh - 140px); min-height: 640px; border: 0; background: #f4f6f9; border-radius: 6px; }
+  #fs-frame { width: 100%; height: calc(100vh - 140px); min-height: 640px; border: 0; background: transparent; border-radius: 6px; }
   .page-content-main { padding-top: 6px !important; }
 </style>
 <section class="page-content-main">
   <div class="container-fluid">
     <div class="row">
       <section class="col-xs-12">
-        <iframe id="fs-frame" src="flowsight.php?app=1<?= isset($_GET['page']) ? '#' . htmlspecialchars(preg_replace('/[^A-Za-z0-9_\/?=&.-]/', '', $_GET['page'])) : '' ?>"
-                title="Flowsight" referrerpolicy="same-origin"></iframe>
+        <iframe id="fs-frame" data-src="flowsight.php?app=1" data-page="<?= isset($_GET['page']) ? htmlspecialchars(preg_replace('/[^A-Za-z0-9_\/?=&.-]/', '', $_GET['page'])) : '' ?>"
+                title="FlowSight" referrerpolicy="same-origin"></iframe>
+        <script>
+        (function () {
+          // Tell the app whether the OPNsense theme around it is light or dark, from the
+          // page's actual background colour, so every theme (including opnsense-auto) is handled.
+          var f = document.getElementById('fs-frame');
+          function tone() {
+            var c = getComputedStyle(document.body).backgroundColor.match(/\d+(\.\d+)?/g) || [255, 255, 255];
+            var l = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+            return l < 0.5 ? 'dark' : 'light';
+          }
+          var t = tone();
+          f.src = f.dataset.src + '&theme=' + t + (f.dataset.page ? '#' + f.dataset.page : '');
+          var mq = window.matchMedia('(prefers-color-scheme: dark)');
+          function push() { var n = tone(); if (n !== t) { t = n; f.contentWindow.postMessage({ fsTheme: t }, location.origin); } }
+          if (mq.addEventListener) mq.addEventListener('change', function () { setTimeout(push, 100); });
+          new MutationObserver(function () { setTimeout(push, 100); }).observe(document.body, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
+        })();
+        </script>
       </section>
     </div>
   </div>

@@ -1,9 +1,9 @@
-# Flowsight
+# FlowSight
 
 Open, self-hosted layer-7 visibility, policy and enforcement for OPNsense and
 other gateways. One static binary, no cloud, no licence gates.
 
-Flowsight does what Zenarmor does and stays out of the packet path while
+FlowSight does what Zenarmor does and stays out of the packet path while
 doing it: application and web visibility per device, per-group policy for
 applications, web categories, domains and TLDs, safe search, schedules,
 inline blocking at the DNS answer and the TLS handshake, an inspection CA for
@@ -15,7 +15,7 @@ runs: Unbound, squid, pf, nDPI (through ntopng) and Suricata.
 
 ```
                  ┌────────────────────────────────────────────┐
-   LAN ──────────┤ pf ─ rdr 80/443 ─► squid (Flowsight-owned) ├──────── WAN
+   LAN ──────────┤ pf ─ rdr 80/443 ─► squid (FlowSight-owned) ├──────── WAN
                  │        │              peek SNI, splice/bump │
                  │        │              terminate denied names│
                  │   Unbound (RPZ per policy, safe search)     │
@@ -49,7 +49,7 @@ fetch https://github.com/grioghar/flowsight/releases/latest/download/os-flowsigh
 pkg add os-flowsight-amd64.pkg
 ```
 
-Open **Services › Flowsight**. Visibility works immediately from ntopng (the
+Open **Services › FlowSight**. Visibility works immediately from ntopng (the
 `os-ntopng` plugin) and Unbound. Turn on web interception under
 *Settings › web* to see server names on every web session and to allow web
 blocking; create the inspection CA under *TLS* if you want to decrypt for
@@ -82,7 +82,7 @@ Community is free and complete for a home network. Pro adds TLS inspection, rule
 |---|---|
 | Visibility | live sessions with nDPI application and category, per-host reports, top hosts/apps/sites/destinations, throughput history, web log with server names, DNS log with block attribution, TLS sessions and certificate inventory, device inventory with vendor |
 | Policy | groups by address, network, MAC, device name or zone; schedules with overnight windows; deny applications, application categories, web categories (27 open feeds plus custom), domains, TLDs, ports, all internet; allow exceptions; safe search and YouTube restricted; monitor or block; exclusions |
-| Enforcement | Unbound response policy zones per policy (RPZ, logged per policy); squid terminates denied names at the ClientHello and serves a block page for HTTP; pf tables fed from nDPI cut denied applications; pf rules for ports and internet denial; optional TLS inspection with a Flowsight CA and a bypass list |
+| Enforcement | Unbound response policy zones per policy (RPZ, logged per policy); squid terminates denied names at the ClientHello and serves a block page for HTTP; pf tables fed from nDPI cut denied applications; pf rules for ports and internet denial; optional TLS inspection with a FlowSight CA and a bypass list |
 | Security | Suricata alerts, TLS findings (expired, self-signed), firewall rule hygiene with live counters, ruleset change tracking, risk score, open findings across modules |
 | Operations | reports on demand and scheduled by email, CSV export, alerting to email/webhook/Discord/Slack/ntfy, audit log of every write with the GUI user, signed in-line updates with roll back, OTLP export for Grafana |
 
@@ -103,3 +103,14 @@ Pure Go, no cgo; the UI is embedded static files with no build step.
 ## Licence
 
 Apache-2.0.
+
+## Documentation
+
+The manual lives in [docs/](docs/README.md) and ships inside every package
+(Markdown, HTML and PDF): [Getting started](docs/GETTING-STARTED.md),
+[Concepts](docs/CONCEPTS.md), [User guide](docs/USER-GUIDE.md),
+[Policy](docs/POLICY.md), [Interception](docs/INTERCEPTION.md),
+[Configuration](docs/CONFIGURATION.md), [API](docs/API.md),
+[Operations](docs/OPERATIONS.md), [Security](docs/SECURITY.md),
+[Licensing](docs/LICENSING.md), [Architecture](docs/ARCHITECTURE.md).
+Packages: OPNsense (`.pkg`), Debian/Ubuntu (`.deb`), RHEL-family (`.rpm`).

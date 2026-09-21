@@ -21,7 +21,7 @@ import (
 // policy, bound to the policy's clients with access-control tags. RPZ is
 // built for exactly this: a zone of hundreds of thousands of names costs
 // little, is shared across threads, and every hit is logged with the zone's
-// name, so a Flowsight block is attributable in the resolver log without
+// name, so a FlowSight block is attributable in the resolver log without
 // guessing from an rcode. Safe search and YouTube restrictions, which need a
 // CNAME answer rather than a refusal, use a per-policy view.
 type provider struct {
@@ -270,7 +270,7 @@ func sortedStrKeys(m map[string]string) []string {
 	return out
 }
 
-// Current reads whatever Flowsight files are in place now.
+// Current reads whatever FlowSight files are in place now.
 func (p *provider) Current() (core.Artifact, error) {
 	files := map[string]string{}
 	entries, _ := os.ReadDir(p.dir())

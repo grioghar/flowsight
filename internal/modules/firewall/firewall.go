@@ -1,4 +1,4 @@
-// Package firewall owns Flowsight's pf anchors. Every rule Flowsight needs,
+// Package firewall owns FlowSight's pf anchors. Every rule FlowSight needs,
 // whether a policy block, a proxy redirect or a zone boundary, is loaded into
 // a sub-anchor of "flowsight" with pfctl and never touches the operator's own
 // ruleset. On OPNsense the plugin hook references the anchor from the
@@ -40,7 +40,7 @@ type Module struct {
 func (m *Module) Info() core.ModuleInfo {
 	return core.ModuleInfo{
 		Name: "firewall", Version: "1.0",
-		Description:  "Flowsight's own pf anchors: policy blocks, proxy redirects and dynamic address tables.",
+		Description:  "FlowSight's own pf anchors: policy blocks, proxy redirects and dynamic address tables.",
 		Capabilities: []string{},
 		Requires:     []string{"pf"},
 		After:        []string{"identity"},
@@ -301,12 +301,12 @@ func (m *Module) checkAnchor() error {
 	if !ok {
 		hint := "reference it from the main ruleset"
 		if m.ctx.Platform.IsOPNsense() {
-			hint = "enable Flowsight in the plugin and apply firewall changes so the anchor is generated"
+			hint = "enable FlowSight in the plugin and apply firewall changes so the anchor is generated"
 		} else {
 			hint = "add 'anchor \"flowsight/*\"' and 'rdr-anchor \"flowsight/*\"' to pf.conf"
 		}
 		_, _ = m.ctx.Store.AddFinding("firewall", "anchor-missing", "high", "pf",
-			"Flowsight's pf anchor is not in the active ruleset",
+			"FlowSight's pf anchor is not in the active ruleset",
 			"Rules loaded into flowsight/* are never evaluated: "+hint+".", "firewall:anchor")
 		m.mu.Lock()
 		m.lastErr = "anchor flowsight/* is not referenced by the active ruleset"

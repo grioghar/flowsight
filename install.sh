@@ -1,5 +1,5 @@
 #!/bin/sh
-# Flowsight installer for machines that are not OPNsense (OPNsense uses the pkg).
+# FlowSight installer for machines that are not OPNsense (OPNsense uses the pkg).
 #
 #   curl -fsSL https://github.com/grioghar/flowsight/releases/latest/download/install.sh | sh
 #   FLOWSIGHT_VERSION=1.0.0 ./install.sh          pin a version
@@ -55,7 +55,7 @@ else
     install -d -m 755 "$ETC" /var/lib/flowsight /var/log/flowsight
     cat > /lib/systemd/system/flowsight.service <<'UNIT'
 [Unit]
-Description=Flowsight: L7 visibility, policy and enforcement
+Description=FlowSight: L7 visibility, policy and enforcement
 After=network-online.target unbound.service
 Wants=network-online.target
 [Service]

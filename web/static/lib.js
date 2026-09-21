@@ -1,4 +1,4 @@
-/* Flowsight UI helpers. No framework, no build step, no CDN. */
+/* FlowSight UI helpers. No framework, no build step, no CDN. */
 'use strict';
 const FS = window.FS = {};
 
@@ -38,7 +38,36 @@ FS.pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '0%';
 FS.pill = (text, kind) => `<span class="pill ${kind || ''}">${FS.esc(text)}</span>`;
 FS.sevPill = (s) => FS.pill(s, { critical: 'bad', high: 'bad', medium: 'warn', low: 'info', info: '' }[s] || '');
 FS.verdictPill = (v) => v === 'blocked' ? FS.pill('blocked', 'bad') : v === 'allowed' ? FS.pill('allowed', 'ok') : FS.pill(v || 'observed', '');
-FS.hostLink = (ip, name) => ip ? `<a href="#host/${encodeURIComponent(ip)}" title="${FS.esc(ip)}">${FS.esc(name || ip)}</a>${name ? ` <span class="muted mono small">${FS.esc(ip)}</span>` : ''}` : '';
+FS.hostLink = (ip, name) => ip ? `<a href="#host/${encodeURIComponent(ip)}" title="${FS.esc(ip)}" ${name ? '' : `data-ip="${FS.esc(ip)}"`}>${FS.esc(name || ip)}</a>${name ? ` <span class="muted mono small">${FS.esc(ip)}</span>` : ''}` : '';
+// A bare address that enrichment may decorate with a reverse-DNS name and a country.
+FS.ipTag = (ip, name) => ip ? (name ? `${FS.esc(name)} <span class="muted small mono">${FS.esc(ip)}</span>` : `<span class="mono" data-ip="${FS.esc(ip)}">${FS.esc(ip)}</span>`) : '';
+FS.flag = (cc) => cc && /^[A-Z]{2}$/.test(cc) ? `<span class="cc" title="${cc}">${String.fromCodePoint(...[...cc].map(c => 0x1F1E6 + c.charCodeAt(0) - 65))} ${cc}</span>` : '';
+FS.enrichCache = {}; FS.enrichOn = null;
+// Ask the enrich module for names and countries of every [data-ip] in el that has none yet, and decorate in place.
+FS.enrichIn = async (el) => {
+  if (FS.enrichOn === false) return;
+  const nodes = FS.$$('[data-ip]:not([data-enriched])', el); if (!nodes.length) return;
+  const want = [...new Set(nodes.map(n => n.dataset.ip).filter(ip => !FS.enrichCache[ip]))];
+  if (want.length) {
+    const r = await FS.post('/api/enrich/lookup', { ips: want });
+    if (r.error) { if (r.error.includes('not found')) FS.enrichOn = false; return; }
+    FS.enrichOn = !!(r.reverse_dns || r.geoip);
+    if (!FS.enrichOn) return;
+    Object.assign(FS.enrichCache, r.hosts || {});
+    want.forEach(ip => { const h = r.hosts && r.hosts[ip]; if (h && !h.name && r.reverse_dns) h._retry = (FS.enrichCache[ip] && FS.enrichCache[ip]._retry || 0) + 1; });
+  }
+  nodes.forEach(n => {
+    const ip = n.dataset.ip, h = FS.enrichCache[ip]; if (!h) return;
+    if (h.name || h.country) {
+      const isLink = n.tagName === 'A';
+      n.innerHTML = `${h.name ? `${FS.esc(h.name)} <span class="muted small mono">${FS.esc(ip)}</span>` : FS.esc(ip)}${h.country ? ' ' + FS.flag(h.country) : ''}`;
+      if (isLink) n.title = ip;
+      n.setAttribute('data-enriched', '1');
+    } else if ((h._retry || 0) > 2) n.setAttribute('data-enriched', '1'); // gave up on a name for this render cycle
+  });
+  // Names resolve in the background; look once more shortly after.
+  if (nodes.some(n => !n.hasAttribute('data-enriched'))) { clearTimeout(FS._enrichTimer); FS._enrichTimer = setTimeout(() => FS.enrichIn(el), 2500); }
+};
 FS.domainLink = (d) => d ? `<a href="#flows?domain=${encodeURIComponent(d)}">${FS.esc(d)}</a>` : '<span class="muted">—</span>';
 
 // --------------------------------------------------------------- DOM

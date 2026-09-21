@@ -1,4 +1,4 @@
-// Package tls is SSL transparency: a Flowsight-managed certificate authority
+// Package tls is SSL transparency: a FlowSight-managed certificate authority
 // for inspection, the certificate inventory built from everything the
 // firewall sees (peeked handshakes, bumped sessions, Suricata TLS records),
 // and the findings that come out of it: expired, self-signed, short-lived or
@@ -46,7 +46,7 @@ func (m *Module) Info() core.ModuleInfo {
 		Capabilities: []string{core.CapTLSObserve},
 		After:        []string{"identity"},
 		Defaults: map[string]any{
-			"ca_name":          "Flowsight Inspection CA",
+			"ca_name":          "FlowSight Inspection CA",
 			"ca_years":         10,
 			"expiry_warn_days": 14,
 		},
@@ -146,7 +146,7 @@ func (m *Module) createCA(name string, years int) error {
 	host, _ := os.Hostname()
 	tmpl := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: name, Organization: []string{"Flowsight"}, OrganizationalUnit: []string{host}},
+		Subject:               pkix.Name{CommonName: name, Organization: []string{"FlowSight"}, OrganizationalUnit: []string{host}},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().AddDate(years, 0, 0),
 		IsCA:                  true,
@@ -255,7 +255,7 @@ func (m *Module) apiCreate(r *core.Req) (any, error) {
 	b := r.Body()
 	name, _ := b["name"].(string)
 	if name == "" {
-		name = core.Str(m.ctx.Settings(), "ca_name", "Flowsight Inspection CA")
+		name = core.Str(m.ctx.Settings(), "ca_name", "FlowSight Inspection CA")
 	}
 	if len(name) > 64 || strings.ContainsAny(name, "\n\r") {
 		return nil, core.BadRequest("name must be at most 64 characters")

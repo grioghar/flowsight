@@ -1,4 +1,4 @@
-/* Flowsight pages: policy, categories, findings, system. */
+/* FlowSight pages: policy, categories, findings, system. */
 'use strict';
 (function () {
   const { esc, num, bytes, ago, when, pill, card, kpi, table, bars, get, post } = FS;
@@ -86,7 +86,7 @@
         <label>YouTube restricted mode</label><select name="youtube"><option value="">off</option><option ${pol.youtube === 'moderate' ? 'selected' : ''} value="moderate">moderate</option><option ${pol.youtube === 'strict' ? 'selected' : ''} value="strict">strict</option></select>
       </div>
       <div data-pane="tls" hidden>
-        <div class="check"><input type="checkbox" name="inspect" ${pol.tls && pol.tls.inspect ? 'checked' : ''}><span>Inspect TLS for these devices (decrypt with the Flowsight CA)</span></div>
+        <div class="check"><input type="checkbox" name="inspect" ${pol.tls && pol.tls.inspect ? 'checked' : ''}><span>Inspect TLS for these devices (decrypt with the FlowSight CA)</span></div>
         <div class="help">Needs the inspection CA created under TLS and installed on the devices. Banking, pinned apps and OS updates should be bypassed.</div>
         <label>Bypass (never inspected)</label><textarea name="bypass" placeholder="apple.com&#10;icloud.com&#10;bankofamerica.com">${esc(list(pol.tls && pol.tls.bypass))}</textarea>
       </div>

@@ -1,5 +1,5 @@
 <menu>
-    <Flowsight VisibleName="Flowsight" cssClass="fa fa-eye fa-fw" order="65">
+    <FlowSight VisibleName="FlowSight" cssClass="fa fa-eye fa-fw" order="65">
         <Overview VisibleName="Overview" url="/flowsight.php?page=overview" order="10"/>
         <Hosts VisibleName="Hosts" url="/flowsight.php?page=hosts" order="20"/>
         <Sessions VisibleName="Sessions" url="/flowsight.php?page=flows" order="30"/>
@@ -19,5 +19,5 @@
         <License VisibleName="License" url="/flowsight.php?page=license" order="250"/>
         <System VisibleName="System" url="/flowsight.php?page=system" order="260"/>
         <Settings VisibleName="Settings" url="/flowsight.php?page=modules" order="270"/>
-    </Flowsight>
+    </FlowSight>
 </menu>
