@@ -74,7 +74,7 @@ manifest)
         "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(printf '%s' "$NOTES" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
         "${assets%,}" "${pkgs%,}" > "$OUT/manifest.json"
     python3 -m json.tool "$OUT/manifest.json" >/dev/null
-    (cd "$OUT" && for f in *; do [ "$f" = SHA256SUMS ] || printf '%s  %s\n' "$(sha "$f")" "$f"; done > SHA256SUMS)
+    (cd "$OUT" && for f in *; do [ -f "$f" ] || continue; [ "$f" = SHA256SUMS ] || printf '%s  %s\n' "$(sha "$f")" "$f"; done > SHA256SUMS)
     echo "wrote $OUT/manifest.json and SHA256SUMS"
     ;;
 docs)

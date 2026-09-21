@@ -17,7 +17,7 @@
       const sev = { critical: 0, high: 0, medium: 0, low: 0 }; openF.forEach(f => sev[f.severity] = (sev[f.severity] || 0) + 1);
       el.innerHTML = `
       <div class="grid cols-6">
-        ${kpi('Throughput', bps(sum.throughput_bps), num(sum.throughput_pps) + ' pps')}
+        ${kpi('Throughput', bps(sum.throughput_bps), (sum.throughput_download_bps || sum.throughput_upload_bps) ? `↓ ${bps(sum.throughput_download_bps)} · ↑ ${bps(sum.throughput_upload_bps)} · ${num(sum.throughput_pps)} pps` : num(sum.throughput_pps) + ' pps')}
         ${kpi('Active flows', num(sum.active_flows), num(sum.flows_last_hour) + ' in the last hour')}
         ${kpi('Active hosts', num(sum.active_hosts), num(sum.hosts_last_hour) + ' local, last hour')}
         ${kpi('Blocked', num(sum.blocked_last_hour + (sum.dns_blocked_last_hour || 0)), 'last hour (web + DNS)', sum.blocked_last_hour ? 'warn' : '')}
@@ -26,7 +26,9 @@
       </div>
       <div class="grid cols-2" style="margin-top:14px">
         ${card('Traffic', chart([{ name: 'download', points: traffic.map(p => [p.t, p.bytes_in]) }, { name: 'upload', points: traffic.map(p => [p.t, p.bytes_out]) }], { fmt: bytes, area: true, tall: true }) + FS.legend(['download', 'upload']))}
-        ${card('Throughput', chart([{ name: 'bps', points: (ts.throughput_bps || []).map(p => [p.t, p.v]) }], { fmt: bps, area: true, tall: true }))}
+        ${card('Throughput', chart(((ts.throughput_download_bps || []).length || (ts.throughput_upload_bps || []).length)
+          ? [{ name: 'inbound (download)', points: (ts.throughput_download_bps || []).map(p => [p.t, p.v]) }, { name: 'outbound (upload)', points: (ts.throughput_upload_bps || []).map(p => [p.t, p.v]) }]
+          : [{ name: 'bps', points: (ts.throughput_bps || []).map(p => [p.t, p.v]) }], { fmt: bps, area: true, tall: true }), 'inbound and outbound')}
       </div>
       <div class="grid cols-3" style="margin-top:14px">
         ${card('Top hosts', bars((top.hosts || []).map(h => ({ label: h.name || h.ip, sub: h.name ? h.ip : '', value: (h.bytes_in || 0) + (h.bytes_out || 0), href: '#host/' + h.ip })), bytes))}

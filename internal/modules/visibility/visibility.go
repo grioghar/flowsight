@@ -548,6 +548,7 @@ func (m *Module) apiSummary(r *core.Req) (any, error) {
 	m.mu.Unlock()
 	return map[string]any{
 		"throughput_bps": latest("throughput_bps"), "throughput_pps": latest("throughput_pps"),
+		"throughput_download_bps": latest("throughput_download_bps"), "throughput_upload_bps": latest("throughput_upload_bps"),
 		"active_flows": latest("active_flows"), "active_hosts": latest("active_hosts"),
 		"active_devices":        latest("active_devices"),
 		"flows_last_hour":       st.Int(`SELECT COUNT(*) FROM flows WHERE ts>=?`, now-3600),
@@ -745,7 +746,7 @@ func (m *Module) apiTimeseries(r *core.Req) (any, error) {
 			WHERE name=? AND ts>=? GROUP BY ts) GROUP BY t ORDER BY t`, step, step, name, since)
 		return rows
 	}
-	names := []string{"throughput_bps", "active_flows", "active_hosts"}
+	names := []string{"throughput_bps", "throughput_download_bps", "throughput_upload_bps", "active_flows", "active_hosts"}
 	if metric != "" {
 		names = []string{metric}
 	}

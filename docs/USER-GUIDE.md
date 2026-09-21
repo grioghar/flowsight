@@ -28,9 +28,10 @@ A lock next to a menu entry means the same.
 
 ### Overview
 
-The network at a glance for the window: throughput in and out, active
-hosts, sessions, applications, DNS queries, blocked requests. Charts of
-throughput over time; the top hosts by traffic; the top applications; web
+The network at a glance for the window: throughput inbound and outbound
+(shown separately, both in the figure and in the chart), active hosts,
+sessions, applications, DNS queries, blocked requests. Charts of
+throughput over time, one line each for inbound and outbound; the top hosts by traffic; the top applications; web
 categories; the busiest DNS names; recent alerts and findings. Every item
 links to its detail page.
 
