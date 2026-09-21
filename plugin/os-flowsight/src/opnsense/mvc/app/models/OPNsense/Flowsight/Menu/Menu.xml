@@ -11,7 +11,8 @@
         <Policies VisibleName="Policies" url="/flowsight.php?page=policy" order="100"/>
         <Groups VisibleName="Groups &amp; schedules" url="/flowsight.php?page=groups" order="110"/>
         <Categories VisibleName="Categories" url="/flowsight.php?page=categories" order="120"/>
-        <Devices VisibleName="Devices &amp; zones" url="/flowsight.php?page=enroll" order="130"/>
+        <Devices VisibleName="Devices" url="/flowsight.php?page=devices" order="130"/>
+        <Zones VisibleName="Zones" url="/flowsight.php?page=zones" order="131"/>
         <Firewall VisibleName="Firewall hygiene" url="/flowsight.php?page=firewall" order="140"/>
         <Reports VisibleName="Reports" url="/flowsight.php?page=reports" order="180"/>
         <Alerting VisibleName="Alerting" url="/flowsight.php?page=alerts" order="190"/>

@@ -227,7 +227,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 
 	// Panel
-	ctx.Panel(core.Panel{ID: "enroll", Title: "Devices & zones", Group: "Policy", Order: 130, Icon: "enroll"})
+	ctx.Panel(core.Panel{ID: "devices", Title: "Devices", Group: "Policy", Order: 130, Icon: "enroll"})
+	ctx.Panel(core.Panel{ID: "zones", Title: "Zones", Group: "Policy", Order: 131, Icon: "zones"})
 
 	// Publish the zone resolver
 	m.publishZoneResolver()

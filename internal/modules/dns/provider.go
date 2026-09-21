@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"os"
 	"path/filepath"
@@ -145,18 +146,25 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 			}
 		}
 		if len(domains) > 0 || len(pol.Deny.TLDs) > 0 {
-			var z strings.Builder
-			fmt.Fprintf(&z, "$TTL 300\n@ SOA localhost. flowsight.localhost. %d 3600 900 604800 300\n@ NS localhost.\n",
-				now.Unix())
+			// The SOA serial must be a function of the zone's content, not of
+			// the clock: a clock-derived serial made every compile differ and
+			// the reconciler reloaded Unbound every minute for nothing.
+			var body strings.Builder
 			for _, d := range pol.Allow.Domains {
-				fmt.Fprintf(&z, "%s CNAME rpz-passthru.\n*.%s CNAME rpz-passthru.\n", d, d)
+				fmt.Fprintf(&body, "%s CNAME rpz-passthru.\n*.%s CNAME rpz-passthru.\n", d, d)
 			}
 			for _, d := range sortedKeys(domains) {
-				fmt.Fprintf(&z, "%s CNAME .\n*.%s CNAME .\n", d, d)
+				fmt.Fprintf(&body, "%s CNAME .\n*.%s CNAME .\n", d, d)
 			}
 			for _, t := range pol.Deny.TLDs {
-				fmt.Fprintf(&z, "%s CNAME .\n*.%s CNAME .\n", t, t)
+				fmt.Fprintf(&body, "%s CNAME .\n*.%s CNAME .\n", t, t)
 			}
+			h := fnv.New32a()
+			_, _ = h.Write([]byte(body.String()))
+			serial := h.Sum32() & 0x7fffffff
+			var z strings.Builder
+			fmt.Fprintf(&z, "$TTL 300\n@ SOA localhost. flowsight.localhost. %d 3600 900 604800 300\n@ NS localhost.\n", serial)
+			z.WriteString(body.String())
 			zonePath := filepath.Join(p.dir(), "flowsight-"+id+".rpz")
 			files[zonePath] = z.String()
 			rpzs = append(rpzs, fmt.Sprintf("rpz:\n    name: \"flowsight-%s.rpz\"\n    zonefile: \"%s\"\n"+

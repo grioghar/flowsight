@@ -86,63 +86,58 @@
     }
   });
 
-  // ------------------------------------------------------------- Devices & zones (enrollment)
-  FS.registerPage('enroll', {
-    title: 'Devices & zones', refresh: 30,
+  // ------------------------------------------------------------- Devices (enrolment)
+  // Shared loader: devices, zones and rules come from the enroll module; the
+  // two pages cross-link on the zone id.
+  const enrollLoad = async (zoneFilter) => {
+    const [s, dv, z, ru] = await Promise.all([get('/api/enroll'), get('/api/enroll/devices' + (zoneFilter ? '?zone=' + encodeURIComponent(zoneFilter) : '')), get('/api/enroll/zones'), get('/api/enroll/rules')]);
+    const zones = ((z && z.zones) || ((z && z.document) || {}).zones || []);
+    const devices = (dv && dv.devices) || [];
+    const mode = (s && s.mode) || (z && z.mode) || 'monitor';
+    return { s, dv, z, ru, zones, devices, mode };
+  };
+  const zoneName = (zones, id) => { const zz = zones.find(x => x.id === id); return zz ? (zz.name || zz.id) : (id || ''); };
+  const modeControls = (mode, el) => {
+    FS.$('#mode', el).onclick = async () => { const next = mode === 'enforce' ? 'monitor' : 'enforce'; if (next === 'enforce' && !await FS.confirm('Enforce mode writes DHCP reservations and firewall isolation. Devices present now stay where they are; only new devices are placed. Continue?')) return; const r = await post('/api/enroll/mode', { mode: next }); FS.toast(r.error || 'Mode: ' + next, !!r.error); FS.render(); };
+  };
+
+  FS.registerPage('devices', {
+    title: 'Devices', refresh: 30,
     async render(el, ctx) {
-      const [s, dv, z, ru] = await Promise.all([get('/api/enroll'), get('/api/enroll/devices' + (ctx.params.zone ? '?zone=' + encodeURIComponent(ctx.params.zone) : '')), get('/api/enroll/zones'), get('/api/enroll/rules')]);
+      const { s, zones, devices, mode } = await enrollLoad(ctx.params.zone);
       if (s.error) { el.innerHTML = FS.err(s.error); return; }
-      const zones = ((z && z.zones) || ((z && z.document) || {}).zones || []);
-      const devices = (dv && dv.devices) || [];
-      const mode = s.mode || (z && z.mode) || 'monitor';
       const zoneOpts = (cur) => `<option value="">—</option>` + zones.map(x => `<option value="${esc(x.id)}" ${x.id === cur ? 'selected' : ''}>${esc(x.name || x.id)}</option>`).join('');
-      el.innerHTML = `<div class="grid cols-4">${kpi('Mode', mode === 'enforce' ? 'enforcing' : 'monitor', mode === 'enforce' ? 'placement and isolation are applied' : 'classifying only; nothing is written', mode === 'enforce' ? 'warn' : '')}${kpi('Devices', num(devices.length || s.devices || 0), `${num(s.unidentified || 0)} unidentified`)}${kpi('Zones', num(zones.length), zones.map(x => x.id).join(', '))}${card('Actions', `<div class="actions"><button class="btn" id="reconcile">Re-identify</button><button class="btn" id="plan">Plan</button><button class="btn primary" id="apply" ${mode === 'enforce' ? '' : 'disabled'}>Apply placement</button><button class="btn ${mode === 'enforce' ? 'danger' : ''}" id="mode">${mode === 'enforce' ? 'Switch to monitor' : 'Switch to enforce'}</button></div>`)}</div>
-      <div style="margin-top:14px">${card('Devices', table(devices, [{ t: 'Device', f: x => `<b>${esc(x.hostname || x.guest_name || x.mac)}</b><div class="muted small mono">${esc(x.mac)}${x.randomized ? ' · private MAC' : ''}</div>`, sort: 'hostname' }, { t: 'Address', f: x => x.ip ? FS.hostLink(x.ip) : '', sort: 'ip' }, { t: 'Vendor', f: x => esc(x.vendor || '') + (x.vendor_class ? `<div class="muted small">${esc(x.vendor_class)}</div>` : ''), sort: 'vendor' }, { t: 'Class', f: x => esc(x.class || ''), sort: 'class' }, { t: 'Zone', f: x => `<select data-mac="${esc(x.mac)}">${zoneOpts(x.zone)}</select>${x.pinned ? ' ' + pill('pinned', '') : ''}`, sort: 'zone' }, { t: 'Why', f: x => `<span class="small muted">${esc(x.why || x.rule || '')}</span>` }, { t: 'Seen', f: x => ago(x.last_seen), sort: 'last_seen' }]), zones.map(x => `<a href="#enroll?zone=${esc(x.id)}">${esc(x.id)}</a>`).join(' · '))}</div>
-      <div class="grid cols-2" style="margin-top:14px">${card('Zones (zones.json)', `<form class="f" id="zf"><textarea name="doc" style="min-height:280px">${esc(JSON.stringify((z && (z.document || z)) || {}, null, 1))}</textarea><div class="actions"><button class="btn primary">Save zones</button></div></form>`)}${card('Classification rules (enroll-rules.json)', `<form class="f" id="rf"><textarea name="doc" style="min-height:280px">${esc(JSON.stringify((ru && (ru.document || ru)) || {}, null, 1))}</textarea><div class="actions"><button class="btn primary">Save rules</button></div></form>`)}</div>`;
+      const byZone = {}; devices.forEach(d => { byZone[d.zone || ''] = (byZone[d.zone || ''] || 0) + 1; });
+      const unplaced = byZone[''] || 0;
+      el.innerHTML = `<div class="grid cols-4">${kpi('Mode', mode === 'enforce' ? 'enforcing' : 'monitor', mode === 'enforce' ? 'placement and isolation are applied' : 'classifying only; nothing is written', mode === 'enforce' ? 'warn' : '')}${kpi('Devices', num(devices.length), `${num(s.unidentified || 0)} unidentified · ${num(unplaced)} without a zone`)}${kpi('Zones', num(zones.length), zones.map(x => `<a href="#zones?zone=${esc(x.id)}">${esc(x.id)}</a> ${num(byZone[x.id] || 0)}`).join(' · ') || 'none defined')}${card('Actions', `<div class="actions"><button class="btn" id="reconcile">Re-identify</button><a class="btn" href="#zones">Zones &amp; placement</a><button class="btn ${mode === 'enforce' ? 'danger' : ''}" id="mode">${mode === 'enforce' ? 'Switch to monitor' : 'Switch to enforce'}</button></div>`)}</div>
+      <div style="margin-top:14px">${card('Devices' + (ctx.params.zone ? ` in zone ${esc(zoneName(zones, ctx.params.zone))}` : ''), table(devices, [{ t: 'Device', f: x => `<b>${esc(x.hostname || x.guest_name || x.mac)}</b><div class="muted small mono">${esc(x.mac)}${x.randomized ? ' · private MAC' : ''}</div>`, sort: 'hostname' }, { t: 'Address', f: x => x.ip ? FS.hostLink(x.ip) : '', sort: 'ip' }, { t: 'Vendor', f: x => esc(x.vendor || '') + (x.vendor_class ? `<div class="muted small">${esc(x.vendor_class)}</div>` : ''), sort: 'vendor' }, { t: 'Class', f: x => esc(x.class || ''), sort: 'class' }, { t: 'Zone', f: x => `<select data-mac="${esc(x.mac)}">${zoneOpts(x.zone)}</select>${x.zone ? ` <a class="small" href="#zones?zone=${esc(x.zone)}">view</a>` : ''}${x.pinned ? ' ' + pill('pinned', '') : ''}`, sort: 'zone' }, { t: 'Why', f: x => `<span class="small muted">${esc(x.why || x.rule || '')}</span>` }, { t: 'Seen', f: x => ago(x.last_seen), sort: 'last_seen' }]), ctx.params.zone ? `<a href="#devices">all devices</a>` : zones.map(x => `<a href="#devices?zone=${esc(x.id)}">${esc(x.id)}</a>`).join(' · '))}</div>
+      <div class="help" style="margin-top:8px">Addresses are shown by name when FlowSight knows one; with <a href="#modules/enrich">Settings › enrich</a> on, bare addresses gain their reverse-DNS name and country.</div>`;
       FS.$$('select[data-mac]', el).forEach(sel => sel.onchange = async () => { const r = await post('/api/enroll/assign', { mac: sel.dataset.mac, zone: sel.value }); FS.toast(r.error || 'Assigned', !!r.error); });
       FS.$('#reconcile', el).onclick = async () => { const r = await post('/api/enroll/reconcile', {}); FS.toast(r.error || 'Re-identified', !!r.error); FS.render(); };
-      FS.$('#plan', el).onclick = async () => { const r = await get('/api/enroll/plan'); FS.modal(`<h2>Placement plan</h2><pre class="code">${esc(JSON.stringify(r, null, 1))}</pre><div class="actions"><button class="btn" onclick="FS.closeModal()">Close</button></div>`); };
-      FS.$('#apply', el).onclick = async () => { if (!await FS.confirm('Apply device placement (DHCP reservations) and zone isolation now?')) return; const r = await post('/api/enroll/apply', {}); FS.modal(`<h2>Applied</h2><pre class="code">${esc(JSON.stringify(r, null, 1))}</pre><div class="actions"><button class="btn" onclick="FS.closeModal()">Close</button></div>`); };
-      FS.$('#mode', el).onclick = async () => { const next = mode === 'enforce' ? 'monitor' : 'enforce'; if (next === 'enforce' && !await FS.confirm('Enforce mode writes DHCP reservations and firewall isolation. Devices present now stay where they are; only new devices are placed. Continue?')) return; const r = await post('/api/enroll/mode', { mode: next }); FS.toast(r.error || 'Mode: ' + next, !!r.error); FS.render(); };
-      FS.$('#zf', el).onsubmit = async (e) => { e.preventDefault(); let doc; try { doc = JSON.parse(e.target.doc.value); } catch (x) { FS.toast('Invalid JSON: ' + x.message, true); return; } const r = await post('/api/enroll/zones', doc); FS.toast(r.error || 'Zones saved', !!r.error); };
-      FS.$('#rf', el).onsubmit = async (e) => { e.preventDefault(); let doc; try { doc = JSON.parse(e.target.doc.value); } catch (x) { FS.toast('Invalid JSON: ' + x.message, true); return; } const r = await post('/api/enroll/rules', doc); FS.toast(r.error || 'Rules saved', !!r.error); };
+      modeControls(mode, el);
     }
   });
 
-  // ------------------------------------------------------------- License
-  FS.registerPage('license', {
-    title: 'License', refresh: 0,
-    async render(el) {
-      const [d, f] = await Promise.all([get('/api/license'), get('/api/license/features')]);
-      if (d.error) { el.innerHTML = FS.err(d.error); return; }
-      const lic = d.license, tier = d.tier || 'community';
-      const feats = (f.features || []);
-      const byTier = (t) => feats.filter(x => FS.tierName(x.tier) && ({ community: 0, pro: 1, business: 2 })[x.tier] <= ({ community: 0, pro: 1, business: 2 })[t]);
-      const limits = f.limits_by_tier || {};
-      const lim = (t, k, unit) => { const v = (limits[t] || {})[k]; return v === 0 ? 'unlimited' : (v == null ? '—' : v + (unit ? ' ' + unit : '')); };
-      const tierCard = (t, blurb) => `<div class="tier ${t === tier ? 'current' : ''}"><h4>${esc(FS.tierName(t))}${t === tier ? ' ' + pill('current', 'ok') : ''}</h4><div class="small muted">${esc(blurb)}</div><ul>
-        <li>Policies: ${lim(t, 'policies')} · schedules: ${lim(t, 'schedules')}</li><li>History: ${lim(t, 'retention_days', 'days')}</li><li>Installations per key: ${lim(t, 'installations')}</li>
-        ${feats.map(x => `<li class="${({ community: 0, pro: 1, business: 2 })[x.tier] <= ({ community: 0, pro: 1, business: 2 })[t] ? '' : 'no'}">${esc(x.title)}</li>`).join('')}</ul></div>`;
-      const status = lic
-        ? `${kpi('Tier', esc(FS.tierName(lic.tier)), d.expired ? 'expired ' + esc(lic.expires) : (lic.expires ? 'valid until ' + esc(lic.expires) + ' (' + d.days_left + ' days)' : 'does not expire'), d.expired ? 'warn' : 'ok')}
-           ${kpi('Licensed to', esc(lic.licensee), esc(lic.email || '') + (lic.seats ? ' · ' + lic.seats + ' installation' + (lic.seats > 1 ? 's' : '') : ''))}
-           ${kpi(d.source === 'online' ? 'Activation' : 'License file', d.source === 'online' ? 'key ' + esc(d.key_hint || '') : esc(lic.id), d.source === 'online' ? (d.last_refresh ? 'lease refreshed ' + ago(d.last_refresh) : '') : 'installed offline, never contacts a server')}`
-        : `${kpi('Tier', 'Community', d.revoked ? 'license withdrawn: ' + esc(d.revoked) : 'free, unlicensed; every module keeps running', d.revoked ? 'warn' : '')}
-           ${kpi('Installation', `<span class="mono small">${esc(d.installation)}</span>`, 'quote this id when asking for an offline license file')}
-           ${kpi('Verification', d.verifiable ? 'signed builds' : 'unsigned build', d.verifiable ? 'licenses are verified against the release key' : 'this build cannot verify licenses; install a release build')}`;
-      el.innerHTML = `<div class="grid cols-3">${status}</div>
-      ${d.last_error ? `<div style="margin-top:14px">${card('Last problem', `<div class="sev-medium small">${esc(d.last_error)}</div>`)}</div>` : ''}
-      <div class="grid cols-2" style="margin-top:14px">
-        ${card('Activate online', `<form class="f" id="act"><label>Activation key</label><input name="key" placeholder="FSP-XXXX-XXXX-XXXX-XXXX" autocomplete="off" ${d.verifiable ? '' : 'disabled'}><div class="actions"><button class="btn primary" ${d.verifiable ? '' : 'disabled'}>Activate</button>${lic && d.source === 'online' ? '<button class="btn" type="button" id="refresh">Refresh lease</button>' : ''}</div><div class="help">The key is sent to <span class="mono">${esc(d.server_url)}</span> together with this installation id, the hostname and the version; the server returns a signed license bound to this installation. Change the server under Settings › license.</div></form>`)}
-        ${card('Install a license file (offline)', `<form class="f" id="inst"><label>License file contents</label><textarea name="token" rows="4" placeholder="FSL1.…" ${d.verifiable ? '' : 'disabled'}></textarea><div class="actions"><button class="btn primary" ${d.verifiable ? '' : 'disabled'}>Install</button></div><div class="help">For air-gapped firewalls. Ask for a file issued to installation <span class="mono">${esc(d.installation)}</span>; it is verified here and never phones home.</div></form>`)}
-      </div>
-      <div style="margin-top:14px">${card('Tiers', `<div class="tiers">${tierCard('community', 'Everything needed to see and shape a home network. Free, no registration.')}${tierCard('pro', 'For power users: TLS inspection, rule hygiene, enrolment, scheduled reports, notifications, no limits.')}${tierCard('business', 'For networks run for others: directory identity, telemetry export, multiple administrators, SLA support, commercial use.')}</div>
-        <div class="help" style="margin-top:10px">Expiry is soft: when a license lapses nothing switches off, but tier features cannot be reconfigured until it is renewed.</div>`)}</div>
-      ${lic ? `<div style="margin-top:14px">${card('Remove', `<div class="actions"><button class="btn danger" id="remove">Remove license and return to Community</button></div><div class="help">${d.source === 'online' ? 'Frees this installation\'s seat on the key.' : 'Deletes the installed file from this firewall.'} Tier features keep their current state but cannot be changed afterwards.</div>`)}</div>` : ''}`;
-      FS.$('#act', el).onsubmit = async (e) => { e.preventDefault(); const r = await post('/api/license/activate', { key: e.target.key.value }); if (r.error) { FS.toast(r.error, true); return; } FS.toast('Activated: ' + FS.tierName(r.tier) + ' for ' + r.licensee); location.reload(); };
-      FS.$('#inst', el).onsubmit = async (e) => { e.preventDefault(); const r = await post('/api/license/install', { token: e.target.token.value }); if (r.error) { FS.toast(r.error, true); return; } FS.toast('Installed: ' + FS.tierName(r.tier) + ' for ' + r.licensee); location.reload(); };
-      const rf = FS.$('#refresh', el); if (rf) rf.onclick = async () => { const r = await post('/api/license/refresh', {}); FS.toast(r.error || 'Lease refreshed', !!r.error); FS.render(); };
-      const rm = FS.$('#remove', el); if (rm) rm.onclick = async () => { if (!await FS.confirm('Remove the license from this installation?')) return; const r = await post('/api/license/remove', {}); FS.toast(r.error || 'Removed', !!r.error); location.reload(); };
+  // ------------------------------------------------------------- Zones (enrolment)
+  FS.registerPage('zones', {
+    title: 'Zones', refresh: 0,
+    async render(el, ctx) {
+      const { s, z, ru, zones, devices, mode } = await enrollLoad('');
+      if (s.error) { el.innerHTML = FS.err(s.error); return; }
+      const byZone = {}; devices.forEach(d => { (byZone[d.zone || ''] = byZone[d.zone || ''] || []).push(d); });
+      const sel = ctx.params.zone || '';
+      const zoneRows = zones.map(x => Object.assign({ count: (byZone[x.id] || []).length }, x));
+      el.innerHTML = `<div class="grid cols-4">${kpi('Mode', mode === 'enforce' ? 'enforcing' : 'monitor', mode === 'enforce' ? 'placement and isolation are applied' : 'classifying only; nothing is written', mode === 'enforce' ? 'warn' : '')}${kpi('Zones', num(zones.length), `${num((byZone[''] || []).length)} devices without a zone`)}${kpi('Placed devices', num(devices.length - (byZone[''] || []).length), `of ${num(devices.length)}`)}${card('Actions', `<div class="actions"><button class="btn" id="plan">Plan placement</button><button class="btn primary" id="apply" ${mode === 'enforce' ? '' : 'disabled'}>Apply placement</button><a class="btn" href="#devices">Devices</a><button class="btn ${mode === 'enforce' ? 'danger' : ''}" id="mode">${mode === 'enforce' ? 'Switch to monitor' : 'Switch to enforce'}</button></div>`)}</div>
+      <div style="margin-top:14px">${card('Zones', table(zoneRows, [{ t: 'Zone', f: x => `<b>${esc(x.name || x.id)}</b><div class="muted small mono">${esc(x.id)}</div>`, sort: 'id' }, { t: 'Subnet', f: x => `<span class="mono">${esc(x.subnet || x.cidr || '')}</span>` }, { t: 'Isolation', f: x => esc(x.isolation || x.policy || (x.isolate ? 'isolated' : '')) }, { t: 'Devices', f: x => `<a href="#devices?zone=${esc(x.id)}">${num(x.count)}</a>`, num: true, sort: 'count' }, { t: 'Members', f: x => (byZone[x.id] || []).slice(0, 6).map(d => d.ip ? FS.hostLink(d.ip, d.hostname || d.guest_name) : esc(d.hostname || d.mac)).join(', ') + ((byZone[x.id] || []).length > 6 ? ` … <a href="#devices?zone=${esc(x.id)}">all</a>` : '') }]), `<a href="#devices">devices without a zone: ${num((byZone[''] || []).length)}</a>`)}</div>
+      ${sel && byZone[sel] ? `<div style="margin-top:14px">${card(`Devices in ${esc(zoneName(zones, sel))}`, table(byZone[sel], [{ t: 'Device', f: x => `<b>${esc(x.hostname || x.guest_name || x.mac)}</b><div class="muted small mono">${esc(x.mac)}</div>` }, { t: 'Address', f: x => x.ip ? FS.hostLink(x.ip) : '' }, { t: 'Class', k: 'class' }, { t: 'Seen', f: x => ago(x.last_seen) }]), `<a href="#devices?zone=${esc(sel)}">open in Devices</a>`)}</div>` : ''}
+      <div class="grid cols-2" style="margin-top:14px">${card('Zones (zones.json)', `<form class="f" id="zf"><textarea name="doc" style="min-height:280px">${esc(JSON.stringify((z && (z.document || z)) || {}, null, 1))}</textarea><div class="actions"><button class="btn primary">Save zones</button></div></form>`)}${card('Classification rules (enroll-rules.json)', `<form class="f" id="rf"><textarea name="doc" style="min-height:280px">${esc(JSON.stringify((ru && (ru.document || ru)) || {}, null, 1))}</textarea><div class="actions"><button class="btn primary">Save rules</button></div></form>`)}</div>`;
+      FS.$('#plan', el).onclick = async () => { const r = await get('/api/enroll/plan'); FS.modal(`<h2>Placement plan</h2><pre class="code">${esc(JSON.stringify(r, null, 1))}</pre><div class="actions"><button class="btn" onclick="FS.closeModal()">Close</button></div>`); };
+      FS.$('#apply', el).onclick = async () => { if (!await FS.confirm('Apply device placement (DHCP reservations) and zone isolation now?')) return; const r = await post('/api/enroll/apply', {}); FS.modal(`<h2>Applied</h2><pre class="code">${esc(JSON.stringify(r, null, 1))}</pre><div class="actions"><button class="btn" onclick="FS.closeModal()">Close</button></div>`); };
+      modeControls(mode, el);
+      FS.$('#zf', el).onsubmit = async (e) => { e.preventDefault(); let doc; try { doc = JSON.parse(e.target.doc.value); } catch (x) { FS.toast('Invalid JSON: ' + x.message, true); return; } const r = await post('/api/enroll/zones', doc); FS.toast(r.error || 'Zones saved', !!r.error); FS.render(); };
+      FS.$('#rf', el).onsubmit = async (e) => { e.preventDefault(); let doc; try { doc = JSON.parse(e.target.doc.value); } catch (x) { FS.toast('Invalid JSON: ' + x.message, true); return; } const r = await post('/api/enroll/rules', doc); FS.toast(r.error || 'Rules saved', !!r.error); };
     }
   });
+  // Old deep links keep working.
+  FS.registerPage('enroll', { title: 'Devices', refresh: 0, async render(el, ctx) { FS.go('#devices' + (ctx.params.zone ? '?zone=' + encodeURIComponent(ctx.params.zone) : '')); } });
 })();

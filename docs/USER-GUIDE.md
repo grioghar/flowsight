@@ -148,18 +148,26 @@ per line) usable in policies like any other. Feeds refresh on a schedule set
 in Settings › categories; roughly six million domains are indexed in memory
 in a compact form.
 
-### Devices & zones
+### Devices
 
-Device enrolment. **Mode**: monitor (classify only) or enforce (Pro: place
-new devices into zones with DHCP reservations and isolation rules).
-**Devices**: every device with class (phone, laptop, TV, camera, console,
-printer, IoT), why it was classified so, its zone, whether it is pinned;
-change a zone from the row. **Zones** (JSON): id, name, subnet, isolation
-policy. **Classification rules** (JSON): match DHCP vendor class,
-hostname patterns, OUI to a class and a zone. *Re-identify* re-runs the
-classification, *Plan* shows the placement that would be applied, *Apply
-placement* writes it. A captive page on the LAN explains to an unplaced
-device what happens next.
+Every enrolled device with its class (phone, laptop, TV, camera, console,
+printer, IoT), why it was classified so, its address (by name when known;
+with *Settings › enrich* on, bare addresses gain a reverse-DNS name and
+country), vendor, zone and last activity. Change a device's zone from its
+row; the zone name links to the Zones page, and the zone chips at the top
+filter the list. **Mode** (monitor or enforce) is switched here; enforce is
+Pro and writes DHCP reservations and isolation. *Re-identify* re-runs the
+classification.
+
+### Zones
+
+The zones with their subnet, isolation policy, how many devices each holds
+and who they are (each name links back to the device, each count opens the
+Devices page filtered to that zone). Below it the two documents: **zones**
+(id, name, subnet, isolation) and **classification rules** (DHCP vendor
+class, hostname pattern, OUI to a class and a zone). *Plan placement* shows
+what enforce mode would write, *Apply placement* writes it. A captive page
+on the LAN explains to an unplaced device what happens next.
 
 ## Operations
 
