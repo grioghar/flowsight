@@ -2,8 +2,6 @@
 package updater
 
 import (
-	"regexp"
-	"strconv"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -15,7 +13,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
