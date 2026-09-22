@@ -485,6 +485,17 @@ type Identity interface {
 	LocalNetworks() []string
 }
 
+// AddressBook is the optional part of identity that knows every address one
+// device holds: its IPv4 lease and every IPv6 address it has used, including
+// the temporary ones an operating system rotates through. Anything that
+// matches or displays a device should go through it so IPv6 is treated
+// exactly like IPv4.
+type AddressBook interface {
+	// Addresses returns every address of the device that holds ip, ip
+	// included, oldest first. An unknown address returns just itself.
+	Addresses(ip string) []string
+}
+
 // AppInfo describes one nDPI application.
 type AppInfo struct {
 	Category string `json:"category"`

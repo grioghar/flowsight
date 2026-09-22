@@ -831,7 +831,8 @@ func (m *Module) apiHost(r *core.Req) (any, error) {
 	findings, _ := st.Rows(`SELECT * FROM findings WHERE resolved_ts IS NULL AND subject=? ORDER BY ts DESC LIMIT 20`, ip)
 	return map[string]any{"host": host, "device": device, "apps": apps, "domains": domains, "destinations": dsts,
 		"timeline": timeline, "dns": dns, "dns_blocked": dnsBlocked, "dns_totals": dnsTotals, "alerts": alerts, "flows": flows, "tls": tls,
-		"totals": totals, "findings": findings, "hours": r.Hours(24)}, nil
+		"addresses": m.addressesOf(ip),
+		"totals":    totals, "findings": findings, "hours": r.Hours(24)}, nil
 }
 
 func (m *Module) apiCatalog(r *core.Req) (any, error) {
@@ -861,4 +862,16 @@ func (m *Module) EffectiveSettings() map[string]any {
 		base = "http://127.0.0.1:3000"
 	}
 	return map[string]any{"ntopng_url": base}
+}
+
+// addressesOf lists every address the device at ip holds, so a host page
+// says so and links them; IPv6 is treated exactly like IPv4.
+func (m *Module) addressesOf(ip string) []string {
+	if ab, ok := m.ctx.Service("identity").(core.AddressBook); ok {
+		list := ab.Addresses(ip)
+		if len(list) > 1 {
+			return list
+		}
+	}
+	return nil
 }

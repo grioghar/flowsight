@@ -383,6 +383,17 @@ func (m *Module) signature() string {
 	for _, p := range doc.Policies {
 		fmt.Fprintf(h, "%s=%v;", p.Name, doc.Active(p.Schedule, now))
 	}
+	// Membership is an input: a device that picks up a new address (a rotated
+	// temporary IPv6 address, a new lease) must recompile, or policy would
+	// quietly stop applying to it.
+	if res, ok := m.ctx.Service("member_resolver").(core.MemberResolver); ok {
+		for i := range doc.Policies {
+			for _, mem := range doc.Members(&doc.Policies[i], res) {
+				fmt.Fprintf(h, "%s,", mem)
+			}
+			h.Write([]byte(";"))
+		}
+	}
 	if c, ok := m.ctx.Service("categories").(core.Categories); ok {
 		for _, ci := range c.List() {
 			fmt.Fprintf(h, "%s:%d:%d;", ci.Name, ci.Domains, ci.Updated)

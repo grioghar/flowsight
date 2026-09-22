@@ -5,6 +5,18 @@ top (1h, 6h, 24h, 7d, 30d) set the window for every page that shows
 history; the search box takes an address (opens the host), a domain (opens
 its sessions) or free text.
 
+**Long tables** show the first hundred rows with the count beneath them,
+*Show 100 more* and *Show all*, and an **Infinite scroll** checkbox that
+loads further rows as you reach the bottom. The choice is remembered for
+every table in this browser.
+
+**Refreshing.** Pages with live data refresh themselves every 10 to 60
+seconds. A refresh keeps your place: the scroll position, each table's own
+scroll and the column you sorted by all survive it, and it is held back
+entirely while a dialog is open, a field has focus or text is selected. The
+**pause button** next to the range buttons stops it altogether for this
+browser; press it again to resume and refresh at once.
+
 Inside the OPNsense GUI the pages are reached from the **FlowSight**
 section of OPNsense's own left-hand menu; the app shows no sidebar of its
 own there, only the page, a top bar and a one-line footer with health,
@@ -56,6 +68,14 @@ transient visitors. **Devices** (under Policy) is the enrolment inventory:
 one row per physical device known by its MAC from DHCP, with a class and a
 zone, listed whether or not it is talking right now. A device's address
 opens its host page; a host page shows the device's class and zone.
+
+A device is one device whatever address it is using. FlowSight ties every
+address a device holds, IPv4 and IPv6 alike, to its MAC: names, vendor,
+policy membership (`mac:` and `device:` members) and the device inventory
+follow all of them, and an address stays associated for a day after it was
+last seen so the temporary IPv6 addresses operating systems rotate through
+do not shake a device loose from its policy. A host page lists the device's
+other addresses and links them.
 
 **Host page** (click a host): identity details and how each was learned;
 throughput over time; applications, sites and DNS names with bytes and

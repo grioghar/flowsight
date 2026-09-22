@@ -27,8 +27,9 @@ type Module struct {
 	names   map[string]string // ip -> best name
 	macs    map[string]string // ip -> mac
 	ips     map[string][]string
-	vendors map[string]string // oui -> vendor
-	leases  map[string]Lease  // mac -> lease
+	seenAt  map[string]map[string]int64 // mac -> address -> last seen
+	vendors map[string]string           // oui -> vendor
+	leases  map[string]Lease            // mac -> lease
 	nets    []*net.IPNet
 	netStrs []string
 	updated time.Time
@@ -48,15 +49,18 @@ func (m *Module) Info() core.ModuleInfo {
 		Description:  "Names and MAC addresses for every host, from DHCP, ARP/NDP, DNS answers and the OUI registry.",
 		Capabilities: []string{core.CapHostInventory, core.CapIdentity},
 		Defaults: map[string]any{
-			"refresh_seconds":   30,
-			"extra_lease_files": []string{},
-			"local_networks":    []string{},
+			"refresh_seconds":      30,
+			"extra_lease_files":    []string{},
+			"local_networks":       []string{},
+			"address_memory_hours": 24,
 		},
 		Schema: []core.SettingField{
 			{Key: "refresh_seconds", Label: "Refresh interval (s)", Type: "int"},
 			{Key: "local_networks", Label: "Local networks", Type: "list",
 				Help: "CIDRs considered local. Empty: derived from the firewall's own interfaces."},
 			{Key: "extra_lease_files", Label: "Extra lease files", Type: "list"},
+			{Key: "address_memory_hours", Label: "Remember a device's addresses for (hours)", Type: "int",
+				Help: "How long an address stays associated with its device after the neighbour entry goes. Operating systems rotate temporary IPv6 addresses; remembering them keeps policy, names and history attached to the device."},
 		},
 	}
 }
@@ -169,6 +173,70 @@ func (m *Module) EffectiveSettings() map[string]any {
 	return map[string]any{"local_networks": nets, "extra_lease_files": files}
 }
 
+// remember records that a device was seen at an address, so the association
+// outlives the neighbour entry (operating systems rotate temporary IPv6
+// addresses; a device must not lose its policy or its name when they do).
+func (m *Module) remember(mac, ip string) {
+	mac = strings.ToLower(strings.TrimSpace(mac))
+	ip = strings.TrimSpace(ip)
+	if mac == "" || ip == "" || net.ParseIP(ip) == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.seenAt == nil {
+		m.seenAt = map[string]map[string]int64{}
+	}
+	if m.seenAt[mac] == nil {
+		m.seenAt[mac] = map[string]int64{}
+	}
+	m.seenAt[mac][ip] = time.Now().Unix()
+}
+
+// rememberedIPs returns every device's addresses, dropping those not seen
+// within the memory window.
+func (m *Module) rememberedIPs() map[string][]string {
+	hours := core.Int(m.ctx.Settings(), "address_memory_hours", 24)
+	if hours < 1 {
+		hours = 1
+	}
+	cut := time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
+	out := map[string][]string{}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for mac, ips := range m.seenAt {
+		for ip, at := range ips {
+			if at < cut {
+				delete(ips, ip)
+				continue
+			}
+			out[mac] = append(out[mac], ip)
+		}
+		if len(ips) == 0 {
+			delete(m.seenAt, mac)
+			continue
+		}
+		sort.Slice(out[mac], func(i, j int) bool { return ips[out[mac][i]] < ips[out[mac][j]] })
+	}
+	return out
+}
+
+// Addresses implements core.AddressBook: every address of the device that
+// holds ip. IPv4 and IPv6 are the same thing here.
+func (m *Module) Addresses(ip string) []string {
+	mac := m.MAC(ip)
+	if mac == "" {
+		return []string{ip}
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	list := append([]string(nil), m.ips[mac]...)
+	if !contains(list, ip) {
+		list = append(list, ip)
+	}
+	return list
+}
+
 // Resolve implements core.MemberResolver for mac:, device: and all.
 func (m *Module) Resolve(ref string) []string {
 	switch {
@@ -186,16 +254,27 @@ func (m *Module) Resolve(ref string) []string {
 	case strings.HasPrefix(ref, "device:"):
 		want := strings.ToLower(ref[7:])
 		m.mu.RLock()
-		defer m.mu.RUnlock()
-		var out []string
+		var hit []string
 		for ip, n := range m.names {
 			if strings.ToLower(n) == want {
-				out = append(out, cidr(ip))
+				hit = append(hit, ip)
 			}
 		}
 		for ip, n := range m.overr {
 			if strings.ToLower(n) == want {
-				out = append(out, cidr(ip))
+				hit = append(hit, ip)
+			}
+		}
+		m.mu.RUnlock()
+		// One name means one device: take every address it holds, v4 and v6.
+		seen := map[string]bool{}
+		var out []string
+		for _, ip := range hit {
+			for _, a := range m.Addresses(ip) {
+				if c := cidr(a); !seen[c] {
+					seen[c] = true
+					out = append(out, c)
+				}
 			}
 		}
 		sort.Strings(out)
@@ -238,19 +317,26 @@ func (m *Module) refresh() error {
 
 	names := map[string]string{}
 	macs := map[string]string{}
-	ips := map[string][]string{}
+	// Everything seen now is remembered against its device; see seen().
 	for ip, mac := range arp {
-		macs[ip] = mac
-		ips[mac] = append(ips[mac], ip)
+		m.remember(mac, ip)
+	}
+	for _, l := range leases {
+		if l.IP != "" && l.MAC != "" {
+			m.remember(l.MAC, l.IP)
+		}
+	}
+	ips := m.rememberedIPs()
+	for mac, list := range ips {
+		for _, ip := range list {
+			macs[ip] = mac
+		}
 	}
 	for _, l := range leases {
 		if l.IP != "" {
 			macs[l.IP] = l.MAC
 			if l.Hostname != "" && l.Hostname != "*" {
 				names[l.IP] = l.Hostname
-			}
-			if !contains(ips[l.MAC], l.IP) {
-				ips[l.MAC] = append(ips[l.MAC], l.IP)
 			}
 		}
 	}
@@ -292,6 +378,29 @@ func (m *Module) refresh() error {
 	}
 
 	m.mu.Lock()
+	// A device has one name, whatever address it is using: carry the name
+	// learned on any of its addresses (DHCP, reservation) to all of them,
+	// which is what makes IPv6 rows read like IPv4 ones.
+	for _, list := range ips {
+		name := ""
+		for _, ip := range list {
+			if n := static[ip]; n != "" {
+				name = n
+				break
+			}
+			if n := names[ip]; n != "" && name == "" {
+				name = n
+			}
+		}
+		if name == "" {
+			continue
+		}
+		for _, ip := range list {
+			if names[ip] == "" {
+				names[ip] = name
+			}
+		}
+	}
 	m.names, m.macs, m.ips, m.leases, m.static = names, macs, ips, leases, static
 	m.nets = nets
 	m.netStrs = m.netStrs[:0]

@@ -21,6 +21,20 @@ FS.api = async function (path, opts) {
   return d;
 };
 FS.lastLock = null;
+// Auto-refresh: on by default, remembered per browser, and always held back
+// while the reader is doing something (a dialog, a form field, a selection).
+FS.autoRefresh = (() => { try { return localStorage.getItem('fs.autorefresh') !== '0'; } catch (e) { return true; } })();
+FS.infiniteScroll = (() => { try { return localStorage.getItem('fs.infinite') === '1'; } catch (e) { return false; } })();
+FS.setInfinite = (on) => { FS.infiniteScroll = !!on; try { localStorage.setItem('fs.infinite', on ? '1' : '0'); } catch (e) { } };
+FS.setAutoRefresh = (on) => { FS.autoRefresh = !!on; try { localStorage.setItem('fs.autorefresh', on ? '1' : '0'); } catch (e) { } };
+FS.refreshHeld = () => {
+  if (!FS.autoRefresh) return true;
+  const m = document.getElementById('modal'); if (m && !m.hidden) return true;
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.id !== 'search') return true;
+  const sel = window.getSelection && window.getSelection(); if (sel && String(sel).length > 4) return true;
+  return false;
+};
 // "C=US; O=Google Trust Services; CN=WE1" -> "Google Trust Services · WE1"
 FS.issuerName = (dn) => { const g = (k) => ((dn || '').match(new RegExp('(?:^|[;,]\\s*)' + k + '=([^;,]+)')) || [])[1] || ''; const o = g('O'), cn = g('CN'); return o && cn && o !== cn ? `${o} · ${cn}` : (cn || o || dn || ''); };
 FS.tierName = (t) => ({ community: 'Community', pro: 'Pro', business: 'Business' })[t] || t;
@@ -96,23 +110,53 @@ FS.bars = (rows, fmt) => {
 };
 
 // Sortable table. cols: [{k, t, f(row), num, w}]
+// A table keeps its sort and its scroll position across the page's periodic
+// refresh: both are remembered against the table's column signature, so a
+// rebuilt table comes back exactly where the reader left it.
+FS.tableState = {};
 FS.table = (rows, cols, opts) => {
   opts = opts || {};
   if (!rows || !rows.length) return FS.empty(opts.empty);
   const id = 't' + Math.random().toString(36).slice(2, 8);
-  const head = cols.map((c, i) => `<th data-i="${i}" class="${c.num ? 'num' : ''}" ${c.w ? `style="width:${c.w}"` : ''}>${FS.esc(c.t)}</th>`).join('');
-  const body = rows.map(r => '<tr>' + cols.map(c => `<td class="${c.num ? 'num' : ''} ${c.cls || ''}">${c.f ? c.f(r) : FS.esc(r[c.k])}</td>`).join('') + '</tr>').join('');
-  const html = `<div class="tablewrap" id="${id}"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const sig = opts.id || (FS.state.page + '|' + cols.map(c => c.t).join('|'));
+  const st = FS.tableState[sig] || (FS.tableState[sig] = { i: -1, dir: -1, top: 0 });
+  const order = (list, i, dir) => {
+    const c = cols[i]; if (!c) return list;
+    const key = c.sort || c.k;
+    return [...list].sort((a, b) => { const x = key ? a[key] : (c.f ? c.f(a) : ''), y = key ? b[key] : (c.f ? c.f(b) : ''); if (x == null) return 1; if (y == null) return -1; return (typeof x === 'number' && typeof y === 'number') ? dir * (x - y) : dir * String(x).localeCompare(String(y), undefined, { numeric: true }); });
+  };
+  const bodyOf = (list) => list.map(r => '<tr>' + cols.map(c => `<td class="${c.num ? 'num' : ''} ${c.cls || ''}">${c.f ? c.f(r) : FS.esc(r[c.k])}</td>`).join('') + '</tr>').join('');
+  const all = st.i >= 0 ? order(rows, st.i, st.dir) : rows;
+  // Long tables are paged; the reader can switch to continuous scrolling,
+  // which is remembered for every table in this browser.
+  const pageSize = opts.pageSize || 100;
+  if (st.shown == null) st.shown = pageSize;
+  if (FS.infiniteScroll) st.shown = Math.max(st.shown, all.length);
+  const shown = all.slice(0, Math.max(pageSize, st.shown));
+  const head = cols.map((c, i) => `<th data-i="${i}" class="${c.num ? 'num' : ''} ${i === st.i ? 'sorted' + (st.dir > 0 ? ' asc' : '') : ''}" ${c.w ? `style="width:${c.w}"` : ''}>${FS.esc(c.t)}</th>`).join('');
+  const more = all.length - shown.length;
+  const foot = all.length > pageSize
+    ? `<div class="tfoot"><span class="muted">${FS.num(shown.length)} of ${FS.num(all.length)}</span>${more > 0 ? `<button class="btn small" data-more="1">Show ${FS.num(Math.min(pageSize, more))} more</button><button class="btn small" data-all="1">Show all</button>` : ''}<label class="check inline"><input type="checkbox" data-inf="1" ${FS.infiniteScroll ? 'checked' : ''}><span>Infinite scroll</span></label></div>`
+    : '';
+  const html = `<div class="tablewrap" id="${id}" data-sig="${FS.esc(sig)}"><table><thead><tr>${head}</tr></thead><tbody>${bodyOf(shown)}</tbody></table></div>${foot}`;
   setTimeout(() => {
     const wrap = document.getElementById(id); if (!wrap) return;
-    let dir = -1, cur = -1;
+    if (st.top) wrap.scrollTop = st.top;
+    const box = wrap.parentNode;
+    const grow = (n) => { st.shown = Math.min(all.length, (st.shown || pageSize) + n); const keep = wrap.scrollTop; FS.$('tbody', wrap).innerHTML = bodyOf(all.slice(0, st.shown)); wrap.scrollTop = keep; FS.enrichIn(wrap); const lbl = FS.$('.tfoot .muted', box); if (lbl) lbl.textContent = `${FS.num(st.shown)} of ${FS.num(all.length)}`; if (st.shown >= all.length) FS.$$('.tfoot .btn', box).forEach(b => b.remove()); };
+    wrap.addEventListener('scroll', () => {
+      st.top = wrap.scrollTop;
+      if (FS.infiniteScroll && st.shown < all.length && wrap.scrollTop + wrap.clientHeight > wrap.scrollHeight - 200) grow(pageSize);
+    }, { passive: true });
+    const mb = FS.$('[data-more]', box); if (mb) mb.onclick = () => grow(pageSize);
+    const ab = FS.$('[data-all]', box); if (ab) ab.onclick = () => grow(all.length);
+    const inf = FS.$('[data-inf]', box); if (inf) inf.onchange = () => { FS.setInfinite(inf.checked); if (inf.checked) grow(all.length); };
     FS.$$('th', wrap).forEach(th => th.onclick = () => {
       const i = Number(th.dataset.i); const c = cols[i];
-      if (cur === i) dir = -dir; else { cur = i; dir = c.num ? -1 : 1; }
-      const key = c.sort || c.k;
-      const sorted = [...rows].sort((a, b) => { const x = key ? a[key] : (c.f ? c.f(a) : ''), y = key ? b[key] : (c.f ? c.f(b) : ''); if (x == null) return 1; if (y == null) return -1; return (typeof x === 'number' && typeof y === 'number') ? dir * (x - y) : dir * String(x).localeCompare(String(y), undefined, { numeric: true }); });
-      FS.$('tbody', wrap).innerHTML = sorted.map(r => '<tr>' + cols.map(cc => `<td class="${cc.num ? 'num' : ''} ${cc.cls || ''}">${cc.f ? cc.f(r) : FS.esc(r[cc.k])}</td>`).join('') + '</tr>').join('');
-      FS.$$('th', wrap).forEach(t => t.classList.remove('sorted', 'asc')); th.classList.add('sorted'); if (dir > 0) th.classList.add('asc');
+      if (st.i === i) st.dir = -st.dir; else { st.i = i; st.dir = c.num ? -1 : 1; }
+      FS.$('tbody', wrap).innerHTML = bodyOf(order(rows, st.i, st.dir));
+      FS.$$('th', wrap).forEach(t => t.classList.remove('sorted', 'asc')); th.classList.add('sorted'); if (st.dir > 0) th.classList.add('asc');
+      FS.enrichIn(wrap);
     });
   }, 0);
   return html;
