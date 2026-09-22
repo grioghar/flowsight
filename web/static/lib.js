@@ -103,8 +103,23 @@ FS.$ = (sel, root) => (root || document).querySelector(sel);
 FS.$$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 FS.h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 FS.toast = (msg, bad) => { const el = FS.h(`<div class="t ${bad ? 'bad' : ''}">${FS.esc(msg)}</div>`); FS.$('#toast').appendChild(el); setTimeout(() => el.remove(), bad ? 7000 : 3500); };
-FS.modal = (html, onMount) => { const m = FS.$('#modal'); FS.$('#modal-body').innerHTML = html; m.hidden = false; m.onclick = (e) => { if (e.target === m) FS.closeModal(); }; if (onMount) onMount(FS.$('#modal-body')); };
+FS.modal = (html, onMount) => { const m = FS.$('#modal'); FS.$('#modal-body').innerHTML = html; m.hidden = false; FS.placeModal(); m.onclick = (e) => { if (e.target === m) FS.closeModal(); }; if (onMount) onMount(FS.$('#modal-body')); };
 FS.closeModal = () => { FS.$('#modal').hidden = true; FS.$('#modal-body').innerHTML = ''; };
+// Inside the OPNsense panel this document has no scrollbar of its own and can
+// be many screens tall, so a dialog pinned to its top opens far above whatever
+// the reader was looking at, and they have to scroll up to find it. The host
+// page reports which slice of the frame is on screen; put the dialog over that
+// slice instead, and keep it there while they scroll.
+FS.placeModal = () => {
+  const m = FS.$('#modal'); if (!m || m.hidden) return;
+  if (!FS.embedded || !FS.hostView) { m.style.transform = ''; m.style.bottom = ''; m.style.height = ''; return; }
+  // It stays position:fixed, which keeps it out of this document's height:
+  // the host sizes the frame from that, and an overlay that counted would
+  // make the frame grow every time a dialog opened. Sliding it is enough.
+  m.style.transform = 'translateY(' + Math.max(0, FS.hostView.top) + 'px)';
+  m.style.bottom = 'auto';
+  m.style.height = FS.hostView.height + 'px';
+};
 FS.confirm = (text) => new Promise(res => { FS.modal(`<h2>Please confirm</h2><p>${FS.esc(text)}</p><div class="actions"><button class="btn primary" id="ok">Confirm</button><button class="btn" id="cancel">Cancel</button></div>`, (b) => { FS.$('#ok', b).onclick = () => { FS.closeModal(); res(true); }; FS.$('#cancel', b).onclick = () => { FS.closeModal(); res(false); }; }); });
 
 // card(title, bodyHtml, rightHtml)

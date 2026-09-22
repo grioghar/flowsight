@@ -124,7 +124,7 @@
   // One place everything asks "how far down are we?", framed or not.
   FS.scrollWatchers = [];
   FS.onScroll = (fn) => { FS.scrollWatchers.push(fn); return fn; };
-  FS.scrolled = () => { const b = FS.viewportBottom(); FS.scrollWatchers = FS.scrollWatchers.filter(fn => fn(b) !== false); };
+  FS.scrolled = () => { const b = FS.viewportBottom(); FS.scrollWatchers = FS.scrollWatchers.filter(fn => fn(b) !== false); if (FS.placeModal) FS.placeModal(); };
   FS.viewportBottom = () => {
     if (FS.embedded && FS.hostView) return FS.hostView.top + FS.hostView.height;
     return (window.scrollY || document.documentElement.scrollTop || 0) + window.innerHeight;

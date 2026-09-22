@@ -18,3 +18,23 @@ print('rowAttr OK');
 // A table with no opts must still render.
 if (FS.table([{a:1}], [{t:'A', k:'a'}]).indexOf('<td') < 0) throw new Error('plain table broke');
 print('plain table OK');
+
+// A dialog opened inside the OPNsense panel must land on the slice of the
+// frame the reader is actually looking at, without changing the document's
+// height (the host sizes the frame from that).
+(function () {
+  var style = {};
+  var modal = { hidden: false, style: style };
+  var realQ = FS.$;
+  FS.$ = function (sel, root) { return sel === '#modal' ? modal : realQ(sel, root); };
+  FS.embedded = true; FS.hostView = { top: 1840, height: 900 };
+  FS.placeModal();
+  if (style.transform !== 'translateY(1840px)') throw new Error('modal not moved to the visible band: ' + style.transform);
+  if (style.height !== '900px') throw new Error('modal height wrong: ' + style.height);
+  if (style.position) throw new Error('modal must stay position:fixed, got ' + style.position);
+  FS.embedded = false;
+  FS.placeModal();
+  if (style.transform !== '') throw new Error('standalone modal must not be moved');
+  FS.$ = realQ;
+  print('FS.placeModal OK');
+})();

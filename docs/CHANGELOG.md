@@ -12,6 +12,14 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609220723
+
+**A certificate opens where you are looking.** Inside the OPNsense panel the
+FlowSight page has no scrollbar of its own and can be many screens tall, so a
+dialog pinned to the top of that page opened far above whatever you had
+scrolled to, and you had to scroll up to find it. Dialogs now open over the
+part of the page that is on screen, and follow it if you keep scrolling.
+
 ## 0.9.8r202609220648
 
 **Deep inspection, for the Business tier.** A new module reads what a
