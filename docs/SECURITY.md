@@ -124,6 +124,24 @@ certificate served. It sends no request, carries no client identity and
 never contacts a name the network has not. It can be switched off in
 *Settings › tls*.
 
+## Live egress monitoring
+
+The egress module runs `pfctl -ss -v` on an interval and reads the byte
+counters pf already keeps for every open connection. It reads state; it does
+not add rules, change the ruleset or touch any traffic. The one action it can
+take is **Stop**, which drops a single connection's state and is taken only
+when an operator asks for it on the page.
+
+Because it measures rather than decrypts, it sees connections no inspection
+can open: pinned sessions, spliced sessions, QUIC on UDP 443 and encrypted
+tunnels. It learns nothing about their contents and claims nothing about
+them. For a tunnel it says so plainly on the finding: the volume, the far end
+and the timing are the whole of what is knowable.
+
+Addresses are named from what FlowSight already holds, the server name in a
+handshake and the answer to a DNS query. No external service is consulted to
+name a destination.
+
 ## Hardening checklist
 
 - Keep the daemon on loopback; reach it through the OPNsense GUI or a

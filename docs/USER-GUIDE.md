@@ -220,6 +220,47 @@ never will by design (see [Security](SECURITY.md)). Traffic that never
 crosses the firewall, such as two devices on the same subnet talking to
 each other, is not seen by any of this; only routed traffic is.
 
+### Data out (Business)
+
+The one page written in the present tense. Everything else in FlowSight
+reports what happened; this reports what is happening, because a transfer
+you read about tomorrow is a transfer that finished.
+
+It does not read logs. It reads the firewall's own connection table, which
+counts every byte of every open connection and updates as they move, and it
+samples that every few seconds. The consequence is that it sees everything:
+a session whose certificate is pinned still has a connection, and so does a
+spliced session, a QUIC session on UDP 443 that never reaches the proxy, and
+a WireGuard tunnel carrying who knows what. None of those can be decrypted.
+All of them can be measured.
+
+Each row is one connection: the device, the destination with the name
+FlowSight can put to it, what kind of destination it is, how fast it is
+sending right now, how much it has sent and received, and how long it has
+been open. **Stop** drops the connection at the firewall, which ends the
+transfer immediately. The device may open another one; preventing that is a
+policy decision and belongs in a policy.
+
+Destinations are grouped coarsely, because the group is what changes what
+you would do: cloud storage, file transfer and paste sites, code hosting,
+personal mail, messaging, AI assistants, remote access, backup, media,
+telemetry, content delivery, encrypted tunnels, and **unnamed**. That last
+one is the row most worth reading. It means no DNS answer, no server name in
+any handshake and no reverse lookup could put a name to the address the data
+is going to.
+
+*Settings › egress* sets which groups raise an event and at what point: a
+single transfer above so many megabytes sent, a sustained upload rate held
+for so many seconds, a transfer that has sent several times what it
+received, the first time a device reaches a kind of destination it never has
+before, and anything at all going somewhere unnamed. A quiet-hours window
+raises the severity of anything flagged inside it.
+
+What this cannot tell you is what was inside. For the sessions that can be
+decrypted, deep inspection reads the request itself. The two are meant to be
+read together: this says a device is sending four gigabytes to a cloud
+storage provider, and deep inspection says which files.
+
 ### Deep inspection (Business)
 
 What a decrypted session carries, not just which server it reached. The

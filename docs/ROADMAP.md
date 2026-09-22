@@ -53,3 +53,25 @@
 - Online activation with seat counting, lease refresh and revocation; offline signed license files.
 - License server `flowsight-licensed` (SQLite, admin API and CLI).
 - Follow-ups: Business features that are gated but not built yet (directory identity, multiple administrators) and a shop/billing hook on the admin API.
+
+## Acting on what is seen, in time to matter
+
+Live egress monitoring is the first stage of a larger idea: noticing
+something while it is happening is only useful if something can be done
+about it before it finishes.
+
+Two seams exist for that and neither is filled in yet.
+
+The egress module publishes every threshold event to subscribers, so a
+module that decides what to do about a transfer never has to live inside the
+module that measures one. Today the only action is an operator pressing
+**Stop**.
+
+Deep inspection is the other. ICAP is a synchronous gate: the proxy sends
+each decrypted request and *waits* for FlowSight's answer before forwarding
+it. FlowSight answers "no modification" every time today, but the same point
+in the exchange is where a request could be refused. That is what would let a
+rule stop a destructive API call before it reaches the service, rather than
+recording that it was made. The transport is already in place; the rule
+engine and the decision to deny are not, and neither should be added without
+a way to see exactly what would have been blocked before anything is.

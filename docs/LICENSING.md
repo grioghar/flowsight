@@ -15,6 +15,7 @@ Community expires, phones home or needs registration.
 | Scheduled reports, CSV export | on-screen reports | yes | yes |
 | Notification channels (e-mail, webhook, chat) | alerts in the UI | yes | yes |
 | Deep inspection of decrypted sessions | | | yes |
+| Live egress monitoring and interdiction | | | yes |
 | Telemetry export (OTLP / SIEM) | | | yes |
 | Directory identity (LDAP / AD / RADIUS) | | | yes |
 | Multiple administrators | | | yes |

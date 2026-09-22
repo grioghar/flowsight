@@ -7,6 +7,7 @@ import (
 	_ "github.com/grioghar/flowsight/internal/modules/appcontrol"
 	_ "github.com/grioghar/flowsight/internal/modules/categories"
 	_ "github.com/grioghar/flowsight/internal/modules/dns"
+	_ "github.com/grioghar/flowsight/internal/modules/egress"
 	_ "github.com/grioghar/flowsight/internal/modules/enrich"
 	_ "github.com/grioghar/flowsight/internal/modules/enroll"
 	_ "github.com/grioghar/flowsight/internal/modules/firewall"

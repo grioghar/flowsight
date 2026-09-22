@@ -47,6 +47,15 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | GET | `/api/dns/summary` | Query volumes, block rate, top domains and clients | hours (window) |
 | GET | `/api/dns/timeseries` | Queries and blocks over time | hours (window) |
 
+### egress
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/egress/live` | Connections carrying data right now, newest sample | group (filter), min_kb (floor) |
+| GET | `/api/egress/summary` | What is leaving now, totalled by device and by destination group |  |
+| GET | `/api/egress/events` | Transfers that crossed a threshold, most recent first | limit (rows) |
+| POST | `/api/egress/stop` | Drop a transfer that is running ({local, peer}); the connection is killed at the firewall |  |
+
 ### enrich
 
 | Method | Path | What | Parameters |

@@ -1,0 +1,114 @@
+package egress
+
+import (
+	"strings"
+	"testing"
+)
+
+// Real output from `pfctl -ss -v` on an OPNsense gateway. Reading a download
+// as an upload would make every alert here meaningless, so the direction is
+// pinned against traffic whose shape is known: the github session fetched
+// 616615 bytes and sent 14863, and the Plex server received connections from
+// outside rather than making them.
+const capture = `all tcp 127.0.0.1:3129 (140.82.114.3:443) <- 10.99.0.162:59216       FIN_WAIT_2:FIN_WAIT_2
+   [2837096760 + 392192] wscale 7  [2817892562 + 65792] wscale 10
+   age 00:01:09, expires in 00:00:24, 249:432 pkts, 14863:616615 bytes, anchor 4
+all udp 162.202.41.52:17449 (192.168.1.178:56094) -> 79.127.160.158:51820       MULTIPLE:MULTIPLE
+   age 08:20:20, expires in 00:01:00, 317323773:165327693 pkts, 263517066416:102413038016 bytes
+all tcp 192.168.1.105:32400 (162.202.41.52:41952) <- 73.96.122.167:36068       ESTABLISHED:ESTABLISHED
+   [3165868840 + 44372] wscale 10  [2555950065 + 65536] wscale 7
+   age 10:34:23, expires in 15:52:01, 796:814 pkts, 42419:83330 bytes, rule 3
+all icmp 192.168.1.9:11 -> 1.1.1.1:11       0:0
+   age 00:00:02, expires in 00:00:08, 1:1 pkts, 84:84 bytes, rule 9
+`
+
+func local(ip string) bool {
+	return strings.HasPrefix(ip, "192.168.") || strings.HasPrefix(ip, "10.99.") || strings.HasPrefix(ip, "10.8.")
+}
+
+func TestParseStatesDirection(t *testing.T) {
+	got := parseStates(capture, local)
+	if len(got) != 3 {
+		t.Fatalf("want 3 states (icmp is skipped), got %d: %+v", len(got), got)
+	}
+	byLocal := map[string]State{}
+	for _, s := range got {
+		byLocal[s.Local] = s
+	}
+
+	// A device fetching a page through the proxy: little out, a lot in.
+	gh, ok := byLocal["10.99.0.162"]
+	if !ok {
+		t.Fatal("redirected session not attributed to the device")
+	}
+	if gh.Out != 14863 || gh.In != 616615 {
+		t.Errorf("download read backwards: out=%d in=%d", gh.Out, gh.In)
+	}
+	if gh.Peer != "140.82.114.3" || gh.PeerPort != 443 {
+		t.Errorf("peer wrong: %s:%d", gh.Peer, gh.PeerPort)
+	}
+
+	// A tunnel the device opened: the first counter is what it sent.
+	wg, ok := byLocal["192.168.1.178"]
+	if !ok {
+		t.Fatal("translated outbound session not attributed to the device")
+	}
+	if wg.Out != 263517066416 || wg.In != 102413038016 {
+		t.Errorf("tunnel read backwards: out=%d in=%d", wg.Out, wg.In)
+	}
+	if wg.Proto != "udp" || wg.PeerPort != 51820 {
+		t.Errorf("tunnel peer wrong: %s %s:%d", wg.Proto, wg.Peer, wg.PeerPort)
+	}
+	if wg.Age.Hours() < 8 {
+		t.Errorf("age not read: %v", wg.Age)
+	}
+
+	// A server here answering the internet: the first counter is what it
+	// received, because the far side opened the connection.
+	plex, ok := byLocal["192.168.1.105"]
+	if !ok {
+		t.Fatal("inbound session not attributed to the server")
+	}
+	if plex.In != 42419 || plex.Out != 83330 {
+		t.Errorf("inbound session read backwards: out=%d in=%d", plex.Out, plex.In)
+	}
+}
+
+func TestSplitHostPort(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		host string
+		port int
+	}{
+		{"1.2.3.4:443", "1.2.3.4", 443},
+		{"[2606:4700::1]:443", "2606:4700::1", 443},
+		{"fd99::112a", "fd99::112a", 0},
+		{"10.0.0.1", "10.0.0.1", 0},
+	} {
+		h, p := splitHostPort(c.in)
+		if h != c.host || p != c.port {
+			t.Errorf("%q -> %q:%d, want %q:%d", c.in, h, p, c.host, c.port)
+		}
+	}
+}
+
+// A redirected session names the proxy's loopback address as one end. The
+// identity module calls 127.0.0.1 local, quite correctly, so without an
+// explicit exclusion both ends look local and every intercepted session is
+// silently dropped, which is precisely the traffic this is meant to watch.
+func TestRedirectedSessionSurvivesLoopbackBeingLocal(t *testing.T) {
+	localIncludingLoopback := func(ip string) bool { return local(ip) || strings.HasPrefix(ip, "127.") }
+	got := parseStates(capture, localIncludingLoopback)
+	var found bool
+	for _, s := range got {
+		if s.Local == "10.99.0.162" {
+			found = true
+			if s.Peer != "140.82.114.3" || s.Out != 14863 || s.In != 616615 {
+				t.Errorf("redirected session wrong: %+v", s)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("the intercepted session was dropped; got %d states: %+v", len(got), got)
+	}
+}

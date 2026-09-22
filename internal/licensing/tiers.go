@@ -62,6 +62,8 @@ var Features = []Feature{
 		Desc: "Keep 90 days of history instead of 7 (Business: 365)."},
 	{Key: "deep.inspect", Tier: TierBusiness, Title: "Deep inspection",
 		Desc: "Look inside decrypted sessions: request headers, content types, and the questions inside DNS-over-HTTPS. Bodies are decoded, never stored."},
+	{Key: "egress.watch", Tier: TierBusiness, Title: "Live egress monitoring",
+		Desc: "See what is leaving the network as it leaves, read from the firewall's own connection counters: pinned sessions, QUIC and encrypted tunnels included. Raises an event while a transfer is still running, and can drop it."},
 	{Key: "telemetry.export", Tier: TierBusiness, Title: "Telemetry export",
 		Desc: "Stream flows, metrics and events to an OTLP collector or SIEM."},
 	{Key: "identity.directory", Tier: TierBusiness, Title: "Directory identity",

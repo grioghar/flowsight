@@ -58,6 +58,25 @@ Resolver visibility from Unbound's reply log and cache; per-group DNS blocking a
 | `cache_names_seconds` | Cache snapshot interval (s) | int | `60` |  |
 | `max_zone_domains` | Max domains per policy zone | int | `1500000` | Each policy becomes one response policy zone; memory grows with its size. The compiler refuses larger ones. |
 
+### egress (Business tier)
+
+What is leaving the network right now, read from pf's live connection counters rather than from a log, so a transfer is visible while it is running.
+
+| Key | Setting | Type | Default | Notes |
+|---|---|---|---|---|
+| `interval_seconds` | Sample the connection table every (seconds) | int | `5` | The difference between noticing data leaving and reading about it later. |
+| `watch_groups` | Destination groups to watch | list | cloud-storage, file-transfer, code-host, webmail, messaging, ai, remote-access, tunnel, unknown | Groups not listed are still measured and shown; they just raise nothing on their own. |
+| `alert_upload_mb` | Flag a single transfer above (MB sent) | int | `250` | Raised while the transfer is still running. |
+| `alert_rate_mbps` | Flag a sustained upload rate above (Mbit/s) | int | `25` |  |
+| `sustain_seconds` | ...held for at least (seconds) | int | `30` | Stops a brief burst raising anything. |
+| `ratio_floor_mb` | Flag upload-dominant transfers above (MB sent) | int | `20` | Ordinary use pulls more than it pushes. |
+| `ratio` | ...when sent exceeds received by a factor of | int | `4` |  |
+| `flag_unnamed` | Flag uploads to a destination with no name | bool | `true` | No DNS answer, no server name, no reverse lookup. |
+| `flag_first_use` | Flag the first time a device uses a watched group | bool | `true` |  |
+| `quiet_hours` | Treat these hours as quiet | string | `""` | For example `23:00-06:00`. Anything flagged inside the window is raised one severity. |
+| `min_report_kb` | Ignore connections smaller than (KB) | int | `64` |  |
+| `keep_events` | Events kept in memory | int | `500` |  |
+
 ### enrich
 
 Names and countries for bare addresses: reverse DNS and an IP geolocation database. Both off by default.

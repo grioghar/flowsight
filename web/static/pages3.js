@@ -174,4 +174,74 @@
     }
   });
 
+  // ------------------------------------------------------------- Data out
+  // The one page that is about the present tense. Everything else in
+  // FlowSight reports what happened; this reports what is happening, because
+  // a transfer you read about tomorrow is a transfer that finished.
+  const rate = (b) => b > 0 ? FS.bps(b * 8) : '<span class="muted">idle</span>';
+  // The pill says what kind of destination this is, in words. An unnamed one
+  // is called out in red: an address nothing can put a name to is the row
+  // most worth reading on this page.
+  const groupPill = (t) => {
+    const tone = { unknown: 'bad', tunnel: 'warn', 'cloud-storage': 'warn', 'file-transfer': 'warn',
+      webmail: 'warn', 'remote-access': 'warn', ai: 'warn' }[t.group] || '';
+    return pill(t.group_title || t.group, tone);
+  };
+  FS.registerPage('egress', {
+    title: 'Data out', refresh: 5,
+    async render(el, ctx) {
+      const [live, sum, ev] = await Promise.all([
+        get('/api/egress/live?min_kb=' + (ctx.params.all ? 0 : 64)),
+        get('/api/egress/summary'),
+        get('/api/egress/events?limit=200')]);
+      if (live.error && !live.transfers) { el.innerHTML = FS.err(live.error); return; }
+      const rows = live.transfers || [];
+      const watched = rows.filter(t => ['cloud-storage', 'file-transfer', 'webmail', 'messaging',
+        'ai', 'remote-access', 'code-host', 'tunnel', 'unknown'].includes(t.group));
+      const events = ev.events || [];
+      const open = events.filter(e => e.severity === 'high' || e.severity === 'medium').length;
+
+      el.innerHTML = `<div class="grid cols-4">
+        ${kpi('Leaving now', FS.bps((sum.rate_out || 0) * 8), `${num(sum.transfers)} connections carrying data`, sum.rate_out > 1e6 ? 'warn' : '')}
+        ${kpi('Sent, open connections', bytes(sum.total_out || 0), `${bytes(sum.total_in || 0)} received`)}
+        ${kpi('To watched destinations', num(watched.length), 'cloud storage, mail, tunnels, unnamed', watched.length ? 'warn' : '')}
+        ${kpi('Flagged', num(open), 'transfers that crossed a threshold', open ? 'bad' : '')}</div>
+
+      <div class="grid cols-2" style="margin-top:14px">
+        ${card('By destination', bars((sum.groups || []).map(g => ({ label: g.title || g.key, value: g.out })), bytes))}
+        ${card('By device', bars((sum.devices || []).map(d => ({ label: d.name || d.key, sub: d.name ? d.key : '', value: d.out, href: '#host/' + d.key })), bytes))}
+      </div>
+
+      <div style="margin-top:14px" id="live-card">${card(`Moving now (${num(rows.length)})`, table(rows, [
+        { t: 'Device', f: r => FS.addrCell(r.local, r.local_name), sort: 'local' },
+        { t: 'Destination', f: r => `<b>${esc(r.service || r.peer_name || r.peer)}</b>${(r.peer_name && r.peer_name !== r.service) ? `<div class="muted small">${esc(r.peer_name)}</div>` : ''}<div class="muted small">${esc(r.peer)}:${r.peer_port} ${esc(r.proto)}</div>`, sort: 'peer_name' },
+        { t: 'Kind', f: r => groupPill(r), sort: 'group' },
+        { t: 'Sending', f: r => `<b>${rate(r.rate_out)}</b>`, num: true, sort: 'rate_out' },
+        { t: 'Sent', f: r => bytes(r.out), num: true, sort: 'out' },
+        { t: 'Received', f: r => bytes(r.in), num: true, sort: 'in' },
+        { t: 'Open for', f: r => FS.dur(r.age), num: true, sort: 'age' },
+        { t: 'Flags', f: r => (r.flags || []).map(f => pill(f, 'warn')).join(' ') },
+        { t: '', f: r => `<button class="btn small danger" data-stop="${esc(r.local)}" data-peer="${esc(r.peer)}">Stop</button>` }],
+        { rowAttr: r => (r.flags || []).length ? 'class="flagged"' : '' }),
+        ctx.params.all ? '<a href="#egress">hide small connections</a>' : '<a href="#egress?all=1">show every connection</a>')}</div>
+
+      <div style="margin-top:14px">${card('Flagged transfers', table(events, [
+        { t: 'When', f: r => when(r.ts), sort: 'ts' },
+        { t: 'Severity', f: r => FS.sevPill(r.severity), sort: 'severity' },
+        { t: 'What', f: r => `<b>${esc(r.message)}</b>`, sort: 'message' },
+        { t: 'Kind', f: r => pill(r.kind), sort: 'kind' },
+        { t: 'Device', f: r => hostLink(r.transfer.local, r.transfer.local_name), sort: 'transfer' }],
+        { empty: 'Nothing has crossed a threshold. Thresholds are in Settings, under egress.' }))}</div>
+
+      <div class="help" style="margin-top:12px">${esc(live.note || '')} Sampled ${live.sampled ? ago(live.sampled) : 'never'}.</div>`;
+
+      FS.$$('[data-stop]', el).forEach(b => b.onclick = async () => {
+        if (!await FS.confirm(`Stop the transfer from ${b.dataset.stop} to ${b.dataset.peer}? The connection is dropped at the firewall. The device may open another one.`)) return;
+        const r = await post('/api/egress/stop', { local: b.dataset.stop, peer: b.dataset.peer });
+        FS.toast(r.error || 'Transfer stopped', !!r.error);
+        FS.render();
+      });
+    }
+  });
+
 })();

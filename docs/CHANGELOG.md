@@ -12,6 +12,42 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609220741
+
+**Data out: what is leaving the network, while it leaves.** A new page and a
+new module under Security. Everything else in FlowSight reports what
+happened; this reports what is happening, because a transfer you read about
+tomorrow is a transfer that already finished.
+
+It does not read logs. It samples the firewall's own connection counters
+every few seconds, which means it sees what no inspection can open: sessions
+whose certificate is pinned, spliced sessions, QUIC on UDP 443 that never
+reaches the proxy, and encrypted tunnels. None of those can be decrypted and
+all of them can be measured. Each row is one live connection with the device,
+the destination and the name FlowSight can put to it, the current upload
+rate, the totals and how long it has been open. **Stop** drops the connection
+at the firewall while it is running.
+
+Destinations are grouped by what would change your mind about them: cloud
+storage, file transfer and paste sites, code hosting, personal mail,
+messaging, AI assistants, remote access, backup, media, telemetry, content
+delivery, encrypted tunnels, and **unnamed**. Unnamed means no DNS answer, no
+server name in any handshake and no reverse lookup could name the place the
+data is going, which makes it the row most worth reading.
+
+Thresholds raise an event mid-transfer: a volume of data sent, a sustained
+upload rate, a session that has sent several times what it received, the
+first time a device reaches a kind of destination it never has before, and
+anything going somewhere unnamed. A quiet-hours window raises the severity of
+anything flagged inside it. Events are published to subscribers, which is the
+seam a later module will use to act on them rather than only report them.
+
+**Reading the counters the wrong way round would have reported every download
+as an upload**, so the direction is pinned by test against a real capture from
+the gateway, including the case that matters most here: an intercepted session
+names the proxy's own loopback address as one end, and treating that as the
+local device silently discarded every inspected session.
+
 ## 0.9.8r202609220723
 
 **A certificate opens where you are looking.** Inside the OPNsense panel the

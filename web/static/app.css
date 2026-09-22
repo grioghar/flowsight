@@ -165,3 +165,7 @@ pre.code .add { color: var(--ok); } pre.code .del { color: var(--bad); }
 .certdetail dd { word-break: break-all; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: var(--hover, rgba(127,127,127,.08)); }
+
+/* A transfer that crossed a threshold, in the live egress table. */
+tr.flagged td { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
