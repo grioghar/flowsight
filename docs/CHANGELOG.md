@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609220812
+
+**Turning deep inspection's settings on now takes effect at once.** The policy
+compiler skips its work when nothing it depends on has changed, and the list
+of things it depends on did not include the deep inspection module. So
+switching on **inspect everything that crosses the firewall** appeared to do
+nothing: the setting saved, the page showed it on, and the proxy carried on
+with the old configuration until some unrelated change happened to force a
+rebuild, which could be ten minutes later. The module is part of that list
+now.
+
 ## 0.9.8r202609220752
 
 **Data out tells serving apart from reaching out.** A media server streaming

@@ -400,7 +400,12 @@ func (m *Module) signature() string {
 		}
 	}
 	fmt.Fprintf(h, "enforce=%v;", core.Bool(m.ctx.Settings(), "enforce", false))
-	for _, mod := range []string{"web", "dns", "firewall"} {
+	// Every module whose settings change what a provider writes belongs here.
+	// Deep inspection does: it decides the proxy's ICAP service and, with
+	// "inspect everything", adds a policy covering every local network. Leaving
+	// it out made that switch appear to do nothing for up to ten minutes, until
+	// an unrelated change happened to force a recompile.
+	for _, mod := range []string{"web", "dns", "firewall", "mitm"} {
 		b, _ := json.Marshal(m.ctx.Config.Module(mod))
 		h.Write(b)
 	}
