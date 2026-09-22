@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -91,7 +92,19 @@ func (m *Module) Info() core.ModuleInfo {
 
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
-	m.client = &http.Client{Timeout: 30 * time.Second}
+	// The manifest is small but a release binary is tens of megabytes over
+	// whatever link the firewall has; a short overall timeout would cut a
+	// slow download in half. Bound the connect and the idle read instead.
+	m.client = &http.Client{
+		Timeout: 30 * time.Minute,
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
+			IdleConnTimeout:       90 * time.Second,
+		},
+	}
 
 	settings := ctx.Settings()
 	m.manifestURL = core.Str(settings, "manifest_url",
