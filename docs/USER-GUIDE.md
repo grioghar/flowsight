@@ -5,6 +5,10 @@ top (1h, 6h, 24h, 7d, 30d) set the window for every page that shows
 history; the search box takes an address (opens the host), a domain (opens
 its sessions) or free text.
 
+Inside the OPNsense GUI there is one scrollbar, the page's own: tables grow
+with their rows instead of scrolling inside a box. Standalone, a long table
+keeps its own scroll area.
+
 **Long tables** show the first hundred rows with the count beneath them,
 *Show 100 more* and *Show all*, and an **Infinite scroll** checkbox that
 loads further rows as you reach the bottom. The choice is remembered for

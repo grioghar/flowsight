@@ -194,6 +194,18 @@ include("head.inc");
             if (e.source !== f.contentWindow || !e.data || !e.data.fsHeight) return;
             f.style.height = Math.max(480, Math.ceil(e.data.fsHeight) + 4) + 'px';
           });
+          // Report the visible slice of the frame so the app can page long
+          // tables against the page's own scrollbar (there is only one).
+          function reportScroll() {
+            if (!f.contentWindow) return;
+            var r = f.getBoundingClientRect();
+            f.contentWindow.postMessage({ fsScroll: { top: Math.max(0, -r.top), height: window.innerHeight } }, location.origin);
+          }
+          var st = null;
+          window.addEventListener('scroll', function () { if (!st) st = setTimeout(function () { st = null; reportScroll(); }, 100); }, { passive: true });
+          window.addEventListener('resize', reportScroll);
+          f.addEventListener('load', function () { setTimeout(reportScroll, 200); });
+
           var mq = window.matchMedia('(prefers-color-scheme: dark)');
           function push() { var n = tone(); if (n !== t) { t = n; f.contentWindow.postMessage({ fsTheme: t }, location.origin); } }
           if (mq.addEventListener) mq.addEventListener('change', function () { setTimeout(push, 100); });

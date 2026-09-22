@@ -148,6 +148,15 @@ FS.table = (rows, cols, opts) => {
       st.top = wrap.scrollTop;
       if (FS.infiniteScroll && st.shown < all.length && wrap.scrollTop + wrap.clientHeight > wrap.scrollHeight - 200) grow(pageSize);
     }, { passive: true });
+    // No scroller of its own (inside a host GUI): follow the page instead.
+    if (FS.onScroll) FS.onScroll((bottom) => {
+      if (!document.body.contains(wrap)) return false; // drop the watcher with the table
+      if (!FS.infiniteScroll || st.shown >= all.length) return true;
+      if (wrap.scrollHeight > wrap.clientHeight + 4) return true; // it scrolls itself
+      const end = wrap.getBoundingClientRect().bottom + (window.scrollY || 0);
+      if (end - 300 < bottom) grow(pageSize);
+      return true;
+    });
     const mb = FS.$('[data-more]', box); if (mb) mb.onclick = () => grow(pageSize);
     const ab = FS.$('[data-all]', box); if (ab) ab.onclick = () => grow(all.length);
     const inf = FS.$('[data-inf]', box); if (inf) inf.onchange = () => { FS.setInfinite(inf.checked); if (inf.checked) grow(all.length); };

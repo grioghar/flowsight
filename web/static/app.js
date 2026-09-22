@@ -40,6 +40,14 @@
       else if (h < lastH - 8) shrinkT = setTimeout(() => post(h), 1200);
     };
     FS.reportHeight = report;
+    // The host page owns the scrollbar, so it tells us where the viewport is;
+    // that is what paging and infinite scroll watch when we are embedded.
+    window.addEventListener('message', (e) => {
+      const d = e.data;
+      if (!d || !d.fsScroll) return;
+      FS.hostView = d.fsScroll; // {top, height} in this document's coordinates
+      FS.scrolled();
+    });
     if (window.ResizeObserver) new ResizeObserver(report).observe($('#main'));
     window.addEventListener('load', report);
     setInterval(report, 1500);
@@ -112,6 +120,16 @@
     };
     if (def.refresh && document.visibilityState === 'visible') timer = setTimeout(again, def.refresh * 1000);
   };
+
+  // One place everything asks "how far down are we?", framed or not.
+  FS.scrollWatchers = [];
+  FS.onScroll = (fn) => { FS.scrollWatchers.push(fn); return fn; };
+  FS.scrolled = () => { const b = FS.viewportBottom(); FS.scrollWatchers = FS.scrollWatchers.filter(fn => fn(b) !== false); };
+  FS.viewportBottom = () => {
+    if (FS.embedded && FS.hostView) return FS.hostView.top + FS.hostView.height;
+    return (window.scrollY || document.documentElement.scrollTop || 0) + window.innerHeight;
+  };
+  window.addEventListener('scroll', () => FS.scrolled(), { passive: true });
 
   window.addEventListener('hashchange', FS.render);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') FS.render(); });
