@@ -42,6 +42,11 @@ type State struct {
 	In       int64 // bytes it has received
 	Age      time.Duration
 	Rule     string
+	// Inbound is true when the far side opened this connection: a server on
+	// this network answering the internet, rather than a device reaching out.
+	// The bytes are real either way, but only one of the two is data leaving
+	// in the sense anyone means by it.
+	Inbound bool
 
 	// outFirst records which way round pf printed the counters for this
 	// state, decided from the arrow and which end is local.
@@ -191,6 +196,10 @@ func natAddr(f []string, arrow int) (string, int) {
 
 // parseCounters reads "age 00:01:09, ... 249:432 pkts, 14863:616615 bytes".
 func parseCounters(line string, st *State) {
+	// The counters are only meaningful once the arrow has been read, and the
+	// same fact says who opened the connection.
+	st.Inbound = !st.outFirst
+
 	for _, part := range strings.Split(line, ",") {
 		part = strings.TrimSpace(part)
 		switch {

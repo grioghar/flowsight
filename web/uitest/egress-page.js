@@ -23,12 +23,18 @@ var TUNNEL = { key:'a', local:'192.168.1.178', local_name:'seedbox', peer:'79.12
 var UNNAMED = { key:'b', local:'192.168.1.55', local_name:'', peer:'203.0.113.9', peer_port:8443,
   proto:'tcp', group:'unknown', group_title:'Unnamed destination', service:'',
   out:104857600, in:2048, rate_out:1500000, rate_in:100, age:120, flags:['unnamed','ratio'], since:1 };
+// A Plex server answering a viewer: it really has sent the bytes, and it is
+// not data leaving. It must be shown, marked, and left out of the totals.
+var SERVING = { key:'d', local:'192.168.1.105', local_name:'plex-host', peer:'8.41.21.29',
+  peer_name:'ip-8-41-21-29.ideatek.com', peer_port:32400, proto:'tcp', group:'other',
+  group_title:'Other', service:'ideatek.com', out:3221225472, in:3670016,
+  rate_out:0, rate_in:0, age:23000, flags:[], since:1, serving:true };
 var NORMAL = { key:'c', local:'192.168.1.42', local_name:'mac', peer:'140.82.114.3', peer_name:'github.com',
   peer_port:443, proto:'tcp', group:'code-host', group_title:'Code hosting', service:'github.com',
   out:14863, in:616615, rate_out:0, rate_in:50000, age:69, flags:[], since:1 };
 
 FS.get = function(p){
-  if (p.indexOf('/api/egress/live') === 0) return Promise.resolve({ transfers:[TUNNEL, UNNAMED, NORMAL],
+  if (p.indexOf('/api/egress/live') === 0) return Promise.resolve({ transfers:[TUNNEL, UNNAMED, NORMAL, SERVING],
     sampled: 1790062000, groups:[], note:'Read from the firewall.' });
   if (p.indexOf('/api/egress/summary') === 0) return Promise.resolve({
     devices:[{key:'192.168.1.178',name:'seedbox',out:263517066416,in:1,rate_out:9000000,flows:1}],
@@ -45,7 +51,7 @@ load('web/static/pages3.js');
 var el = mkEl();
 FS.pages.egress.render(el, { params:{} }).then(function(){
   var h = el.innerHTML;
-  ['seedbox', 'WireGuard', 'github.com', 'Unnamed destination', 'Moving now (3)'].forEach(function(s){
+  ['seedbox', 'WireGuard', 'github.com', 'Unnamed destination', 'Moving now (4)'].forEach(function(s){
     if (h.indexOf(s) < 0) throw new Error('live table missing ' + s);
   });
   if (h.indexOf('data-stop="192.168.1.178"') < 0) throw new Error('no stop control for a running transfer');
@@ -53,7 +59,12 @@ FS.pages.egress.render(el, { params:{} }).then(function(){
   if (h.indexOf('has no name') < 0) throw new Error('flagged events not listed');
   // The tunnel's 263 GB must read as sent, not received.
   if (h.indexOf('245 GB') < 0 && h.indexOf('245.4 GB') < 0) throw new Error('byte total not rendered: ' + h.slice(0, 200));
-  print('Data out page renders live transfers, flags and the stop control');
+  if (h.indexOf('serving') < 0) throw new Error('an inbound connection is not marked as serving');
+  if (h.indexOf('reaching out') < 0) throw new Error('outbound connections are not marked');
+  // The Plex server's 3 GB must not be counted as data this network sent.
+  var kpi = h.slice(h.indexOf('Sent, open connections') - 400, h.indexOf('Sent, open connections') + 200);
+  if (kpi.indexOf('3.0 GB') >= 0 || kpi.indexOf('248') >= 0) throw new Error('serving bytes counted as sent: ' + kpi);
+  print('Data out page renders live transfers, flags, serving vs reaching out, and the stop control');
 }).catch(fail);
 if (typeof drainMicrotasks === 'function') drainMicrotasks();
 if (FAILURE) throw FAILURE;

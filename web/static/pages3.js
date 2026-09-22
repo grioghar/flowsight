@@ -196,14 +196,18 @@
         get('/api/egress/events?limit=200')]);
       if (live.error && !live.transfers) { el.innerHTML = FS.err(live.error); return; }
       const rows = live.transfers || [];
-      const watched = rows.filter(t => ['cloud-storage', 'file-transfer', 'webmail', 'messaging',
+      // Only connections this network opened count as data leaving. A server
+      // here answering the internet has really sent the bytes, and saying so
+      // is useful, but it is not the same question.
+      const outbound = rows.filter(t => !t.serving);
+      const watched = outbound.filter(t => ['cloud-storage', 'file-transfer', 'webmail', 'messaging',
         'ai', 'remote-access', 'code-host', 'tunnel', 'unknown'].includes(t.group));
       const events = ev.events || [];
       const open = events.filter(e => e.severity === 'high' || e.severity === 'medium').length;
 
       el.innerHTML = `<div class="grid cols-4">
         ${kpi('Leaving now', FS.bps((sum.rate_out || 0) * 8), `${num(sum.transfers)} connections carrying data`, sum.rate_out > 1e6 ? 'warn' : '')}
-        ${kpi('Sent, open connections', bytes(sum.total_out || 0), `${bytes(sum.total_in || 0)} received`)}
+        ${kpi('Sent, open connections', bytes(outbound.reduce((a, t) => a + t.out, 0)), `${num(rows.length - outbound.length)} more are this network serving requests from outside`)}
         ${kpi('To watched destinations', num(watched.length), 'cloud storage, mail, tunnels, unnamed', watched.length ? 'warn' : '')}
         ${kpi('Flagged', num(open), 'transfers that crossed a threshold', open ? 'bad' : '')}</div>
 
@@ -214,6 +218,9 @@
 
       <div style="margin-top:14px" id="live-card">${card(`Moving now (${num(rows.length)})`, table(rows, [
         { t: 'Device', f: r => FS.addrCell(r.local, r.local_name), sort: 'local' },
+        { t: 'Direction', f: r => r.serving
+            ? `<span class="muted small" title="The far side opened this connection: something here is answering the internet, not reaching out to it">serving</span>`
+            : pill('reaching out', ''), sort: 'serving' },
         { t: 'Destination', f: r => `<b>${esc(r.service || r.peer_name || r.peer)}</b>${(r.peer_name && r.peer_name !== r.service) ? `<div class="muted small">${esc(r.peer_name)}</div>` : ''}<div class="muted small">${esc(r.peer)}:${r.peer_port} ${esc(r.proto)}</div>`, sort: 'peer_name' },
         { t: 'Kind', f: r => groupPill(r), sort: 'group' },
         { t: 'Sending', f: r => `<b>${rate(r.rate_out)}</b>`, num: true, sort: 'rate_out' },

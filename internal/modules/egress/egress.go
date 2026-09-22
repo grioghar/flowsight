@@ -30,16 +30,25 @@ import (
 	"time"
 
 	"github.com/grioghar/flowsight/internal/core"
+	"github.com/grioghar/flowsight/internal/modules/enrich"
 	"github.com/grioghar/flowsight/internal/modules/firewall"
 )
 
 func init() { core.Register(func() core.Module { return &Module{} }) }
+
+// reverseLookup is the part of the enrich module this needs: the name an
+// address answers to. Without it a destination that has only ever been
+// reached by address, never by name, looks anonymous when it is not.
+type reverseLookup interface {
+	Lookup(ips []string) map[string]enrich.Info
+}
 
 // Module implements core.Module.
 type Module struct {
 	ctx      *core.Context
 	identity core.Identity
 	fw       firewall.Firewall
+	rdns     reverseLookup
 
 	mu       sync.Mutex
 	prev     map[string]State     // the previous sample, for rates
@@ -52,28 +61,31 @@ type Module struct {
 	subs     []func(Event)
 	events   []Event
 	raised   map[string]bool // one line per transfer per kind, not one per sample
+	pending  map[string]bool // addresses the sample could not name, for the names job
 }
 
 // Transfer is one connection, as it stands at the latest sample.
 type Transfer struct {
-	Key       string   `json:"key"`
-	Local     string   `json:"local"`
-	LocalName string   `json:"local_name,omitempty"`
-	Peer      string   `json:"peer"`
-	PeerName  string   `json:"peer_name,omitempty"`
-	PeerPort  int      `json:"peer_port"`
-	Proto     string   `json:"proto"`
-	Group     string   `json:"group"`
-	GroupName string   `json:"group_title"`
-	Service   string   `json:"service,omitempty"`
-	Out       int64    `json:"out"`
-	In        int64    `json:"in"`
-	RateOut   float64  `json:"rate_out"`
-	RateIn    float64  `json:"rate_in"`
-	Age       float64  `json:"age"`
-	Decrypted bool     `json:"decrypted"`
-	Flags     []string `json:"flags,omitempty"`
-	Since     int64    `json:"since"`
+	Key       string  `json:"key"`
+	Local     string  `json:"local"`
+	LocalName string  `json:"local_name,omitempty"`
+	Peer      string  `json:"peer"`
+	PeerName  string  `json:"peer_name,omitempty"`
+	PeerPort  int     `json:"peer_port"`
+	Proto     string  `json:"proto"`
+	Group     string  `json:"group"`
+	GroupName string  `json:"group_title"`
+	Service   string  `json:"service,omitempty"`
+	Out       int64   `json:"out"`
+	In        int64   `json:"in"`
+	RateOut   float64 `json:"rate_out"`
+	RateIn    float64 `json:"rate_in"`
+	Age       float64 `json:"age"`
+	// Serving marks a connection the far side opened: a server here
+	// answering the internet rather than a device reaching out.
+	Serving bool     `json:"serving"`
+	Flags   []string `json:"flags,omitempty"`
+	Since   int64    `json:"since"`
 }
 
 // Event is what this module publishes when a transfer crosses a line. Later
@@ -140,17 +152,24 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
 	m.identity, _ = ctx.Service("identity").(core.Identity)
 	m.fw, _ = ctx.Service("firewall").(firewall.Firewall)
+	m.rdns, _ = ctx.Service("enrich").(reverseLookup)
 	m.prev = map[string]State{}
 	m.live = map[string]*Transfer{}
 	m.names = map[string]string{}
 	m.firstUse = map[string]int64{}
+	m.pending = map[string]bool{}
 	_ = m.ctx.Store.KVGet("egress.first_use", &m.firstUse)
 
 	every := time.Duration(core.Int(ctx.Settings(), "interval_seconds", 5)) * time.Second
 	if every < time.Second {
 		every = time.Second
 	}
+	// Sampling and naming are separate jobs on purpose. The sample has to be
+	// quick, because it runs every few seconds and its whole value is being
+	// current; naming means reading two tables that grow all year. Putting
+	// them in one job made a five-second sampler take twelve seconds.
 	ctx.Every("watch", every, m.sweep)
+	ctx.Every("names", 60*time.Second, m.refreshNames)
 	ctx.Route("GET", "/api/egress/live", m.apiLive, core.Needs("egress.watch"),
 		core.Doc("Connections carrying data right now, newest sample"), core.Params("group", "filter", "min_kb", "floor"))
 	ctx.Route("GET", "/api/egress/summary", m.apiSummary, core.Needs("egress.watch"),
@@ -204,8 +223,6 @@ func (m *Module) sweep() error {
 		return nil // a failed sample is not a failed job; the next one may work
 	}
 	now := time.Now()
-	m.refreshNames(states)
-
 	floor := int64(core.Int(m.ctx.Settings(), "min_report_kb", 64)) * 1024
 	m.mu.Lock()
 	gap := now.Sub(m.sampled).Seconds()
@@ -219,25 +236,22 @@ func (m *Module) sweep() error {
 	m.mu.Unlock()
 
 	var fresh []Event
+	var unnamed []string
 	for _, s := range states {
 		next[s.Key()] = s
-		if s.Out+s.In < floor {
+		if s.Out+s.In < floor || !offNetwork(s.Peer) {
 			continue
 		}
 		name := names[s.Peer]
 		if name == "" {
-			// The map is rebuilt every half minute, so a destination first
-			// contacted seconds ago is missing from it. Ask for this one
-			// address before calling it nameless, because "nothing can name
-			// this" is the loudest thing this module says and it must not be
-			// said about a name that simply had not been cached yet.
-			name = m.lookupOne(s.Peer)
+			unnamed = append(unnamed, s.Peer)
 		}
 		group, service := classify(name, s.PeerPort, s.Proto)
 		t := &Transfer{
 			Key: s.Key(), Local: s.Local, Peer: s.Peer, PeerPort: s.PeerPort, Proto: s.Proto,
 			PeerName: name, Group: group, GroupName: groupTitle(group), Service: service,
 			Out: s.Out, In: s.In, Age: s.Age.Seconds(), Since: now.Add(-s.Age).Unix(),
+			Serving: s.Inbound,
 		}
 		if m.identity != nil {
 			t.LocalName = m.identity.Name(s.Local)
@@ -256,6 +270,12 @@ func (m *Module) sweep() error {
 
 	m.mu.Lock()
 	m.prev, m.live, m.sampled, m.lastErr = next, live, now, ""
+	for _, ip := range unnamed {
+		if m.pending == nil {
+			m.pending = map[string]bool{}
+		}
+		m.pending[ip] = true
+	}
 	keep := core.Int(m.ctx.Settings(), "keep_events", 500)
 	m.events = append(m.events, fresh...)
 	if len(m.events) > keep && keep > 0 {
@@ -285,6 +305,13 @@ func (m *Module) evaluate(t *Transfer, now time.Time) []Event {
 		for _, g := range watchedByDefault() {
 			watched[g] = true
 		}
+	}
+	// A connection the far side opened is a server here answering the
+	// internet. A Plex server streaming three gigabytes to a viewer has
+	// genuinely sent three gigabytes, and it is not data leaving in the sense
+	// anyone means by it. Those rows are shown, labelled, and not alerted on.
+	if t.Serving {
+		return nil
 	}
 	var out []Event
 	add := func(kind, sev, msg string) {
@@ -442,21 +469,20 @@ func raise(sev string) string {
 }
 
 // refreshNames rebuilds the address-to-name map from what FlowSight already
-// knows: the server name in a handshake, the answer to a DNS query, and the
-// reverse lookup. It is refreshed rather than queried per state, because a
-// sample every five seconds must not cost a query per connection.
-func (m *Module) refreshNames(states []State) {
-	m.mu.Lock()
-	fresh := time.Since(m.namesAt) < 30*time.Second
-	m.mu.Unlock()
-	if fresh {
-		return
-	}
+// knows: the server name in a handshake and the answer to a DNS query. It is
+// its own job rather than part of the sample, because these two tables grow
+// all year and the sample has to stay quick to be worth anything.
+//
+// An address the sample could not name is looked up individually here, so
+// that a destination first contacted seconds ago is asked about directly
+// before anything calls it nameless. That is the loudest thing this module
+// says and it must not be said about a name that had simply not been cached.
+func (m *Module) refreshNames() error {
 	names := map[string]string{}
-	since := time.Now().Add(-24 * time.Hour).Unix()
+	since := time.Now().Add(-6 * time.Hour).Unix()
 	if rows, err := m.ctx.Store.Rows(
-		`SELECT dst_ip AS ip, sni AS name FROM tls_sessions
-		 WHERE ts >= ? AND sni <> '' GROUP BY dst_ip`, since); err == nil {
+		`SELECT dst_ip AS ip, sni AS name, MAX(ts) AS t FROM tls_sessions
+		 WHERE ts >= ? AND sni <> '' GROUP BY dst_ip LIMIT 20000`, since); err == nil {
 		for _, r := range rows {
 			ip, _ := r["ip"].(string)
 			n, _ := r["name"].(string)
@@ -465,7 +491,7 @@ func (m *Module) refreshNames(states []State) {
 			}
 		}
 	}
-	if rows, err := m.ctx.Store.Rows(`SELECT ip, name FROM dns_names WHERE name <> ''`); err == nil {
+	if rows, err := m.ctx.Store.Rows(`SELECT ip, name FROM dns_names WHERE name <> '' LIMIT 20000`); err == nil {
 		for _, r := range rows {
 			ip, _ := r["ip"].(string)
 			n, _ := r["name"].(string)
@@ -475,12 +501,52 @@ func (m *Module) refreshNames(states []State) {
 		}
 	}
 	m.mu.Lock()
+	pending := m.pending
+	m.pending = map[string]bool{}
+	for ip, n := range m.names {
+		if names[ip] == "" {
+			names[ip] = n // keep what an individual lookup found earlier
+		}
+	}
 	m.names, m.namesAt = names, time.Now()
 	m.mu.Unlock()
+
+	// Anything still without a name gets one direct question each, capped so
+	// a network full of unnamed destinations cannot turn this into a scan.
+	asked := 0
+	var stillUnnamed []string
+	for ip := range pending {
+		m.mu.Lock()
+		known := m.names[ip] != ""
+		m.mu.Unlock()
+		if known {
+			continue
+		}
+		if asked < 50 {
+			asked++
+			if m.lookupOne(ip) != "" {
+				continue
+			}
+		}
+		stillUnnamed = append(stillUnnamed, ip)
+	}
+	// Last resort: the reverse lookup. Plenty of destinations are only ever
+	// reached by address, and calling one of those nameless when it answers
+	// to a perfectly ordinary name would be the wrong alarm entirely.
+	if m.rdns != nil && len(stillUnnamed) > 0 {
+		if len(stillUnnamed) > 50 {
+			stillUnnamed = stillUnnamed[:50]
+		}
+		for ip, info := range m.rdns.Lookup(stillUnnamed) {
+			if info.Name != "" {
+				m.remember(ip, info.Name)
+			}
+		}
+	}
+	return nil
 }
 
-// lookupOne asks the store for a single address's name, for the case where
-// the cached map was built before this destination was first contacted.
+// lookupOne asks the store for one address's name and caches the answer.
 func (m *Module) lookupOne(ip string) string {
 	rows, err := m.ctx.Store.Rows(
 		`SELECT sni AS name FROM tls_sessions WHERE dst_ip = ? AND sni <> '' ORDER BY ts DESC LIMIT 1`, ip)

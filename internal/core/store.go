@@ -133,6 +133,9 @@ CREATE TABLE IF NOT EXISTS tls_sessions (
     fingerprint TEXT, mode TEXT, source TEXT
 );
 CREATE INDEX IF NOT EXISTS tls_sessions_ts ON tls_sessions(ts);
+-- Naming a destination means asking which server name was seen at an
+-- address, which is a scan of the whole table without this.
+CREATE INDEX IF NOT EXISTS tls_sessions_dst ON tls_sessions(dst_ip, ts);
 
 CREATE TABLE IF NOT EXISTS metrics (
     ts INTEGER NOT NULL, name TEXT NOT NULL, labels TEXT NOT NULL DEFAULT '',

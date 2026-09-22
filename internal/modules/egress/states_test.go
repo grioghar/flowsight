@@ -112,3 +112,38 @@ func TestRedirectedSessionSurvivesLoopbackBeingLocal(t *testing.T) {
 		t.Fatalf("the intercepted session was dropped; got %d states: %+v", len(got), got)
 	}
 }
+
+// A server on this network answering the internet has genuinely sent the
+// bytes, and it is not data leaving in the sense anyone means by it. Getting
+// this wrong turns every Plex stream into an exfiltration alert.
+func TestInboundConnectionsAreMarkedServing(t *testing.T) {
+	got := parseStates(capture, local)
+	for _, s := range got {
+		switch s.Local {
+		case "192.168.1.105": // the far side opened this one
+			if !s.Inbound {
+				t.Errorf("a connection opened from outside was not marked as serving: %+v", s)
+			}
+		case "10.99.0.162", "192.168.1.178": // these reached out
+			if s.Inbound {
+				t.Errorf("a connection this network opened was marked as serving: %+v", s)
+			}
+		}
+	}
+}
+
+// Broadcast, multicast and link-local destinations never leave the network,
+// so counting them as egress is noise at best.
+func TestOffNetwork(t *testing.T) {
+	for _, bad := range []string{"", "255.255.255.255", "224.0.0.251", "239.255.255.250",
+		"169.254.1.1", "ff02::fb", "fe80::1", "192.168.1.255"} {
+		if offNetwork(bad) {
+			t.Errorf("%q should not count as a destination off this network", bad)
+		}
+	}
+	for _, good := range []string{"8.8.8.8", "140.82.114.3", "2606:4700::1111"} {
+		if !offNetwork(good) {
+			t.Errorf("%q should count as a destination off this network", good)
+		}
+	}
+}

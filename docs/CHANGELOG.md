@@ -12,6 +12,31 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609220752
+
+**Data out tells serving apart from reaching out.** A media server streaming
+three gigabytes to someone watching from outside has really sent three
+gigabytes, and it is not data leaving in the sense anyone means by it. The
+firewall records who opened each connection, so those rows are now marked
+**serving**, left out of the totals and never alerted on. Only connections a
+device here opened count as data leaving.
+
+**A destination is asked about before it is called nameless.** Naming used
+only the server names seen in handshakes and the answers to DNS queries, so a
+destination reached by address alone looked anonymous when it answers to a
+perfectly ordinary name. The reverse lookup is now the last resort before
+anything is reported as unnamed, which is the loudest thing this page says.
+
+**Broadcast and multicast are not egress.** Traffic to a broadcast address, a
+multicast group or a link-local address never leaves the network and is no
+longer counted or listed.
+
+**The sampler no longer reads the database.** Naming meant scanning two tables
+that grow all year, on the same job as the sample, which made a five-second
+sampler take twelve seconds on a real gateway. Naming is now its own job on a
+minute, the sample is pure parsing, and there is an index behind the lookup
+that needed one. A sample takes about fifty milliseconds.
+
 ## 0.9.8r202609220741
 
 **Data out: what is leaving the network, while it leaves.** A new page and a

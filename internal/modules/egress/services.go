@@ -123,6 +123,26 @@ var tunnelPorts = map[int]string{
 	3478: "STUN (mesh VPN)", 41641: "Tailscale",
 }
 
+// offNetwork reports whether an address is a real destination somewhere else,
+// as opposed to a broadcast, a multicast group or a link-local address, none
+// of which leave this network at all.
+func offNetwork(ip string) bool {
+	switch {
+	case ip == "" || ip == "255.255.255.255":
+		return false
+	case strings.HasPrefix(ip, "224.") || strings.HasPrefix(ip, "239."):
+		return false // IPv4 multicast
+	case strings.HasPrefix(ip, "169.254."):
+		return false // link-local
+	case strings.HasPrefix(strings.ToLower(ip), "ff0") || strings.HasPrefix(strings.ToLower(ip), "ff1"):
+		return false // IPv6 multicast
+	case strings.HasPrefix(strings.ToLower(ip), "fe80:"):
+		return false
+	}
+	// A broadcast address ends in .255 on the common prefix lengths.
+	return !strings.HasSuffix(ip, ".255")
+}
+
 // classify names the group a destination belongs to. name may be empty, which
 // is itself a finding: data is leaving to somewhere with no name at all.
 func classify(name string, port int, proto string) (group, label string) {
