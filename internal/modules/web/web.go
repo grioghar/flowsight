@@ -407,6 +407,7 @@ var logRe = regexp.MustCompile(`^(\d+)\.(\d+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+
 
 func (m *Module) pollLog() error {
 	var flows []core.Flow
+	var dohRecs []core.DNSRecord
 	var sessions []tlsRec
 	blockedHosts := map[string]int64{}
 	n, err := m.tail.Lines(func(line []byte) {
@@ -471,6 +472,12 @@ func (m *Module) pollLog() error {
 				fl.Attrs = map[string]any{}
 			}
 			fl.Attrs["url"], fl.Attrs["method"], fl.Attrs["status"] = url, method, status
+			// An inspected DNS-over-HTTPS request: recover the lookup when
+			// the client put it in the URL, so it joins the DNS history.
+			if rec := m.noteDoH(ts, client, url, method, dur); rec != nil {
+				dohRecs = append(dohRecs, *rec)
+				fl.Attrs["doh"] = true
+			}
 		}
 		if verdict == "blocked" {
 			fl.Policy = "web"
@@ -491,6 +498,9 @@ func (m *Module) pollLog() error {
 	m.mu.Lock()
 	m.requests += int64(n)
 	m.mu.Unlock()
+	if len(dohRecs) > 0 {
+		_ = m.ctx.Store.AddDNS(dohRecs)
+	}
 	if len(flows) == 0 {
 		return nil
 	}

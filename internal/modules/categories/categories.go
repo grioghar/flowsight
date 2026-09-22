@@ -156,6 +156,29 @@ func (m *Module) feeds() map[string]string {
 	return out
 }
 
+// builtinLists are categories FlowSight ships itself, because they are
+// short, stable and awkward to source: no download, always present.
+var builtinLists = map[string][]string{
+	// Encrypted DNS endpoints. Denying this category sends a client back to
+	// the network's own resolver, which is the only way to see its lookups:
+	// a DoH query travels inside the HTTPS body, so even decrypting the
+	// session does not show the name unless the client uses the GET form.
+	// use-application-dns.net is Firefox's canary: answering it with
+	// NXDOMAIN makes Firefox turn its own DNS-over-HTTPS off.
+	"encrypted-dns": {
+		"use-application-dns.net",
+		"cloudflare-dns.com", "one.one.one.one", "mozilla.cloudflare-dns.com", "security.cloudflare-dns.com", "family.cloudflare-dns.com",
+		"dns.google", "dns64.dns.google", "8888.google",
+		"dns.quad9.net", "dns9.quad9.net", "dns10.quad9.net", "dns11.quad9.net",
+		"doh.opendns.com", "doh.familyshield.opendns.com", "doh.cleanbrowsing.org",
+		"dns.nextdns.io", "dns.adguard.com", "dns.adguard-dns.com", "unfiltered.adguard-dns.com", "family.adguard-dns.com",
+		"doh.mullvad.net", "adblock.doh.mullvad.net", "dns.controld.com", "freedns.controld.com",
+		"dns.alidns.com", "doh.pub", "doh.360.cn", "dns.twnic.tw", "doh.dns.sb", "doh.libredns.gr",
+		"doh.applied-privacy.net", "dns.digitale-gesellschaft.ch", "dnsforge.de", "doh.ffmuc.net",
+		"chrome.cloudflare-dns.com", "dns.brave.com", "basic.rethinkdns.com", "sky.rethinkdns.com",
+	},
+}
+
 func (m *Module) loadCustom() {
 	custom := map[string][]string{}
 	if c, ok := m.ctx.Settings()["custom"].(map[string]any); ok {
@@ -181,6 +204,14 @@ func (m *Module) loadCustom() {
 			custom[name] = list
 		}
 	}
+	for name, list := range builtinLists {
+		if _, taken := custom[name]; taken {
+			continue // an operator list of the same name wins
+		}
+		cp := append([]string(nil), list...)
+		sort.Strings(cp)
+		custom[name] = cp
+	}
 	m.mu.Lock()
 	m.custom = custom
 	m.mu.Unlock()
@@ -201,7 +232,11 @@ func (m *Module) scan() {
 	}
 	m.mu.Lock()
 	for name, list := range m.custom {
-		info[name] = core.CategoryInfo{Name: name, Domains: len(list), Source: "custom", Updated: time.Now().Unix()}
+		src := "custom"
+		if _, builtin := builtinLists[name]; builtin {
+			src = "built-in"
+		}
+		info[name] = core.CategoryInfo{Name: name, Domains: len(list), Source: src, Updated: time.Now().Unix()}
 	}
 	// keep previous errors
 	for k, v := range m.info {

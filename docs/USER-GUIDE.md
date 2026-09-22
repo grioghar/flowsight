@@ -124,6 +124,18 @@ the *Via* column of the query log says which. If clients use a resolver
 FlowSight does not read (a public resolver, DoH in a browser) those queries
 are simply not seen.
 
+**DNS over HTTPS.** A client that resolves through a provider over HTTPS
+bypasses the network's resolver, and those lookups are invisible. Two things
+help. With TLS inspection on for that device, FlowSight reads the request:
+a client using the GET form puts the question in the URL, so the name is
+recovered and appears here like any other lookup, marked *DoH provider* in
+the *Via* column; a client using POST (Firefox and Chrome do) keeps the
+question in the body, which the proxy log does not carry, so only the fact
+of a DoH request to that provider is recorded. To get every name back, deny
+the built-in **encrypted-dns** category in a policy: it holds the public DoH
+endpoints and Firefox's canary name, which turns Firefox's own DoH off, so
+clients fall back to the resolver where everything is visible.
+
 **Pi-hole.** *Settings › pihole*: list the servers (`https://192.168.1.53`)
 and give the app password (Pi-hole v6: Settings › Web interface / API ›
 Configure app password; v5: the API token). FlowSight pulls the query log
