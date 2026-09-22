@@ -13,6 +13,7 @@ import (
 	_ "github.com/grioghar/flowsight/internal/modules/identity"
 	_ "github.com/grioghar/flowsight/internal/modules/ids"
 	_ "github.com/grioghar/flowsight/internal/modules/license"
+	_ "github.com/grioghar/flowsight/internal/modules/mitm"
 	_ "github.com/grioghar/flowsight/internal/modules/pihole"
 	_ "github.com/grioghar/flowsight/internal/modules/policy"
 	_ "github.com/grioghar/flowsight/internal/modules/reports"

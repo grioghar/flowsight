@@ -19,6 +19,11 @@ now does. Concretely:
 - Tier gating: `docs/LICENSING.md` and the catalogue in
   `internal/licensing/tiers.go` stay in step.
 - Release notes name every user-visible change.
+- **Every revision gets a `docs/CHANGELOG.md` entry**, written before the
+  tag, under a heading that is exactly the version string. Say what is
+  different and what the reader has to do about it, in their words, not the
+  commit subject. The root `CHANGELOG.md` is a symlink to it, and it is a
+  chapter of the manual, so it ships in every package.
 
 The manual is shipped inside every package (Markdown, HTML and PDF built by
 `packaging/docs/build-docs.sh`) and published with every release, so a

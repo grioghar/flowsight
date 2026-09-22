@@ -18,3 +18,31 @@ func TestParseDoHURL(t *testing.T) {
 		t.Fatal("not a DoH url")
 	}
 }
+
+// The distinguished names in a squid line contain spaces, so they are logged
+// in quotes; a proxy still running the previous configuration writes them
+// bare. Both must parse, and neither may swallow the other's field.
+func TestLogLineCertNames(t *testing.T) {
+	quoted := `1790060505.972 5470 10.99.0.162 40554 93.184.216.34 443 TCP_TUNNEL/200 900833 1933 CONNECT "example.com:443" example.com bump TLSv1.3 "/CN=example.com" "/C=US/O=Let's Encrypt/CN=R11" curl/8.14.1`
+	mm := logRe.FindStringSubmatch(quoted)
+	if mm == nil {
+		t.Fatal("quoted line did not parse")
+	}
+	if got := either(mm[17], mm[18]); got != "/CN=example.com" {
+		t.Fatalf("subject %q", got)
+	}
+	if got := either(mm[19], mm[20]); got != "/C=US/O=Let's Encrypt/CN=R11" {
+		t.Fatalf("issuer %q", got)
+	}
+	bare := `1790060505.972 5470 10.99.0.162 40554 93.184.216.34 443 TCP_TUNNEL/200 900833 1933 CONNECT "example.com:443" example.com bump TLSv1.3 - - curl/8.14.1`
+	mm = logRe.FindStringSubmatch(bare)
+	if mm == nil {
+		t.Fatal("bare line did not parse")
+	}
+	if got := dash(either(mm[17], mm[18])); got != "" {
+		t.Fatalf("subject %q", got)
+	}
+	if got := dash(either(mm[19], mm[20])); got != "" {
+		t.Fatalf("issuer %q", got)
+	}
+}

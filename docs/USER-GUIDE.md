@@ -161,10 +161,23 @@ Certificate transparency for the network.
 - **Inspection CA** (Pro): create the FlowSight CA (EC P-256, generated on
   the box), download the certificate to install on devices, delete it.
   While a CA exists, policies may turn on inspection.
+- **Versions and handling**: two proportion bars, one for the protocol
+  version negotiated and one for what FlowSight did with the session
+  (peeked, spliced, decrypted, terminated). Hover a segment for the count.
 - **Certificates seen**: every server certificate observed by the proxy or
   the IDS, with subject, issuer, validity, key type, first and last seen,
-  and the hosts that saw it. Findings flag expired, expiring, self-signed
-  and weak certificates.
+  and the hosts that saw it. **Click any row for the whole certificate**:
+  both distinguished names unabbreviated, the serial, the key, the validity
+  with days remaining, the fingerprint and every subject alternative name.
+  Findings flag expired, expiring, self-signed and weak certificates.
+- **Where the details come from.** A proxy log names a certificate by its
+  subject and issuer and nothing else, and a spliced session shows no
+  certificate at all, so the validity, key and trust columns would be empty
+  for most names. FlowSight fills them in: for server names it has seen and
+  knows too little about, it opens a TLS connection from the firewall, reads
+  what is served and records the whole record, including whether the chain
+  verifies against the system roots. That runs every fifteen minutes, a few
+  names at a time, and is *Settings › tls › Probe certificates*.
 - **Sessions**: recent TLS sessions with SNI, version, bump mode.
 - **Pinned sites**: names whose clients refuse the inspection certificate.
   A pinned client carries the certificate it expects and accepts no other,
@@ -206,6 +219,39 @@ certificates. FlowSight does not record page or file contents, and it
 never will by design (see [Security](SECURITY.md)). Traffic that never
 crosses the firewall, such as two devices on the same subnet talking to
 each other, is not seen by any of this; only routed traffic is.
+
+### Deep inspection (Business)
+
+What a decrypted session carries, not just which server it reached. The
+proxy hands each request and response to FlowSight as it passes, using ICAP,
+the protocol a proxy speaks to a content adaptation service. FlowSight reads
+it and answers "no modification", so nothing is proxied through FlowSight
+and nothing is altered on the way.
+
+Each exchange is recorded as the method, the full URL, the response code,
+the content type, the size and the timing, plus the request headers when
+that is switched on. Cookies and authorization headers are recorded as a
+byte count, never as a value. Bodies are read only by the decoders that are
+switched on and are never stored.
+
+Today one decoder is shipped: **DNS over HTTPS**. A browser resolving over
+HTTPS puts its question in the request body, where a proxy log cannot see
+it; deep inspection reads it and files it in the DNS history like any other
+lookup, so the name is visible and attributable to the device that asked.
+
+*Settings › mitm* switches it on, sets the loopback port, chooses how much
+of each body the proxy sends for decoding, and limits it to particular
+clients or names. It only ever sees what a policy already decrypts: a device
+without TLS inspection, an excluded host or a pinned name never reaches it.
+
+**Inspect everything that crosses the firewall.** One checkbox decrypts
+every intercepted client rather than only those a policy names, appliances
+and televisions included. A device that does not trust the FlowSight CA
+fails to connect until the pinned-site detector notices the refusal and
+starts relaying that name untouched, so an appliance you cannot install a
+certificate on ends up relayed rather than broken. Excluded hosts are never
+touched. Turn this on deliberately: it is the setting with the widest reach
+in the product.
 
 ### Firewall hygiene (Pro)
 

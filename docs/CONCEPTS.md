@@ -38,6 +38,7 @@ the UI, and services other modules can consume. Each can be disabled.
 | firewall | Owns the pf anchors `flowsight/*`; provides `net.block` and the tables for `app.block`; maintains the local-networks table. |
 | appcontrol | Subscribes to the flow bus; a denied application's far end goes into a pf table and the state is killed. |
 | tls | The inspection CA (Pro), the certificate inventory, findings about weak or expiring certificates. |
+| mitm | Deep inspection (Business): the proxy hands decrypted requests here, and their headers, content types and DNS-over-HTTPS questions are recorded. Bodies are decoded, never stored. |
 | ids | Reads Suricata's EVE log: alerts, TLS sessions and certificates. |
 | categories | Open domain feeds, cached and indexed; custom categories. |
 | policy | The document, validation, plan and diff, apply, reconcile every minute. |

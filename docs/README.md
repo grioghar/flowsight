@@ -25,6 +25,7 @@ with every release.
 | [Licensing](LICENSING.md) | Community, Pro and Business; activation, offline files, the license server. |
 | [Architecture](ARCHITECTURE.md) | For contributors: the daemon, the module contract, the data path, the store. |
 | [Releasing](RELEASING.md) | For maintainers: building, signing and publishing a release. |
+| [Changelog](CHANGELOG.md) | What changed in each release, and what you have to do about it. |
 | [Roadmap](ROADMAP.md) | What is planned and what is deliberately not. |
 
 ## Conventions used in this manual

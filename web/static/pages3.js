@@ -140,4 +140,38 @@
   });
   // Old deep links keep working.
   FS.registerPage('enroll', { title: 'Devices', refresh: 0, async render(el, ctx) { FS.go('#devices' + (ctx.params.zone ? '?zone=' + encodeURIComponent(ctx.params.zone) : '')); } });
+
+  // ------------------------------------------------------------- Deep inspection
+  FS.registerPage('deep', {
+    title: 'Deep inspection', refresh: 15,
+    async render(el, ctx) {
+      const [s, r] = await Promise.all([get('/api/mitm/status'), get('/api/mitm/requests?limit=300' + (ctx.params.q ? '&q=' + encodeURIComponent(ctx.params.q) : ''))]);
+      if (s.error) { el.innerHTML = FS.err(s.error); return; }
+      const state = !s.licensed ? pill('business tier', 'warn') : !s.enabled ? pill('off', '') : s.listening ? pill('inspecting', 'ok') : pill('not listening', 'bad');
+      el.innerHTML = `<div class="grid cols-4">
+        ${kpi('State', state, s.error ? esc(s.error) : (s.enabled ? `loopback port ${s.port}` : 'switch it on under Settings › mitm'))}
+        ${kpi('Requests', num(s.requests), `${bytes(s.bytes_in)} in · ${bytes(s.bytes_out)} out`)}
+        ${kpi('Decoded', num(s.decoded), 'DNS-over-HTTPS questions recovered')}
+        ${card('Scope', `<div class="small">Clients: ${(s.clients || []).length ? (s.clients || []).map(c => `<span class="mono">${esc(c)}</span>`).join(', ') : '<span class="muted">every client a policy decrypts</span>'}</div>
+          <div class="small" style="margin-top:4px">Names: ${(s.names || []).length ? (s.names || []).map(c => `<span class="mono">${esc(c)}</span>`).join(', ') : '<span class="muted">every name that is decrypted</span>'}</div>
+          <div class="actions"><a class="btn" href="#modules/mitm">Settings</a><a class="btn" href="#tls">Pinned sites</a></div>`)}
+      </div>
+      <div style="margin-top:14px">${card('Recent requests', table(r.requests || [], [
+        { t: 'When', f: x => when(x.ts), sort: 'ts' },
+        { t: 'Client', f: x => FS.hostLink(x.client), sort: 'client' },
+        { t: 'Request', f: x => `<span class="mono small">${esc(x.method)} ${esc(x.url)}</span>`, sort: 'url' },
+        { t: 'Status', f: x => x.status ? pill(String(x.status), x.status >= 400 ? 'bad' : 'ok') : pill('failed', 'bad'), sort: 'status' },
+        { t: 'Type', f: x => `<span class="small muted">${esc((x.content_type || '').split(';')[0])}</span>`, sort: 'content_type' },
+        { t: 'Size', f: x => bytes(x.bytes_in), num: true, sort: 'bytes_in' },
+        { t: 'Took', f: x => (x.ms || 0).toFixed(0) + ' ms', num: true, sort: 'ms' },
+        { t: '', f: x => `<button class="btn small" data-det="${esc(JSON.stringify(x).replace(/"/g, '&quot;'))}">Headers</button>` },
+      ]), `<span class="muted small">${esc(s.note || '')}</span>`)}</div>`;
+      FS.$$('[data-det]', el).forEach(b => b.onclick = () => {
+        const x = JSON.parse(b.dataset.det);
+        FS.modal(`<h2>${esc(x.method)} ${esc(x.url)}</h2><pre class="code">${esc(Object.entries(x.headers || {}).map(([k, v]) => k + ': ' + v).join('\n') || 'headers were not recorded')}</pre>
+          <div class="small muted">${esc(x.note || '')}</div><div class="actions"><button class="btn" onclick="FS.closeModal()">Close</button></div>`);
+      });
+    }
+  });
+
 })();

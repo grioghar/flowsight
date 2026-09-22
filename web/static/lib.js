@@ -56,6 +56,16 @@ FS.sevPill = (s) => FS.pill(s, { critical: 'bad', high: 'bad', medium: 'warn', l
 FS.verdictPill = (v) => v === 'blocked' ? FS.pill('blocked', 'bad') : v === 'allowed' ? FS.pill('allowed', 'ok') : FS.pill(v || 'observed', '');
 FS.hostLink = (ip, name) => ip ? `<a href="#host/${encodeURIComponent(ip)}" title="${FS.esc(ip)}" ${name ? '' : `data-ip="${FS.esc(ip)}"`}>${FS.esc(name || ip)}</a>${name ? ` <span class="muted mono small">${FS.esc(ip)}</span>` : ''}` : '';
 // A bare address that enrichment may decorate with a reverse-DNS name and a country.
+// An address cell: the address itself, with whatever host or device name
+// FlowSight knows beneath it. The Web page shows the name first and the
+// address beneath; here it is the other way round, which is what the
+// address-led tables want.
+FS.addrCell = (ip, name) => {
+  if (!ip) return '';
+  const known = name || (FS.enrichCache[ip] || {}).name || '';
+  return `<a href="#host/${encodeURIComponent(ip)}" class="mono" ${known ? '' : `data-ip="${FS.esc(ip)}"`}>${FS.esc(ip)}</a>` +
+    (known ? `<div class="muted small">${FS.esc(known)}</div>` : '<div class="muted small ipname" data-name-for="' + FS.esc(ip) + '"></div>');
+};
 FS.ipTag = (ip, name) => ip ? (name ? `${FS.esc(name)} <span class="muted small mono">${FS.esc(ip)}</span>` : `<span class="mono" data-ip="${FS.esc(ip)}">${FS.esc(ip)}</span>`) : '';
 FS.flag = (cc) => cc && /^[A-Z]{2}$/.test(cc) ? `<span class="cc" title="${cc}">${String.fromCodePoint(...[...cc].map(c => 0x1F1E6 + c.charCodeAt(0) - 65))} ${cc}</span>` : '';
 FS.enrichCache = {}; FS.enrichOn = null;
@@ -74,6 +84,8 @@ FS.enrichIn = async (el) => {
   }
   nodes.forEach(n => {
     const ip = n.dataset.ip, h = FS.enrichCache[ip]; if (!h) return;
+    // Fill the small name line under an address cell when one is known.
+    FS.$$(`[data-name-for="${CSS.escape(ip)}"]`).forEach(s => { if (h.name) s.textContent = h.name; });
     if (h.name || h.country) {
       const isLink = n.tagName === 'A';
       n.innerHTML = `${h.name ? `${FS.esc(h.name)} <span class="muted small mono">${FS.esc(ip)}</span>` : FS.esc(ip)}${h.country ? ' ' + FS.flag(h.country) : ''}`;
@@ -106,7 +118,7 @@ FS.bars = (rows, fmt) => {
   if (!rows || !rows.length) return FS.empty();
   const max = Math.max(...rows.map(r => Number(r.value) || 0), 1);
   fmt = fmt || FS.num;
-  return rows.map(r => `<div class="barrow"><span class="lab">${r.href ? `<a href="${r.href}">${FS.esc(r.label)}</a>` : FS.esc(r.label)}${r.sub ? ` <span class="muted small">${FS.esc(r.sub)}</span>` : ''}</span><span class="num">${fmt(r.value)}</span><span class="bar"><i style="width:${Math.max(1, 100 * (Number(r.value) || 0) / max)}%"></i></span></div>`).join('');
+  return rows.map(r => `<div class="barrow"><span class="lab" title="${FS.esc(r.title || r.label)}">${r.href ? `<a href="${r.href}">${FS.esc(r.label)}</a>` : FS.esc(r.label)}${r.sub ? ` <span class="muted small">${FS.esc(r.sub)}</span>` : ''}</span><span class="num">${fmt(r.value)}</span><span class="bar"><i style="width:${Math.max(1, 100 * (Number(r.value) || 0) / max)}%"></i></span></div>`).join('');
 };
 
 // Sortable table. cols: [{k, t, f(row), num, w}]
@@ -125,7 +137,9 @@ FS.table = (rows, cols, opts) => {
     const key = c.sort || c.k;
     return [...list].sort((a, b) => { const x = key ? a[key] : (c.f ? c.f(a) : ''), y = key ? b[key] : (c.f ? c.f(b) : ''); if (x == null) return 1; if (y == null) return -1; return (typeof x === 'number' && typeof y === 'number') ? dir * (x - y) : dir * String(x).localeCompare(String(y), undefined, { numeric: true }); });
   };
-  const bodyOf = (list) => list.map(r => '<tr>' + cols.map(c => `<td class="${c.num ? 'num' : ''} ${c.cls || ''}">${c.f ? c.f(r) : FS.esc(r[c.k])}</td>`).join('') + '</tr>').join('');
+  // opts.rowAttr(row) lets a page mark rows it wants to react to; paging
+  // rebuilds the body from the same function, so the marks survive.
+  const bodyOf = (list) => list.map(r => `<tr ${opts.rowAttr ? opts.rowAttr(r) : ''}>` + cols.map(c => `<td class="${c.num ? 'num' : ''} ${c.cls || ''}">${c.f ? c.f(r) : FS.esc(r[c.k])}</td>`).join('') + '</tr>').join('');
   const all = st.i >= 0 ? order(rows, st.i, st.dir) : rows;
   // Long tables are paged; the reader can switch to continuous scrolling,
   // which is remembered for every table in this browser.
@@ -218,6 +232,18 @@ FS.donut = (rows, fmt) => {
   let a0 = -Math.PI / 2, paths = '';
   rows.forEach((r, i) => { const a1 = a0 + 2 * Math.PI * Number(r.value) / total; const big = a1 - a0 > Math.PI ? 1 : 0; const x0 = 50 + 40 * Math.cos(a0), y0 = 50 + 40 * Math.sin(a0), x1 = 50 + 40 * Math.cos(a1), y1 = 50 + 40 * Math.sin(a1); paths += `<path d="M${x0},${y0}A40,40,0,${big},1,${x1},${y1}" fill="none" stroke="${FS.palette[i % 8]}" stroke-width="14"><title>${FS.esc(r.label)}: ${FS.esc((fmt || FS.num)(r.value))}</title></path>`; a0 = a1; });
   return `<div style="display:flex;gap:16px;align-items:center"><svg viewBox="0 0 100 100" style="width:110px;height:110px;flex:none">${paths}</svg><div class="small" style="min-width:0">${rows.map((r, i) => `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><i class="dot" style="background:${FS.palette[i % 8]}"></i>${FS.esc(r.label)} <span class="muted">${FS.esc((fmt || FS.num)(r.value))} · ${FS.pct(r.value, total)}</span></div>`).join('')}</div></div>`;
+};
+
+// strip: one stacked bar with an inline legend. Two donuts side by side cost
+// a third of a screen to say "almost everything is TLS 1.3"; this says the
+// same in two lines, and the exact numbers are in the tooltips.
+FS.strip = (rows, fmt) => {
+  rows = (rows || []).filter(r => Number(r.value) > 0).sort((a, b) => b.value - a.value).slice(0, 8);
+  const total = rows.reduce((a, r) => a + Number(r.value), 0);
+  if (!total) return FS.empty();
+  const seg = rows.map((r, i) => `<span class="seg" style="width:${(100 * r.value / total).toFixed(2)}%;background:${FS.palette[i % 8]}" title="${FS.esc(r.label)}: ${FS.esc((fmt || FS.num)(r.value))} (${FS.pct(r.value, total)})"></span>`).join('');
+  const leg = rows.map((r, i) => `<span class="lg"><i class="dot" style="background:${FS.palette[i % 8]}"></i>${FS.esc(r.label)} <span class="muted">${FS.pct(r.value, total)}</span></span>`).join('');
+  return `<div class="strip">${seg}</div><div class="striplegend small">${leg}</div>`;
 };
 
 // --------------------------------------------------------------- state

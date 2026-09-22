@@ -106,6 +106,13 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | POST | `/api/license/refresh` | Refresh the online lease now |  |
 | POST | `/api/license/remove` | Remove the license and return to Community (tells the server, when it was an online activation) |  |
 
+### mitm
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/mitm/status` | Deep inspection: whether it is listening and what it has seen |  |
+| GET | `/api/mitm/requests` | The most recent decrypted requests with their headers | limit (rows), q (substring) |
+
 ### policy
 
 | Method | Path | What | Parameters |
@@ -208,6 +215,8 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | Method | Path | What | Parameters |
 |---|---|---|---|
 | GET | `/api/web/log` | Recent web requests | blocked (only blocked), domain (substring), ip (client), limit (rows) |
+| GET | `/api/web/pinned` | Names whose clients pin their certificate and are therefore relayed without inspection |  |
+| POST | `/api/web/pinned` | Add a name to the pinned list, or remove one ({name, remove}) |  |
 | GET | `/api/web/status` | Proxy process state and configuration |  |
 | GET | `/api/web/summary` | Web activity: top sites, categories, blocked requests | hours (window) |
 

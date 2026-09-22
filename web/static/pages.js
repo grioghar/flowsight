@@ -195,6 +195,42 @@
     }
   });
 
+  // One certificate, in full. Everything the inventory holds about it:
+  // the two distinguished names unabbreviated, every alternative name, the
+  // serial, the key, the validity and the fingerprint to compare by hand.
+  const certModal = (r) => {
+    const dn = (v) => esc(v || '—');
+    const date = (t) => t ? new Date(t * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' : '—';
+    let sans = []; try { sans = JSON.parse(r.sans || '[]'); } catch (e) {}
+    let snis = []; try { snis = JSON.parse(r.snis || '[]'); } catch (e) {}
+    let attrs = {}; try { attrs = JSON.parse(r.attrs || '{}'); } catch (e) {}
+    const days = r.not_after ? Math.round((r.not_after - Date.now() / 1000) / 86400) : null;
+    const flags = [
+      r.self_signed ? pill('self-signed', 'warn') : '',
+      r.trusted === 1 ? pill('chain trusted', 'ok') : r.trusted === 0 ? pill('chain not trusted', 'bad') : '',
+      days != null && days < 0 ? pill('expired', 'bad') : days != null && days < 30 ? pill('expires soon', 'warn') : '',
+    ].filter(Boolean).join(' ') || '<span class="muted small">nothing of note</span>';
+    const row = (k, v) => `<dt>${esc(k)}</dt><dd>${v}</dd>`;
+    return `<h2>${esc((r.subject || '').replace(/^.*CN=/, '') || 'Certificate')}</h2>
+      <div style="margin-bottom:12px">${flags}</div>
+      <dl class="kv small certdetail">
+        ${row('Subject', `<span class="mono">${dn(r.subject)}</span>`)}
+        ${row('Issuer', `<span class="mono">${dn(r.issuer)}</span>`)}
+        ${row('Serial', `<span class="mono">${dn(r.serial)}</span>`)}
+        ${row('Valid from', date(r.not_before))}
+        ${row('Valid until', date(r.not_after) + (days != null ? ` <span class="muted">(${days < 0 ? (-days) + ' days ago' : 'in ' + days + ' days'})</span>` : ''))}
+        ${row('Key', r.key_type ? esc(r.key_type) + (r.key_bits ? ' ' + r.key_bits + '-bit' : '') : '<span class="muted">not read</span>')}
+        ${row('Signature', dn(r.sig_alg))}
+        ${attrs.tls_version ? row('Negotiated', esc(attrs.tls_version)) : ''}
+        ${row('SHA-256', `<span class="mono">${dn(r.fingerprint)}</span>`)}
+        ${row('Subject alternative names', sans.length ? sans.map(n => `<span class="mono">${esc(n)}</span>`).join('<br>') : '<span class="muted">none recorded</span>')}
+        ${row('Server names seen', snis.length ? snis.map(n => `<a href="#flows?domain=${encodeURIComponent(n)}">${esc(n)}</a>`).join(', ') : '<span class="muted">none</span>')}
+        ${row('Seen', `${num(r.seen)} times, first ${ago(r.first_seen)}, last ${ago(r.last_seen)}`)}
+        ${row('Recorded by', esc(r.source || 'unknown') + (r.source === 'probe' ? ' <span class="muted">(FlowSight opened a connection and read it)</span>' : r.source === 'squid' ? ' <span class="muted">(seen in a handshake through the proxy)</span>' : ''))}
+      </dl>
+      <div class="actions"><button class="btn" onclick="FS.closeModal()">Close</button></div>`;
+  };
+
   // ------------------------------------------------------------- TLS
   FS.registerPage('tls', {
     title: 'TLS', refresh: 60,
@@ -205,10 +241,28 @@
       const caCard = ca.exists ? `<div>${pill('CA ready', 'ok')}</div><dl class="kv small" style="margin-top:8px"><dt>Subject</dt><dd>${esc(ca.subject)}</dd><dt>Valid until</dt><dd>${new Date(ca.not_after * 1000).toISOString().slice(0, 10)}</dd><dt>SHA-256</dt><dd class="mono" style="word-break:break-all">${esc(ca.fingerprint_sha256)}</dd></dl><div class="actions"><a class="btn" href="${FS.base ? FS.base + encodeURIComponent('/api/tls/ca/download') : '/api/tls/ca/download'}">Download certificate</a><button class="btn danger" id="ca-del">Delete CA</button></div><div class="help">Install this certificate as a trusted root on every device whose policy has TLS inspection turned on. Devices without it will see certificate warnings for inspected sites.</div>`
         : `<div>${pill('no CA', 'warn')}</div><div class="small muted" style="margin:8px 0">Without a CA the proxy only peeks at handshakes: server names and, optionally, certificates are recorded but nothing is decrypted. Create a CA to allow policies to inspect selected devices.</div><div class="actions"><button class="btn primary" id="ca-create">Create inspection CA</button></div>`;
       el.innerHTML = `<div class="grid cols-4">${kpi('TLS sessions', num(t.sessions), `${num(t.names)} server names · ${num(t.clients)} clients`)}${kpi('Inspected', num(t.inspected), FS.pct(t.inspected, t.sessions) + ' of sessions decrypted', t.inspected ? 'warn' : '')}${kpi('Problem certificates', num(s.problem_certificates), 'expired or self-signed, seen this window', s.problem_certificates ? 'warn' : '')}${card('Inspection CA', caCard)}</div>
-      <div class="grid cols-3" style="margin-top:14px">${card('Versions', donut((s.versions || []).map(v => ({ label: v.version, value: v.sessions }))))}${card('Handling', donut((s.modes || []).map(v => ({ label: v.mode, value: v.sessions }))))}${card('Issuers', bars((s.issuers || []).map(i => ({ label: FS.issuerName(i.issuer), value: i.seen }))))}</div>
-      <div style="margin-top:14px">${card('Certificates', table(c.certificates || [], [{ t: 'Subject', f: r => `<b>${esc((r.subject || '').replace(/^.*CN=/, ''))}</b><div class="muted small">${esc(r.subject || '')}</div>`, sort: 'subject' }, { t: 'Issuer', f: r => `<span title="${esc(r.issuer || '')}">${esc(FS.issuerName(r.issuer))}</span>`, sort: 'issuer' }, { t: 'Names', f: r => esc((JSON.parse(r.snis || '[]')).slice(0, 3).join(', ')) }, { t: 'Expires', f: r => r.not_after ? `<span class="${r.not_after < Date.now() / 1000 ? 'sev-high' : ''}">${new Date(r.not_after * 1000).toISOString().slice(0, 10)}</span>` : '—', sort: 'not_after' }, { t: 'Flags', f: r => (r.self_signed ? pill('self-signed', 'warn') : '') }, { t: 'Seen', f: r => num(r.seen), num: true, sort: 'seen' }, { t: 'Last', f: r => ago(r.last_seen), sort: 'last_seen' }, { t: 'Via', k: 'source' }]), `<a href="#tls?problem=1">problems only</a>`)}</div>
+      <div class="grid cols-2" style="margin-top:14px">${card('Versions and handling', `<div class="small muted" style="margin-bottom:6px">Protocol version</div>${FS.strip((s.versions || []).map(v => ({ label: v.version, value: v.sessions })))}<div class="small muted" style="margin:14px 0 6px">What FlowSight did with the session</div>${FS.strip((s.modes || []).map(v => ({ label: v.mode, value: v.sessions })))}`)}${card('Issuers', bars((s.issuers || []).map(i => ({ label: FS.issuerName(i.issuer), title: i.issuer, value: i.seen }))))}</div>
+      <div style="margin-top:14px" id="certs-card">${card('Certificates', table(c.certificates || [], [{ t: 'Subject', f: r => `<b>${esc((r.subject || '').replace(/^.*CN=/, ''))}</b><div class="muted small">${esc(r.subject || '')}</div>`, sort: 'subject' }, { t: 'Issuer', f: r => `<span title="${esc(r.issuer || '')}">${esc(FS.issuerName(r.issuer))}</span>`, sort: 'issuer' }, { t: 'Names', f: r => esc((JSON.parse(r.snis || '[]')).slice(0, 3).join(', ')) }, { t: 'Key', f: r => r.key_type ? `<span class="small">${esc(r.key_type)}${r.key_bits ? ' ' + r.key_bits : ''}</span>` : '', sort: 'key_bits' }, { t: 'Expires', f: r => { if (!r.not_after) return '<span class="muted small">not read yet</span>'; const d = new Date(r.not_after * 1000), days = Math.round((r.not_after - Date.now() / 1000) / 86400); return `<span class="${days < 0 ? 'sev-high' : days < 30 ? 'sev-medium' : ''}">${d.toISOString().slice(0, 10)}</span><div class="muted small">${days < 0 ? 'expired ' + (-days) + 'd ago' : 'in ' + days + 'd'}</div>`; }, sort: 'not_after' }, { t: 'Flags', f: r => [r.self_signed ? pill('self-signed', 'warn') : '', r.trusted === 0 ? pill('chain not trusted', 'bad') : r.trusted === 1 ? pill('trusted', 'ok') : ''].filter(Boolean).join(' ') }, { t: 'Seen', f: r => num(r.seen), num: true, sort: 'seen' }, { t: 'Last', f: r => ago(r.last_seen), sort: 'last_seen' }, { t: 'Via', k: 'source' }], { rowAttr: r => `class="clickable" data-cert="${esc(r.fingerprint || '')}"` }), `<a href="#tls?problem=1">problems only</a> · <span class="muted">click a row for the whole certificate</span>`)}</div>
       <div style="margin-top:14px" id="pinned-card"></div>
-      <div style="margin-top:14px">${card('Recent sessions', table(sess.sessions || [], [{ t: 'When', f: r => when(r.ts), sort: 'ts' }, { t: 'Client', f: r => hostLink(r.src_ip), sort: 'src_ip' }, { t: 'Server name', k: 'sni' }, { t: 'Server', f: r => `${FS.ipTag(r.dst_ip)}:${r.dst_port || ''}` }, { t: 'Version', k: 'version' }, { t: 'Mode', f: r => pill(r.mode || 'splice', r.mode === 'bump' ? 'warn' : r.mode === 'terminate' ? 'bad' : ''), sort: 'mode' }, { t: 'JA3', f: r => `<span class="mono small">${esc((r.ja3 || '').slice(0, 12))}</span>` }, { t: 'Via', k: 'source' }]))}</div>`;
+      <div style="margin-top:14px">${card('Recent sessions', table(sess.sessions || [], [
+        { t: 'When', f: r => when(r.ts), sort: 'ts' },
+        { t: 'Client', f: r => FS.addrCell(r.src_ip, r.src_name), sort: 'src_ip' },
+        { t: 'Server name', f: r => r.sni ? `<a href="#flows?domain=${encodeURIComponent(r.sni)}">${esc(r.sni)}</a>` : '<span class="muted">—</span>', sort: 'sni' },
+        { t: 'Server', f: r => `${FS.addrCell(r.dst_ip, r.dst_name)}${r.dst_port ? `<span class="muted small">:${r.dst_port}</span>` : ''}`, sort: 'dst_ip' },
+        { t: 'Version', k: 'version' },
+        { t: 'Mode', f: r => r.mode === 'bump'
+            ? `<a href="#web?decrypted=1&client=${encodeURIComponent(r.src_ip || '')}" title="What was decrypted for this client">${pill('bump', 'warn')}</a>`
+            : pill(r.mode || 'splice', r.mode === 'terminate' ? 'bad' : ''), sort: 'mode' },
+        { t: 'JA3', f: r => `<span class="mono small">${esc((r.ja3 || '').slice(0, 12))}</span>` },
+        { t: 'Via', k: 'source' }]))}</div>`;
+      // The table shows what fits; the certificate itself is one click away.
+      const certs = {}; (c.certificates || []).forEach(r => { if (r.fingerprint) certs[r.fingerprint] = r; });
+      const certBox = FS.$('#certs-card', el);
+      if (certBox) certBox.addEventListener('click', (ev) => {
+        const tr = ev.target.closest('tr[data-cert]'); if (!tr) return;
+        const r = certs[tr.getAttribute('data-cert')]; if (!r) return;
+        FS.modal(certModal(r));
+      });
       get('/api/web/pinned').then(p => {
         const list = (p && p.pinned) || []; const box = FS.$('#pinned-card', el); if (!box) return;
         box.innerHTML = card(`Pinned sites (${list.length})`, (list.length ? table(list, [

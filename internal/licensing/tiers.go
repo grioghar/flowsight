@@ -60,6 +60,8 @@ var Features = []Feature{
 		Desc: "Community allows three policies and two schedules."},
 	{Key: "retention.extended", Tier: TierPro, Title: "Extended history",
 		Desc: "Keep 90 days of history instead of 7 (Business: 365)."},
+	{Key: "deep.inspect", Tier: TierBusiness, Title: "Deep inspection",
+		Desc: "Look inside decrypted sessions: request headers, content types, and the questions inside DNS-over-HTTPS. Bodies are decoded, never stored."},
 	{Key: "telemetry.export", Tier: TierBusiness, Title: "Telemetry export",
 		Desc: "Stream flows, metrics and events to an OTLP collector or SIEM."},
 	{Key: "identity.directory", Tier: TierBusiness, Title: "Directory identity",

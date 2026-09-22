@@ -127,6 +127,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		return err
 	}
 	m.tail = core.NewTailer(filepath.Join(m.logDir, "access.log"))
+	m.dropMangledCerts()
 	m.loadPinned()
 	ctx.Publish("pinned", m)
 	ctx.Provider(&provider{m: m})
@@ -399,11 +400,42 @@ func (m *Module) ensurePlaceholderCert() error {
 	return nil
 }
 
+// dropMangledCerts clears the certificate rows recorded before the proxy
+// logged distinguished names in quotes. Those rows were split on the first
+// space, so "/C=US/O=Let's Encrypt/CN=R11" became the subject "…/O=Let's"
+// and an issuer of "Encrypt/CN=R11". They cannot be repaired, only discarded;
+// the proxy rebuilds the inventory from the next lines it writes.
+func (m *Module) dropMangledCerts() {
+	const flag = "web.certs.quoted_dn"
+	var done bool
+	if m.ctx.Store.KVGet(flag, &done) && done {
+		return
+	}
+	if err := m.ctx.Store.Exec(`DELETE FROM tls_certs WHERE source = 'squid'`); err != nil {
+		m.ctx.Log.Warn("could not clear the old certificate inventory", "error", err)
+		return
+	}
+	_ = m.ctx.Store.KVSet(flag, true)
+	m.ctx.Log.Info("certificate inventory cleared: names are now logged whole")
+}
+
 // ---------------------------------------------------------------- log
 
 // Log line (see logformat flowsight):
 // ts dur client cport server sport status/code bytes_out bytes_in method "url" sni bump_mode tlsver "subject" "issuer" ua
-var logRe = regexp.MustCompile(`^(\d+)\.(\d+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\S+?)/(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+"([^"]*)"\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s?(.*)$`)
+// A distinguished name contains spaces ("/C=US/O=Let's Encrypt/CN=R11"), so
+// subject and issuer are logged in quotes. Squid installations upgraded in
+// place keep writing them unquoted until the configuration is applied, so
+// both forms are accepted and whichever group matched is used.
+var logRe = regexp.MustCompile(`^(\d+)\.(\d+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(\S+?)/(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+"([^"]*)"\s+(\S+)\s+(\S+)\s+(\S+)\s+(?:"([^"]*)"|(\S+))\s+(?:"([^"]*)"|(\S+))\s?(.*)$`)
+
+// either returns the group that matched when a field may be quoted or bare.
+func either(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
 
 func (m *Module) pollLog() error {
 	var flows []core.Flow
@@ -424,7 +456,7 @@ func (m *Module) pollLog() error {
 		bytesIn, _ := strconv.ParseInt(mm[11], 10, 64)  // client -> squid
 		method, url := mm[12], mm[13]
 		sni, mode, tlsver := dash(mm[14]), dash(mm[15]), dash(mm[16])
-		subject, issuer := dash(mm[17]), dash(mm[18])
+		subject, issuer := dash(either(mm[17], mm[18])), dash(either(mm[19], mm[20]))
 		if strings.HasPrefix(code, "NONE") && method == "CONNECT" && sni == "" {
 			return // the tunnel setup half of a CONNECT; the close carries the numbers
 		}

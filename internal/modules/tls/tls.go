@@ -37,6 +37,10 @@ type Module struct {
 	dir  string
 	mu   sync.Mutex
 	cert *x509.Certificate
+
+	probedAt    map[string]time.Time // name -> last probe, so one name is asked once a day
+	lastProbe   time.Time
+	probedCount int
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -46,11 +50,16 @@ func (m *Module) Info() core.ModuleInfo {
 		Capabilities: []string{core.CapTLSObserve},
 		After:        []string{"identity"},
 		Defaults: map[string]any{
-			"ca_name":          "FlowSight Inspection CA",
-			"ca_years":         10,
-			"expiry_warn_days": 14,
+			"probe_certificates": true,
+			"probe_per_run":      25,
+			"ca_name":            "FlowSight Inspection CA",
+			"ca_years":           10,
+			"expiry_warn_days":   14,
 		},
 		Schema: []core.SettingField{
+			{Key: "probe_certificates", Label: "Complete the inventory by asking", Type: "bool",
+				Help: "The proxy log names a certificate but carries no dates. With this on, FlowSight opens one TLS connection per recently seen server name to read its certificate: expiry, key, signature, alternative names and whether the chain verifies. A name is asked at most once a day."},
+			{Key: "probe_per_run", Label: "Names asked per run", Type: "int"},
 			{Key: "ca_name", Label: "CA common name", Type: "string", Restart: true},
 			{Key: "ca_years", Label: "CA validity (years)", Type: "int"},
 			{Key: "expiry_warn_days", Label: "Warn on certificates expiring within (days)", Type: "int"},
@@ -67,6 +76,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.loadCA()
 	ctx.Publish("ca", m)
 	ctx.Every("findings", 15*time.Minute, m.findings, core.Delayed())
+	ctx.Every("probe", 15*time.Minute, m.probeCerts, core.Delayed())
 	ctx.Route("GET", "/api/tls/ca", m.apiCA, core.Doc("The inspection CA: subject, fingerprint, validity, whether it exists"))
 	ctx.Route("POST", "/api/tls/ca/create", m.apiCreate, core.Write(), core.Needs("tls.inspect"), core.Doc("Create (or replace) the inspection CA"))
 	ctx.Route("POST", "/api/tls/ca/delete", m.apiDelete, core.Write(), core.Doc("Delete the inspection CA; inspection stops"))
@@ -367,5 +377,21 @@ func (m *Module) apiSessions(r *core.Req) (any, error) {
 	q += ` ORDER BY ts DESC LIMIT ?`
 	args = append(args, r.QInt("limit", 200, 1, 5000))
 	rows, err := m.ctx.Store.Rows(q, args...)
+	// Name each end from identity so the table can show the device under its
+	// address without a second round trip.
+	if id, ok := m.ctx.Service("identity").(core.Identity); ok {
+		for _, row := range rows {
+			if s, _ := row["src_ip"].(string); s != "" {
+				if n := id.Name(s); n != "" {
+					row["src_name"] = n
+				}
+			}
+			if s, _ := row["dst_ip"].(string); s != "" {
+				if n := id.Name(s); n != "" {
+					row["dst_name"] = n
+				}
+			}
+		}
+	}
 	return map[string]any{"sessions": rows}, err
 }

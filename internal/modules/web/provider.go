@@ -145,6 +145,24 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 		ExclDomains: doc.Exclusions.Domains, DNSServers: dns, Workers: core.Int(s, "workers", 1),
 		V6Listener: v6Listener(s),
 	}
+	// Deep inspection, when the module is up and licensed, takes decrypted
+	// requests from here.
+	if deep, ok := p.m.ctx.Service("mitm").(interface {
+		Peer() (int, int, []string, []string, bool)
+		InspectEverything() bool
+	}); ok {
+		if port, preview, clients, names, on := deep.Peer(); on {
+			params.DeepPort, params.DeepPreview = port, preview
+			params.DeepClients, params.DeepNames = clients, names
+			if deep.InspectEverything() && params.CAPath != "" {
+				// Decrypt every intercepted client, not only those a policy
+				// names. Exclusions and pinned names are still spliced.
+				all := squidPolicy{ID: "deep_all", Members: params.LocalNets, Inspect: true, Monitor: true}
+				all.Bypass = append(append([]string(nil), doc.Exclusions.Domains...), m.pinnedNames()...)
+				params.Policies = append(params.Policies, all)
+			}
+		}
+	}
 	_, files := params.render()
 	out := map[string]string{}
 	for name, text := range files {

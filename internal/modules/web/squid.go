@@ -34,6 +34,14 @@ type squidParams struct {
 	ExclDomains         []string
 	DNSServers          []string
 	Workers             int
+	// DeepPort, when set, is a loopback ICAP service that is handed each
+	// decrypted request and response for DeepClients and DeepNames (empty
+	// means every inspected
+	// client or name). Pinned names never go there: they are never opened.
+	DeepPort    int
+	DeepPreview int
+	DeepClients []string
+	DeepNames   []string
 	// V6Listener is an address the firewall owns on the LAN (a unique local
 	// address works well); pf cannot redirect LAN traffic to [::1].
 	V6Listener string
@@ -112,11 +120,51 @@ func (p squidParams) render() (string, map[string]string) {
 		w("sslcrtd_program %s -s %s -M 16MB", p.CertgenBin, p.CertDB)
 		w("sslcrtd_children 4 startup=1 idle=1")
 	}
+	if p.DeepPort > 0 {
+		w("")
+		w("# Deep inspection: each decrypted request and response is handed to")
+		w("# flowsightd over ICAP (RFC 3507). FlowSight reads the headers and a")
+		w("# short preview of the body, answers 204 No Content, and the exchange")
+		w("# continues unmodified. Nothing is proxied through it and no body is kept.")
+		w("icap_enable on")
+		w("icap_preview_enable on")
+		preview := p.DeepPreview
+		if preview <= 0 {
+			preview = 4096
+		}
+		w("icap_preview_size %d", preview)
+		w("icap_send_client_ip on")
+		w("icap_send_client_username off")
+		w("icap_service_failure_limit -1")
+		w("icap_service fsdeep_req reqmod_precache bypass=on icap://127.0.0.1:%d/reqmod", p.DeepPort)
+		w("icap_service fsdeep_resp respmod_precache bypass=on icap://127.0.0.1:%d/respmod", p.DeepPort)
+		w("adaptation_service_set fsdeep_set fsdeep_req")
+		w("adaptation_service_set fsdeep_resp_set fsdeep_resp")
+		// "all" is squid's own ACL and must not be redefined; an empty list
+		// simply means "no restriction here".
+		scope := ""
+		if len(p.DeepClients) > 0 {
+			w("acl fs_deep_src src %s", strings.Join(p.DeepClients, " "))
+			scope += " fs_deep_src"
+		}
+		if len(p.DeepNames) > 0 {
+			files["deep-names.acl"] = domainList(p.DeepNames)
+			w("acl fs_deep_dst ssl::server_name \"%s/deep-names.acl\"", p.Dir)
+			scope += " fs_deep_dst"
+		}
+		if scope == "" {
+			scope = " all"
+		}
+		w("adaptation_access fsdeep_set allow%s", scope)
+		w("adaptation_access fsdeep_set deny all")
+		w("adaptation_access fsdeep_resp_set allow%s", scope)
+		w("adaptation_access fsdeep_resp_set deny all")
+	}
 	w("tls_outgoing_options options=NO_SSLv3,NO_TLSv1,NO_TLSv1_1 min-version=1.2")
 	w("sslproxy_cert_error deny all")
 	w("")
 	w("# Logging: one line per request with the server name and bump mode, read by flowsightd.")
-	w(`logformat flowsight %%ts.%%03tu %%6tr %%>a %%>p %%<a %%<p %%Ss/%%03>Hs %%<st %%>st %%rm "%%ru" %%ssl::>sni %%ssl::bump_mode %%ssl::>negotiated_version %%ssl::<cert_subject %%ssl::<cert_issuer %%{User-Agent}>h`)
+	w(`logformat flowsight %%ts.%%03tu %%6tr %%>a %%>p %%<a %%<p %%Ss/%%03>Hs %%<st %%>st %%rm "%%ru" %%ssl::>sni %%ssl::bump_mode %%ssl::>negotiated_version "%%ssl::<cert_subject" "%%ssl::<cert_issuer" %%{User-Agent}>h`)
 	w("access_log stdio:%s/access.log flowsight", p.LogDir)
 	w("cache_log %s/cache.log", p.LogDir)
 	w("logfile_rotate 3")

@@ -97,6 +97,33 @@ on devices you own or administer with the consent their users would
 reasonably expect; do not use it on guests. Inspected sessions yield URLs
 and certificates for policy and inventory; bodies are not stored.
 
+## Deep inspection, and what it does not keep
+
+The deep inspection module (Business) listens on loopback for ICAP and is
+handed each decrypted request and response by the proxy as it passes. It
+records what the exchange was: method, URL, status, content type, size,
+timing, and request headers when that is switched on. Cookies and
+authorization headers are recorded as a length, never a value. Bodies are
+read only by the decoders that are switched on, up to a byte limit, and are
+discarded immediately; there is no setting that keeps a body, and none will
+be added. FlowSight always answers "no modification", so no traffic is
+routed through it and nothing it sees is altered. It never receives a
+session a policy has not already decrypted, nor an excluded host, nor a
+pinned name.
+
+The **inspect everything that crosses the firewall** checkbox widens that
+last sentence: with it on, every intercepted client is decrypted rather than
+only those a policy names. Nothing else changes, exclusions and pinned names
+are still never touched, but it is the widest-reaching setting in the
+product and should be turned on deliberately, on a network whose users would
+expect it.
+
+The certificate probe opens outbound TLS connections from the firewall to
+server names the network has already contacted, in order to read the
+certificate served. It sends no request, carries no client identity and
+never contacts a name the network has not. It can be switched off in
+*Settings › tls*.
+
 ## Hardening checklist
 
 - Keep the daemon on loopback; reach it through the OPNsense GUI or a

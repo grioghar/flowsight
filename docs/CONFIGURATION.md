@@ -117,6 +117,22 @@ Entitlements: Community, Pro and Business tiers, activated online or with a sign
 | `server_url` | License server | string | `"http://192.168.1.245:8770"` | Used for online activation and lease refresh. Offline license files never contact it. |
 | `check_hours` | Refresh interval (hours) | int | `24` |  |
 
+### mitm (Business tier)
+
+Deep inspection: the proxy hands each decrypted request and response over by ICAP on loopback, FlowSight reads it and answers "no modification". Bodies are previewed for the decoders that are switched on and never stored.
+
+| Key | Setting | Type | Default | Notes |
+|---|---|---|---|---|
+| `active` | Inspect decrypted sessions | bool | `false` | Off: nothing is handed over and the proxy behaves as before. Only sessions a policy already decrypts ever arrive. |
+| `all_clients` | Inspect everything that crosses the firewall | bool | `false` | On: every intercepted client is decrypted, not only those a policy names. A device that does not trust the FlowSight CA fails until the pinned-site detector relays that name untouched. Excluded hosts are never touched. |
+| `port` | ICAP port (loopback) | int · restart | `1344` | Loopback only; nothing else can reach it. |
+| `clients` | Limit to these clients | list | `[]` | Addresses or CIDRs. Empty: every client whose sessions are decrypted. |
+| `names` | Limit to these names | list | `[]` | Server names, one per line. Empty: every decrypted name. |
+| `record_headers` | Record request headers | bool | `true` | Cookies and authorization headers are recorded as their length only, never their value. |
+| `decode_doh` | Decode DNS-over-HTTPS queries | bool | `true` | Reads the question out of a DoH request and files it in the DNS history. |
+| `preview_bytes` | Body preview (bytes) | int | `4096` | How much of each body the proxy sends for decoding. Nothing is stored. |
+| `keep_requests` | Recent requests kept in memory | int | `500` |  |
+
 ### policy
 
 The declarative policy document, its compiler and continuous reconciliation onto every backend.
@@ -166,6 +182,8 @@ SSL transparency: the inspection CA, the certificate inventory and certificate f
 
 | Key | Setting | Type | Default | Notes |
 |---|---|---|---|---|
+| `probe_certificates` | Complete the inventory by asking | bool | `true` | The proxy log names a certificate but carries no dates. With this on, FlowSight opens one TLS connection per recently seen server name to read its certificate: expiry, key, signature, alternative names and whether the chain verifies. A name is asked at most once a day. |
+| `probe_per_run` | Names asked per run | int | `25` |  |
 | `ca_name` | CA common name | string · restart | `"FlowSight Inspection CA"` |  |
 | `ca_years` | CA validity (years) | int | `10` |  |
 | `expiry_warn_days` | Warn on certificates expiring within (days) | int | `14` |  |
@@ -220,4 +238,8 @@ Transparent proxy: server names on every web session, inline blocking at the TLS
 | `ipv6_listener` | IPv6 listener address | string | `"fd99::1"` | An IPv6 address the firewall holds on the LAN (a unique local address as a virtual IP works well). Empty: IPv6 web traffic is not intercepted. |
 | `block_page_port` | Block page port | int | `8082` |  |
 | `workers` | Squid workers | int | `1` |  |
+| `auto_bypass_pinned` | Relay pinned sites without inspecting | bool | `true` | A client that pins its certificate refuses the inspection certificate and the site fails to load. With this on, FlowSight recognises that refusal and relays the name untouched from then on. No proxy can decrypt a pinned client. |
+| `pinned_failures` | Refusals before a name counts as pinned | int | `3` |  |
+| `pinned_window_minutes` | Refusal window (minutes) | int | `10` |  |
+| `pinned_retest_hours` | Try inspecting a pinned name again after (hours) | int | `168` | 0 never retries. |
 
