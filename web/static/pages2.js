@@ -188,7 +188,7 @@
 
   // ------------------------------------------------------------- System / modules
   FS.registerPage('system', {
-    title: 'System', refresh: 30,
+    title: 'Status', refresh: 30,
     async render(el) {
       const [h, info, fw] = await Promise.all([get('/api/system/health'), get('/api/system/info'), get('/api/firewall/status')]);
       if (h.error) { el.innerHTML = FS.err(h.error); return; }

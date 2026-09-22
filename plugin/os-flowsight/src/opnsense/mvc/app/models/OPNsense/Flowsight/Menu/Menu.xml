@@ -18,7 +18,7 @@
         <Alerting VisibleName="Alerting" url="/flowsight.php?page=alerts" order="190"/>
         <Updates VisibleName="Updates" url="/flowsight.php?page=updates" order="240"/>
         <License VisibleName="License" url="/flowsight.php?page=license" order="250"/>
-        <System VisibleName="System" url="/flowsight.php?page=system" order="260"/>
+        <Status VisibleName="Status" url="/flowsight.php?page=system" order="260"/>
         <Settings VisibleName="Settings" url="/flowsight.php?page=modules" order="270"/>
     </FlowSight>
 </menu>

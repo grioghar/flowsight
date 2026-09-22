@@ -134,7 +134,10 @@ and the pf ordering, are in [Interception](INTERCEPTION.md).
 One SQLite file in WAL mode under the data directory. Raw flows, DNS
 queries, alerts and TLS sessions are kept for days; five-minute **rollups**
 by application, domain, destination and DNS name are kept for a year and
-answer every long-window question. **Findings** are conditions that are
+answer every long-window question. Flow rollups are credited as bytes are
+observed, so a long download is spread over the minutes it actually took
+rather than piled onto the minute it started; DNS rollups are rebuilt from
+the raw queries, including any that arrive late. **Findings** are conditions that are
 true now (a rule never evaluated, a certificate about to expire, an anchor
 not referenced); they are keyed on a fingerprint, so they never duplicate,
 and they close themselves when they stop being true. Every configuration

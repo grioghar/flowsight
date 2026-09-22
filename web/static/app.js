@@ -20,13 +20,33 @@
   FS.applyTheme();
   get('/api/ui/prefs').then(p => { if (p && p.theme) { FS.theme.pref = p.theme; FS.applyTheme(); } });
 
+  // Embedded in a host GUI (OPNsense): the host's own menu carries every
+  // page, so the app shows no sidebar of its own, keeps a one-line footer,
+  // and tells the host how tall it is so the host page scrolls, not a frame.
+  FS.embedded = !!window.FS_API_BASE || window.self !== window.top || /[?&]embed=1/.test(location.search);
+  if (FS.embedded) {
+    document.body.classList.add('embedded');
+    const foot = document.createElement('div'); foot.id = 'foot';
+    ['#health-pill', '#version', '#attrib'].forEach(sel => { const n = $(sel); if (n) foot.appendChild(n); });
+    $('#main').appendChild(foot);
+    let lastH = 0;
+    const report = () => {
+      const h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+      if (h !== lastH) { lastH = h; try { window.parent.postMessage({ fsHeight: h }, '*'); } catch (e) { /* not framed */ } }
+    };
+    FS.reportHeight = report;
+    if (window.ResizeObserver) new ResizeObserver(report).observe($('#main'));
+    window.addEventListener('load', report);
+    setInterval(report, 1500);
+  }
+
   async function buildMenu() {
     const [p, info] = await Promise.all([get('/api/system/panels'), get('/api/system/info')]);
     if (p.error && p.error.includes('authentication')) return;
     const panels = (p.panels || []).filter(x => !x.detail);
     // Panels the core always offers, in the Operations group.
     panels.push({ id: 'findings', title: 'Findings', group: 'Operations', order: 200 }, { id: 'events', title: 'Events', group: 'Operations', order: 210 },
-      { id: 'system', title: 'System', group: 'Operations', order: 220 }, { id: 'modules', title: 'Settings', group: 'Operations', order: 230 });
+      { id: 'system', title: 'Status', group: 'Operations', order: 220 }, { id: 'modules', title: 'Settings', group: 'Operations', order: 230 });
     const groups = {};
     panels.forEach(x => { (groups[x.group || 'Other'] = groups[x.group || 'Other'] || []).push(x); });
     const html = Object.keys(groups).sort((a, b) => (ORDER[a] || 9) - (ORDER[b] || 9)).map(g => `<div class="group">${esc(g)}</div>` + groups[g].sort((a, b) => a.order - b.order).map(x => `<a href="#${esc(x.id)}" data-page="${esc(x.id)}" ${x.locked ? 'title="Requires the ' + esc(x.required) + ' tier"' : ''}><span class="ico">${ICONS[x.icon || x.id] || '•'}</span>${esc(x.title)}${x.locked ? '<span class="lock">🔒</span>' : ''}</a>`).join('')).join('');

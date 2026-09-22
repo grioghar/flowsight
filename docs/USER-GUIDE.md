@@ -5,6 +5,12 @@ top (1h, 6h, 24h, 7d, 30d) set the window for every page that shows
 history; the search box takes an address (opens the host), a domain (opens
 its sessions) or free text.
 
+Inside the OPNsense GUI the pages are reached from the **FlowSight**
+section of OPNsense's own left-hand menu; the app shows no sidebar of its
+own there, only the page, a top bar and a one-line footer with health,
+version and attribution. Standalone (Linux, or the daemon opened directly)
+the app has its own sidebar with the same entries.
+
 **Addresses.** Wherever a host would be shown as a bare address (a
 destination no DNS answer named, a client without a lease name), FlowSight
 can decorate it with its reverse-DNS name and, for public addresses, a
@@ -121,6 +127,36 @@ Certificate transparency for the network.
   and weak certificates.
 - **Sessions**: recent TLS sessions with SNI, version, bump mode.
 
+**Decrypting sessions, step by step.** Without a CA the proxy only peeks
+at handshakes: you see server names, versions and certificates, never the
+inside of a session. To decrypt selected devices:
+
+1. **TLS › Create inspection CA** (Pro). The key pair is generated on the
+   firewall and never leaves it.
+2. **Download the certificate** from the same card and install it as a
+   trusted root on each device you intend to inspect. On a Mac: open the
+   file in Keychain Access, System keychain, then set the certificate's
+   trust to *Always Trust*. Do this *before* step 4, or every HTTPS
+   connection from that device fails with a certificate warning.
+3. **Groups & schedules**: make a group with those devices (by `mac:` is
+   the stable choice).
+4. **Policies**: a policy matching the group with *Inspect TLS* on and a
+   bypass list for names that must never be decrypted: banking, health,
+   the device's own vendor services (Apple, Microsoft, Google account
+   traffic), and applications that pin certificates, which break under any
+   inspection. *Action* can stay on monitor; inspection is independent of
+   blocking.
+5. **Apply.** From then on the TLS page shows those sessions as *bumped*
+   with the negotiated version and the real server certificate; the Web
+   page and the host page show full URLs for them instead of only server
+   names; and web policies on paths inside a site become possible.
+
+What you get is the request layer: URLs, methods, response codes, sizes,
+certificates. FlowSight does not record page or file contents, and it
+never will by design (see [Security](SECURITY.md)). Traffic that never
+crosses the firewall, such as two devices on the same subnet talking to
+each other, is not seen by any of this; only routed traffic is.
+
 ### Firewall hygiene (Pro)
 
 Continuous analysis of the live pf ruleset. **Rules** lists every rule with
@@ -226,13 +262,18 @@ changes, updates, service starts, module errors. Filter by module or kind.
 The **Audit** view lists every write operation with the user and client
 address, and every configuration change with its diff.
 
-### System
+### Status
 
-Version, platform, uptime, memory in use and the soft limit, store size and
-row counts per table, retention, module health (each module's state and
-detail), the job list with last run, duration and failures (a locked job
-means the license tier does not include it), and the platform paths in use.
-*Run job* triggers any job now. Useful first stop when something looks off.
+What the daemon reports about itself, read-only: version, platform,
+uptime, memory in use and the soft limit, store size and row counts per
+table, retention, module health (each module's state and detail), the job
+list with last run, duration and failures (a locked job means the license
+tier does not include it), and the platform paths in use. *Run job*
+triggers any job now. Useful first stop when something looks off.
+
+Status and Settings are deliberately separate: **Status** is what
+FlowSight is doing and how it is faring; **Settings** is what you tell it
+to do. Nothing on the Status page changes configuration.
 
 ### Settings
 

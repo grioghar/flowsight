@@ -161,13 +161,14 @@ if (isset($_GET["app"])) {
 }
 
 /* ---------------------------------------------------------------- page */
-$pgtitle = [gettext("Services"), gettext("FlowSight")];
+$pageName = isset($_GET['page']) ? ucfirst(preg_replace('/[^A-Za-z0-9 ]/', ' ', $_GET['page'])) : gettext("Overview");
+$pgtitle = [gettext("FlowSight"), $pageName];
 include("head.inc");
 ?>
 <body>
 <?php include("fbegin.inc"); ?>
 <style>
-  #fs-frame { width: 100%; height: calc(100vh - 140px); min-height: 640px; border: 0; background: transparent; border-radius: 6px; }
+  #fs-frame { width: 100%; height: 640px; border: 0; background: transparent; border-radius: 6px; overflow: hidden; }
   .page-content-main { padding-top: 6px !important; }
 </style>
 <section class="page-content-main">
@@ -175,7 +176,7 @@ include("head.inc");
     <div class="row">
       <section class="col-xs-12">
         <iframe id="fs-frame" data-src="flowsight.php?app=1" data-page="<?= isset($_GET['page']) ? htmlspecialchars(preg_replace('/[^A-Za-z0-9_\/?=&.-]/', '', $_GET['page'])) : '' ?>"
-                title="FlowSight" referrerpolicy="same-origin"></iframe>
+                title="FlowSight" referrerpolicy="same-origin" scrolling="no"></iframe>
         <script>
         (function () {
           // Tell the app whether the OPNsense theme around it is light or dark, from the
@@ -188,6 +189,11 @@ include("head.inc");
           }
           var t = tone();
           f.src = f.dataset.src + '&theme=' + t + (f.dataset.page ? '#' + f.dataset.page : '');
+          // The app reports its height; the frame follows so the OPNsense page scrolls, not the frame.
+          window.addEventListener('message', function (e) {
+            if (e.source !== f.contentWindow || !e.data || !e.data.fsHeight) return;
+            f.style.height = Math.max(480, Math.ceil(e.data.fsHeight) + 4) + 'px';
+          });
           var mq = window.matchMedia('(prefers-color-scheme: dark)');
           function push() { var n = tone(); if (n !== t) { t = n; f.contentWindow.postMessage({ fsTheme: t }, location.origin); } }
           if (mq.addEventListener) mq.addEventListener('change', function () { setTimeout(push, 100); });

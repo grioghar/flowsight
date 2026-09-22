@@ -349,11 +349,32 @@ func nz(s string) any {
 }
 
 // AddFlows inserts flows, updating an open flow when the same key was seen.
+// rollupDelta is what one flow observation adds to the five-minute rollups.
+type rollupDelta struct {
+	bucket                             int64
+	srcIP, dstIP, proto, app, cat, dom string
+	dstPort                            int
+	verdict                            string
+	bytesIn, bytesOut                  int64
+	newFlow                            bool
+}
+
+// AddFlows upserts flows by key and, at the same time, credits the bytes
+// that appeared since the previous observation to the rollup bucket of the
+// moment they were observed. Rollups therefore show when traffic moved, not
+// when a flow started, and a long download is spread over its duration.
 func (s *Store) AddFlows(flows []Flow) error {
 	if len(flows) == 0 {
 		return nil
 	}
+	now := time.Now().Unix()
 	return s.Tx(func(tx *sql.Tx) error {
+		prevQ, err := tx.Prepare(`SELECT bytes_in, bytes_out FROM flows WHERE key=? ORDER BY id DESC LIMIT 1`)
+		if err != nil {
+			return err
+		}
+		defer prevQ.Close()
+		var deltas []rollupDelta
 		upd, err := tx.Prepare(`UPDATE flows SET end_ts=?, bytes_in=?, bytes_out=?, packets=?,
 			duration=?, app=COALESCE(?,app), category=COALESCE(?,category), domain=COALESCE(?,domain),
 			verdict=?, policy=COALESCE(?,policy), tls_version=COALESCE(?,tls_version),
@@ -379,7 +400,26 @@ func (s *Store) AddFlows(flows []Flow) error {
 			if end == 0 {
 				end = time.Now().Unix()
 			}
+			// Where in time do these bytes belong: now for a live flow, at its
+			// end for a record that arrives complete (a proxy log line).
+			bucket := (now / 300) * 300
+			if end > 0 && now-end > 600 {
+				bucket = (end / 300) * 300
+			}
+			d := rollupDelta{bucket: bucket, srcIP: f.SrcIP, dstIP: f.DstIP, proto: f.Proto, app: f.App, cat: f.Category,
+				dom: f.Domain, dstPort: f.DstPort, verdict: f.Verdict, bytesIn: f.BytesIn, bytesOut: f.BytesOut, newFlow: true}
 			if f.Key != "" {
+				var pin, pout int64
+				if err := prevQ.QueryRow(f.Key).Scan(&pin, &pout); err == nil {
+					d.newFlow = false
+					d.bytesIn, d.bytesOut = f.BytesIn-pin, f.BytesOut-pout
+					if d.bytesIn < 0 {
+						d.bytesIn = f.BytesIn // counters reset (flow re-created upstream)
+					}
+					if d.bytesOut < 0 {
+						d.bytesOut = f.BytesOut
+					}
+				}
 				res, err := upd.Exec(end, f.BytesIn, f.BytesOut, f.Packets, f.Duration,
 					nz(f.App), nz(f.Category), nz(f.Domain), f.Verdict, nz(f.Policy),
 					nz(f.TLSVersion), nz(f.TLSSNI), nz(f.TLSJA3), jsonOrNil(f.Attrs), f.Key)
@@ -387,9 +427,11 @@ func (s *Store) AddFlows(flows []Flow) error {
 					return err
 				}
 				if n, _ := res.RowsAffected(); n > 0 {
+					deltas = append(deltas, d)
 					continue
 				}
 			}
+			deltas = append(deltas, d)
 			if _, err := ins.Exec(f.TS, nzInt(f.EndTS), nz(f.Key), nz(f.SrcIP), f.SrcPort, nz(f.DstIP),
 				f.DstPort, nz(f.Proto), nz(f.App), nz(f.Category), nz(f.Domain), f.BytesIn, f.BytesOut,
 				f.Packets, f.Duration, f.Verdict, nz(f.Policy), nz(f.Source), nz(f.Iface),
@@ -398,8 +440,67 @@ func (s *Store) AddFlows(flows []Flow) error {
 				return err
 			}
 		}
-		return nil
+		return accumulateRollups(tx, deltas)
 	})
+}
+
+// accumulateRollups adds observation deltas to the three flow rollups.
+func accumulateRollups(tx *sql.Tx, deltas []rollupDelta) error {
+	if len(deltas) == 0 {
+		return nil
+	}
+	app, err := tx.Prepare(`INSERT INTO rollup_app(bucket,src_ip,app,category,verdict,bytes_in,bytes_out,flows)
+		VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(bucket,src_ip,app,verdict) DO UPDATE SET
+		bytes_in=bytes_in+excluded.bytes_in, bytes_out=bytes_out+excluded.bytes_out, flows=flows+excluded.flows,
+		category=CASE WHEN excluded.category<>'' THEN excluded.category ELSE category END`)
+	if err != nil {
+		return err
+	}
+	defer app.Close()
+	dom, err := tx.Prepare(`INSERT INTO rollup_domain(bucket,src_ip,domain,category,verdict,bytes_in,bytes_out,flows)
+		VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(bucket,src_ip,domain,verdict) DO UPDATE SET
+		bytes_in=bytes_in+excluded.bytes_in, bytes_out=bytes_out+excluded.bytes_out, flows=flows+excluded.flows,
+		category=CASE WHEN excluded.category<>'' THEN excluded.category ELSE category END`)
+	if err != nil {
+		return err
+	}
+	defer dom.Close()
+	dst, err := tx.Prepare(`INSERT INTO rollup_dst(bucket,src_ip,dst_ip,dst_port,proto,bytes_in,bytes_out,flows)
+		VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(bucket,src_ip,dst_ip,dst_port,proto) DO UPDATE SET
+		bytes_in=bytes_in+excluded.bytes_in, bytes_out=bytes_out+excluded.bytes_out, flows=flows+excluded.flows`)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+	for _, d := range deltas {
+		if d.bytesIn == 0 && d.bytesOut == 0 && !d.newFlow {
+			continue
+		}
+		n := int64(0)
+		if d.newFlow {
+			n = 1
+		}
+		a := d.app
+		if a == "" {
+			a = "Unknown"
+		}
+		v := d.verdict
+		if v == "" {
+			v = "observed"
+		}
+		if _, err := app.Exec(d.bucket, d.srcIP, a, d.cat, v, d.bytesIn, d.bytesOut, n); err != nil {
+			return err
+		}
+		if d.dom != "" {
+			if _, err := dom.Exec(d.bucket, d.srcIP, d.dom, d.cat, v, d.bytesIn, d.bytesOut, n); err != nil {
+				return err
+			}
+		}
+		if _, err := dst.Exec(d.bucket, d.srcIP, d.dstIP, d.dstPort, d.proto, d.bytesIn, d.bytesOut, n); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func nzInt(v int64) any {
@@ -768,24 +869,14 @@ func (s *Store) Rollup() error {
 		return nil
 	}
 	err := s.Tx(func(tx *sql.Tx) error {
-		for _, t := range []string{"rollup_app", "rollup_domain", "rollup_dst", "rollup_dns"} {
+		// Only the DNS rollup is rebuilt from raw rows; the flow rollups are
+		// accumulated as bytes are observed (see AddFlows) and left alone.
+		for _, t := range []string{"rollup_dns"} {
 			if _, err := tx.Exec(`DELETE FROM `+t+` WHERE bucket>=? AND bucket<?`, start, end); err != nil {
 				return err
 			}
 		}
 		stmts := []string{
-			`INSERT INTO rollup_app(bucket,src_ip,app,category,verdict,bytes_in,bytes_out,flows)
-			 SELECT (ts/300)*300, COALESCE(src_ip,''), COALESCE(app,'Unknown'), MAX(COALESCE(category,'')),
-			 COALESCE(verdict,'observed'), SUM(bytes_in), SUM(bytes_out), COUNT(*) FROM flows
-			 WHERE ts>=? AND ts<? GROUP BY 1,2,3,5`,
-			`INSERT INTO rollup_domain(bucket,src_ip,domain,category,verdict,bytes_in,bytes_out,flows)
-			 SELECT (ts/300)*300, COALESCE(src_ip,''), domain, MAX(COALESCE(category,'')),
-			 COALESCE(verdict,'observed'), SUM(bytes_in), SUM(bytes_out), COUNT(*) FROM flows
-			 WHERE ts>=? AND ts<? AND domain IS NOT NULL AND domain<>'' GROUP BY 1,2,3,5`,
-			`INSERT INTO rollup_dst(bucket,src_ip,dst_ip,dst_port,proto,bytes_in,bytes_out,flows)
-			 SELECT (ts/300)*300, COALESCE(src_ip,''), COALESCE(dst_ip,''), COALESCE(dst_port,0),
-			 COALESCE(proto,''), SUM(bytes_in), SUM(bytes_out), COUNT(*) FROM flows
-			 WHERE ts>=? AND ts<? GROUP BY 1,2,3,4,5`,
 			`INSERT INTO rollup_dns(bucket,client,domain,action,list,queries)
 			 SELECT (ts/300)*300, COALESCE(client,''), COALESCE(domain,''), COALESCE(action,'pass'),
 			 MAX(COALESCE(list,'')), COUNT(*) FROM dns WHERE ts>=? AND ts<? GROUP BY 1,2,3,4`,

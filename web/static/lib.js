@@ -121,7 +121,8 @@ FS.palette = ['#2f6fed', '#1f9d55', '#d97706', '#dc2626', '#7c3aed', '#0891b2', 
 // series: [{name, points:[[t,v],...], color}]; opts {fmt, stacked, height, area}
 FS.chart = (series, opts) => {
   opts = opts || {};
-  const W = 600, H = opts.height || 130, P = { l: 44, r: 8, t: 8, b: 20 };
+  // The plot fills its box; a fixed pixel gutter (CSS) holds the axis labels.
+  const W = 600, H = opts.height || 130, P = { l: 2, r: 2, t: 6, b: 2 };
   const all = series.flatMap(s => s.points || []);
   if (!all.length) return `<svg class="chart ${opts.tall ? 'tall' : ''}" viewBox="0 0 ${W} ${H}"><text x="${W / 2}" y="${H / 2}" text-anchor="middle" fill="var(--muted)" font-size="12">no data</text></svg>`;
   const xs = all.map(p => p[0]); const x0 = Math.min(...xs), x1 = Math.max(...xs) || x0 + 1;
@@ -132,8 +133,11 @@ FS.chart = (series, opts) => {
   const sx = t => P.l + (W - P.l - P.r) * (t - x0) / (x1 - x0 || 1);
   const sy = v => P.t + (H - P.t - P.b) * (1 - v / ymax);
   const fmt = opts.fmt || FS.num;
+  // The SVG holds only lines and areas and stretches to its box; axis text is
+  // HTML placed by percentage, so it stays crisp at any width or height.
+  let labels = '';
   let out = `<svg class="chart ${opts.tall ? 'tall' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
-  for (let i = 0; i <= 3; i++) { const v = ymax * i / 3; out += `<line x1="${P.l}" x2="${W - P.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--line)" stroke-width="1"/><text x="${P.l - 4}" y="${sy(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${FS.esc(fmt(v))}</text>`; }
+  for (let i = 0; i <= 3; i++) { const v = ymax * i / 3; out += `<line x1="${P.l}" x2="${W - P.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/>`; labels += `<span class="yl" style="top:${(100 * sy(v) / H).toFixed(2)}%">${FS.esc(fmt(v))}</span>`; }
   const base = {};
   series.forEach((s, si) => {
     const color = s.color || FS.palette[si % FS.palette.length];
@@ -146,8 +150,9 @@ FS.chart = (series, opts) => {
   });
   const t0 = new Date(x0 * 1000), t1 = new Date(x1 * 1000); const span = x1 - x0;
   const lab = (t) => span > 86400 * 2 ? t.toISOString().slice(5, 10) : t.toTimeString().slice(0, 5);
-  out += `<text x="${P.l}" y="${H - 5}" font-size="10" fill="var(--muted)">${lab(t0)}</text><text x="${W - P.r}" y="${H - 5}" text-anchor="end" font-size="10" fill="var(--muted)">${lab(t1)}</text></svg>`;
-  return out;
+  out += '</svg>';
+  labels += `<span class="xl">${lab(t0)}</span><span class="xl right">${lab(t1)}</span>`;
+  return `<div class="chartbox ${opts.tall ? 'tall' : ''}">${out}<div class="chartlabels">${labels}</div></div>`;
 };
 FS.legend = (names) => `<div class="legend">${names.map((n, i) => `<span><i style="background:${FS.palette[i % FS.palette.length]}"></i>${FS.esc(n)}</span>`).join('')}</div>`;
 // donut: rows [{label, value}]
