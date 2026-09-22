@@ -244,6 +244,7 @@ func (m *Module) waitListening(d time.Duration) bool {
 
 // supervise keeps the proxy in the state the configuration asks for.
 func (m *Module) supervise() error {
+	m.expireHeldBumps()
 	m.flushPinned()
 	wantRunning := m.wanted()
 	if !wantRunning {
@@ -450,6 +451,7 @@ func (m *Module) pollLog() error {
 		ts, _ := strconv.ParseInt(mm[1], 10, 64)
 		dur, _ := strconv.ParseFloat(mm[3], 64)
 		client, server := mm[4], mm[6]
+		cport := mm[5]
 		sport, _ := strconv.Atoi(mm[7])
 		code, status := mm[8], mm[9]
 		bytesOut, _ := strconv.ParseInt(mm[10], 10, 64) // squid -> client
@@ -477,11 +479,22 @@ func (m *Module) pollLog() error {
 		if mode == "terminate" {
 			verdict = "blocked"
 		}
-		// Pinning shows up here: a bumped handshake the client walked away
-		// from carries no bytes and no status.
-		if mode == "bump" && domain != "" {
-			refused := status == "000" && bytesIn+bytesOut == 0
-			m.noteBumpResult(domain, client, !refused)
+		// Pinning shows up here, but not as simply as it looks. squid logs a
+		// bumped CONNECT as NONE_NONE/000 with no bytes whether the client
+		// accepted the certificate or not, and then logs the requests it made
+		// inside. So "000 and no bytes" is not a refusal on its own: it is a
+		// refusal only when nothing followed on the same connection.
+		//
+		// Treating every bumped CONNECT as a refusal marked working sites as
+		// pinned and spliced them, which quietly cost inspection coverage on
+		// exactly the sites that could be inspected.
+		if domain != "" && mode == "bump" && method == "CONNECT" &&
+			status == "000" && bytesIn+bytesOut == 0 {
+			m.holdBump(client, cport, domain, ts)
+		} else if method != "CONNECT" && method != "" {
+			// A request inside the tunnel: whatever was held for this
+			// connection completed, so the client accepted the certificate.
+			m.settleBump(client, cport, true)
 		}
 		proto := "http"
 		if method == "CONNECT" || mode != "" && mode != "none" || sport == 443 {

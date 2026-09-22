@@ -12,6 +12,23 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609220830
+
+**Sites that could be inspected were being marked as pinned and relayed.** The
+detector treated any bumped CONNECT that carried no bytes as the client
+refusing the certificate. The proxy writes that line the same way whether the
+client accepted it or not, and then logs the requests made inside. So a
+perfectly ordinary decrypted session looked identical to a refusal, and
+working sites were added to the bypass list and spliced from then on, quietly
+costing inspection coverage on exactly the sites where it was possible.
+
+A bumped connection is now judged by what follows it: a request inside the
+tunnel means the client accepted the certificate, and only a connection that
+carries nothing for fifteen seconds counts as a refusal. The entries found
+with the old test are cleared once at startup. Names that genuinely pin are
+detected again within minutes; the rest stop being relayed for no reason.
+Entries you added by hand are untouched.
+
 ## 0.9.8r202609220812
 
 **Turning deep inspection's settings on now takes effect at once.** The policy

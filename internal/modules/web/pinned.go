@@ -44,11 +44,75 @@ type pinning struct {
 	entries map[string]*pinnedEntry
 	recent  map[string][]int64 // name -> refusal times inside the window
 	clients map[string]map[string]bool
+	held    map[string]heldBump // connections whose outcome is not known yet
 	dirty   bool
 }
 
+// heldBump is a bumped CONNECT waiting to be judged. squid writes that line
+// the same way whether the client accepted the certificate or refused it; the
+// difference is whether any request follows on the same connection.
+type heldBump struct {
+	name, client string
+	ts           int64
+}
+
 func newPinning() *pinning {
-	return &pinning{entries: map[string]*pinnedEntry{}, recent: map[string][]int64{}, clients: map[string]map[string]bool{}}
+	return &pinning{entries: map[string]*pinnedEntry{}, recent: map[string][]int64{},
+		clients: map[string]map[string]bool{}, held: map[string]heldBump{}}
+}
+
+// settleWait is how long a bumped connection is given to carry a request
+// before it is judged a refusal. A client that accepts the certificate sends
+// its first request in milliseconds; this is generous by three orders of
+// magnitude so that a slow client is never called pinned.
+const settleWait = 15 * time.Second
+
+// holdBump records a bumped CONNECT whose outcome is not yet known.
+func (m *Module) holdBump(client, cport, name string, ts int64) {
+	if name == "" || m.pin == nil || !m.autoBypassEnabled() {
+		return
+	}
+	m.pin.mu.Lock()
+	m.pin.held[client+"|"+cport] = heldBump{name: name, client: client, ts: ts}
+	m.pin.mu.Unlock()
+}
+
+// settleBump resolves a held connection: a request arrived inside it, so the
+// client accepted the certificate FlowSight minted.
+func (m *Module) settleBump(client, cport string, ok bool) {
+	if m.pin == nil {
+		return
+	}
+	key := client + "|" + cport
+	m.pin.mu.Lock()
+	h, waiting := m.pin.held[key]
+	delete(m.pin.held, key)
+	m.pin.mu.Unlock()
+	if waiting {
+		m.noteBumpResult(h.name, h.client, ok)
+	}
+}
+
+// expireHeldBumps judges the connections that never carried a request. It runs
+// from the supervise job, so a refusal is recorded within a cycle of it
+// happening rather than never.
+func (m *Module) expireHeldBumps() {
+	if m.pin == nil {
+		return
+	}
+	cut := time.Now().Add(-settleWait).Unix()
+	m.pin.mu.Lock()
+	var done []heldBump
+	for key, h := range m.pin.held {
+		if h.ts <= cut {
+			done = append(done, h)
+			delete(m.pin.held, key)
+		}
+	}
+	m.pin.mu.Unlock()
+	for _, h := range done {
+		m.noteBumpResult(h.name, h.client, false)
+	}
 }
 
 func (m *Module) loadPinned() {
@@ -60,6 +124,34 @@ func (m *Module) loadPinned() {
 			m.pin.entries[e.Name] = &e
 		}
 	}
+	m.dropFalsePinned()
+}
+
+// dropFalsePinned clears the automatically detected entries once, because
+// they were found with a test that counted a successful decryption as a
+// refusal: squid logs a bumped CONNECT identically either way. Names that
+// really do pin are detected again within minutes; names that never did stop
+// being spliced for no reason. Entries added by hand are left alone.
+func (m *Module) dropFalsePinned() {
+	const flag = "web.pinned.settled_detection"
+	var done bool
+	if m.ctx.Store.KVGet(flag, &done) && done {
+		return
+	}
+	m.pin.mu.Lock()
+	var dropped int
+	for name, e := range m.pin.entries {
+		if !e.Manual {
+			delete(m.pin.entries, name)
+			dropped++
+		}
+	}
+	m.pin.mu.Unlock()
+	if dropped > 0 {
+		m.savePinned()
+		m.ctx.Log.Info("cleared automatically detected pinned names; they are found again as they refuse", "dropped", dropped)
+	}
+	_ = m.ctx.Store.KVSet(flag, true)
 }
 
 func (m *Module) savePinned() {
