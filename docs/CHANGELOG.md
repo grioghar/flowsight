@@ -12,6 +12,24 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609220914
+
+**Inspecting everything no longer discards your bypass lists.** Turning on
+**inspect everything that crosses the firewall** created a policy covering
+every local network whose only exemptions were the exclusions and the names
+found to pin. The domains you had put on a policy's bypass list, banks,
+password managers, anything you had decided must never be decrypted, applied
+only to the devices that policy named. So switching the setting on started
+decrypting those names for every other device on the network.
+
+That was backwards. Widening who is inspected must not narrow what is
+protected: a bank is not something to start decrypting for the tablet
+because it was only ever named on the laptop's policy. Every bypass list in
+the document is now honoured when inspecting everything, along with the
+exclusions and the pinned names, with duplicates collapsed.
+
+On the gateway this was the difference between 35 protected names and 196.
+
 ## 0.9.8r202609220830
 
 **Sites that could be inspected were being marked as pinned and relayed.** The

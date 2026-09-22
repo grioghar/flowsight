@@ -1,6 +1,11 @@
 package web
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/grioghar/flowsight/internal/core"
+)
 
 func TestParseDoHURL(t *testing.T) {
 	// dig +noedns example.com A, base64url of the wire message
@@ -88,5 +93,44 @@ func TestBumpedConnectIsNotARefusalByItself(t *testing.T) {
 	r0 := logRe.FindStringSubmatch(refused[0])
 	if r0[5] == a1[5] {
 		t.Fatal("test data is wrong: the refused connection shares a port with the accepted one")
+	}
+}
+
+// Turning on "inspect everything" widens who is inspected. It must not narrow
+// what is protected: a name on any policy's bypass list is one the operator
+// has said must never be decrypted, and a bank or a password manager is not
+// something to start decrypting for the tablet because it was only named on
+// the laptop's policy.
+func TestInspectEverythingKeepsEveryBypassList(t *testing.T) {
+	doc := core.PolicyDoc{
+		Exclusions: core.Exclusions{Domains: []string{"health.example"}},
+		Policies: []core.Policy{
+			{Name: "laptop", TLS: core.TLSOpt{Inspect: true, Bypass: []string{"chase.com", "1password.com"}}},
+			{Name: "kids", TLS: core.TLSOpt{Inspect: true, Bypass: []string{"school.example", "chase.com"}}},
+		},
+	}
+	seen := map[string]bool{}
+	var got []string
+	add := func(names []string) {
+		for _, n := range names {
+			n = strings.ToLower(strings.TrimSpace(n))
+			if n == "" || seen[n] {
+				continue
+			}
+			seen[n] = true
+			got = append(got, n)
+		}
+	}
+	add(doc.Exclusions.Domains)
+	for i := range doc.Policies {
+		add(doc.Policies[i].TLS.Bypass)
+	}
+	for _, want := range []string{"health.example", "chase.com", "1password.com", "school.example"} {
+		if !seen[want] {
+			t.Errorf("%q must not be decrypted when inspecting everything", want)
+		}
+	}
+	if len(got) != 4 {
+		t.Errorf("duplicates were not collapsed: %v", got)
 	}
 }

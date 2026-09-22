@@ -156,9 +156,32 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 			params.DeepClients, params.DeepNames = clients, names
 			if deep.InspectEverything() && params.CAPath != "" {
 				// Decrypt every intercepted client, not only those a policy
-				// names. Exclusions and pinned names are still spliced.
+				// names. This widens who is inspected; it must not narrow what
+				// is protected. A name the operator put on a policy's bypass
+				// list is one they have said must never be decrypted, and they
+				// did not mean "only on that device": a bank, a password
+				// manager or a health service is not something to start
+				// decrypting for the tablet because it was only ever named on
+				// the laptop's policy. So every bypass list in the document is
+				// honoured here, along with the exclusions and the names found
+				// to pin.
 				all := squidPolicy{ID: "deep_all", Members: params.LocalNets, Inspect: true, Monitor: true}
-				all.Bypass = append(append([]string(nil), doc.Exclusions.Domains...), m.pinnedNames()...)
+				seen := map[string]bool{}
+				add := func(names []string) {
+					for _, n := range names {
+						n = strings.ToLower(strings.TrimSpace(n))
+						if n == "" || seen[n] {
+							continue
+						}
+						seen[n] = true
+						all.Bypass = append(all.Bypass, n)
+					}
+				}
+				add(doc.Exclusions.Domains)
+				for i := range doc.Policies {
+					add(doc.Policies[i].TLS.Bypass)
+				}
+				add(m.pinnedNames())
 				params.Policies = append(params.Policies, all)
 			}
 		}
