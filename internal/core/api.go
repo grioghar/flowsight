@@ -335,7 +335,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Static UI, no auth: it is public HTML that reveals nothing.
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		if p == "/" || p == "/index.html" {
-			p = "/static/index.html"
+			// The shell references its assets under a version directory so a
+			// browser never keeps an old app.js after an update.
+			a.serveIndex(w, r)
+			return
 		}
 		if p == "/favicon.ico" {
 			p = "/static/favicon.svg"
@@ -485,10 +488,43 @@ func (a *API) call(route *Route, req *Req) (result any, err error) {
 	return route.Handler(req)
 }
 
+// serveIndex serves the shell with every /static/ reference rewritten to
+// /static/v<version>/ so assets are cached hard yet refreshed on update.
+func (a *API) serveIndex(w http.ResponseWriter, r *http.Request) {
+	if a.static == nil {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := fs.ReadFile(a.static, "index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	v := "v" + strings.Map(func(c rune) rune {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '-' {
+			return c
+		}
+		return '-'
+	}, a.core.Version)
+	html := strings.ReplaceAll(string(data), `"/static/`, `"/static/`+v+`/`)
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Cache-Control", "no-store")
+	a.securityHeaders(h)
+	_, _ = w.Write([]byte(html))
+}
+
 func (a *API) serveStatic(w http.ResponseWriter, r *http.Request, rel string) {
 	if rel == "" || strings.Contains(rel, "..") || a.static == nil {
 		http.NotFound(w, r)
 		return
+	}
+	// A leading version directory (see serveIndex) is only a cache key.
+	versioned := false
+	if strings.HasPrefix(rel, "v") {
+		if i := strings.IndexByte(rel, '/'); i > 0 {
+			rel, versioned = rel[i+1:], true
+		}
 	}
 	data, err := fs.ReadFile(a.static, rel)
 	if err != nil {
@@ -503,7 +539,11 @@ func (a *API) serveStatic(w http.ResponseWriter, r *http.Request, rel string) {
 	etag := `"` + hex.EncodeToString(sum[:10]) + `"`
 	h := w.Header()
 	h.Set("ETag", etag)
-	h.Set("Cache-Control", "public, max-age=300")
+	if versioned {
+		h.Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		h.Set("Cache-Control", "no-cache")
+	}
 	h.Set("Content-Type", ctype)
 	a.securityHeaders(h)
 	if r.Header.Get("If-None-Match") == etag {

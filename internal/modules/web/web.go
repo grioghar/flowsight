@@ -441,6 +441,14 @@ func (m *Module) pollLog() error {
 				fl.Attrs = map[string]any{"web_categories": strings.Join(cs, ",")}
 			}
 		}
+		// A request the proxy saw inside (plain HTTP, or a decrypted session)
+		// carries its method, URL and status; a CONNECT tunnel does not.
+		if method != "CONNECT" && url != "" && url != "-" {
+			if fl.Attrs == nil {
+				fl.Attrs = map[string]any{}
+			}
+			fl.Attrs["url"], fl.Attrs["method"], fl.Attrs["status"] = url, method, status
+		}
 		if verdict == "blocked" {
 			fl.Policy = "web"
 			blockedHosts[client]++
@@ -630,7 +638,7 @@ func (m *Module) apiLog(r *core.Req) (any, error) {
 		return nil, err
 	}
 	q := `SELECT ts, src_ip, dst_ip, dst_port, proto, domain, category, bytes_in, bytes_out, duration, verdict, policy,
-		tls_version FROM flows WHERE source='squid'`
+		tls_version, attrs FROM flows WHERE source='squid'`
 	args := []any{}
 	if ip != "" {
 		q += ` AND src_ip=?`
@@ -643,6 +651,9 @@ func (m *Module) apiLog(r *core.Req) (any, error) {
 	if r.Q("blocked", "") != "" {
 		q += ` AND verdict='blocked'`
 	}
+	if r.Q("decrypted", "") != "" {
+		q += ` AND proto='tls' AND attrs LIKE '%"url"%'`
+	}
 	q += ` ORDER BY ts DESC, id DESC LIMIT ?`
 	args = append(args, r.QInt("limit", 200, 1, 5000))
 	rows, err := m.ctx.Store.Rows(q, args...)
@@ -654,6 +665,17 @@ func (m *Module) apiLog(r *core.Req) (any, error) {
 		if nme := m.name(sip); nme != "" {
 			row["src_name"] = nme
 		}
+		if a, _ := row["attrs"].(string); a != "" {
+			var attrs map[string]any
+			if json.Unmarshal([]byte(a), &attrs) == nil {
+				for _, k := range []string{"url", "method", "status"} {
+					if v, ok := attrs[k]; ok {
+						row[k] = v
+					}
+				}
+			}
+		}
+		delete(row, "attrs")
 	}
 	return map[string]any{"requests": rows}, nil
 }

@@ -82,10 +82,14 @@ policy (names and categories) is the same one nDPI reports.
 ### Web
 
 Web activity from the proxy log: top sites, categories, blocked requests,
-and the recent request log with client, method, host, category, bump mode
-(spliced, bumped, terminated) and TLS version. Empty until interception is
-on. The proxy's own state (listening ports, workers, last error) is under
-Settings › web.
+and the recent request log. Each row names the client, the site and, when
+the proxy could see inside the request, the method, path and response code;
+an inspected HTTPS request is marked *decrypted*, an uninspected one reads
+*encrypted (not inspected)*. The **decrypted only** link above the table is
+the view of everything TLS inspection has opened; combine it with a client
+(`#web?decrypted=1&client=…`, or from a host page) to see one device. Empty
+until interception is on. The proxy's own state (listening ports, workers,
+last error) is under Settings › web.
 
 ### DNS
 
@@ -147,9 +151,10 @@ inside of a session. To decrypt selected devices:
    inspection. *Action* can stay on monitor; inspection is independent of
    blocking.
 5. **Apply.** From then on the TLS page shows those sessions as *bumped*
-   with the negotiated version and the real server certificate; the Web
-   page and the host page show full URLs for them instead of only server
-   names; and web policies on paths inside a site become possible.
+   with the negotiated version and the real server certificate, and the
+   **Web page › decrypted only** view lists every decrypted request with its
+   method, path and response code; the host page's web log shows the same
+   for one device. Web policies on paths inside a site become possible.
 
 What you get is the request layer: URLs, methods, response codes, sizes,
 certificates. FlowSight does not record page or file contents, and it

@@ -124,7 +124,7 @@ if (isset($_GET["api"])) {
 /* ---------------------------------------------------------------- assets */
 if (isset($_GET["asset"])) {
     $name = (string)$_GET["asset"];
-    if (!preg_match('/^[A-Za-z0-9_.-]+$/', $name)) {
+    if (!preg_match('/^[A-Za-z0-9_.\/-]+$/', $name) || strpos($name, "..") !== false) {
         fs_fail(400, "bad asset");
     }
     list($out, $code, $rh, $err) = fs_fetch($FLOWSIGHT_BASE . "/static/" . $name);
@@ -133,7 +133,7 @@ if (isset($_GET["asset"])) {
         exit;
     }
     header("Content-Type: " . ($rh["content-type"] ?? "application/octet-stream"));
-    header("Cache-Control: private, max-age=300");
+    header("Cache-Control: " . (strpos($name, "/") !== false ? "private, max-age=31536000, immutable" : "no-cache"));
     echo $out;
     exit;
 }

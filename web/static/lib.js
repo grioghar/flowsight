@@ -21,6 +21,8 @@ FS.api = async function (path, opts) {
   return d;
 };
 FS.lastLock = null;
+// "C=US; O=Google Trust Services; CN=WE1" -> "Google Trust Services · WE1"
+FS.issuerName = (dn) => { const g = (k) => ((dn || '').match(new RegExp('(?:^|[;,]\\s*)' + k + '=([^;,]+)')) || [])[1] || ''; const o = g('O'), cn = g('CN'); return o && cn && o !== cn ? `${o} · ${cn}` : (cn || o || dn || ''); };
 FS.tierName = (t) => ({ community: 'Community', pro: 'Pro', business: 'Business' })[t] || t;
 FS.lockCard = (d) => `<div class="card lock"><h3>${FS.esc(FS.tierName(d.required || 'pro'))} feature</h3><p>${FS.esc(d.error || '')}</p><div class="actions"><a class="btn primary" href="#license">See license options</a></div></div>`;
 FS.get = (p) => FS.api(p);
