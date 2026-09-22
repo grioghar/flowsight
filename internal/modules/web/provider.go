@@ -76,6 +76,11 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 		}
 		sp := squidPolicy{ID: idRe.ReplaceAllString(strings.ToLower(pol.Name), "_"), Members: members,
 			Monitor: pol.Action == "monitor", Inspect: pol.TLS.Inspect, Bypass: pol.TLS.Bypass}
+		if sp.Inspect {
+			// Names whose clients pin their certificate cannot be decrypted by
+			// anyone; relaying them keeps those sites working.
+			sp.Bypass = append(append([]string(nil), sp.Bypass...), m.pinnedNames()...)
+		}
 		if wantsWeb {
 			set := map[string]bool{}
 			for _, d := range pol.Deny.Domains {

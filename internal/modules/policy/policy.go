@@ -404,6 +404,12 @@ func (m *Module) signature() string {
 		b, _ := json.Marshal(m.ctx.Config.Module(mod))
 		h.Write(b)
 	}
+	// Names found to pin their certificate change what the proxy is told.
+	if p, ok := m.ctx.Service("pinned").(interface{ PinnedNames() []string }); ok {
+		for _, n := range p.PinnedNames() {
+			fmt.Fprintf(h, "pin:%s;", n)
+		}
+	}
 	return hex.EncodeToString(h.Sum(nil))
 }
 

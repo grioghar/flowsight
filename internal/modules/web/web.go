@@ -53,6 +53,7 @@ type Module struct {
 	cats     core.Categories
 	blockSrv *http.Server
 	blocks   map[string]int64 // policy -> count since start
+	pin      *pinning         // names whose clients pin their certificate
 }
 
 // CAProvider is published by the tls module: the combined PEM squid needs.
@@ -69,17 +70,21 @@ func (m *Module) Info() core.ModuleInfo {
 		Requires:     []string{"squid", "pf"},
 		After:        []string{"identity", "firewall", "categories", "tls"},
 		Defaults: map[string]any{
-			"enabled":          true,
-			"intercept":        false,
-			"http_port":        3128,
-			"https_port":       3129,
-			"interfaces":       []string{},
-			"networks":         []string{},
-			"peek_server_cert": false,
-			"ipv6_listener":    "",
-			"block_page_port":  8082,
-			"workers":          1,
-			"squid_user":       "squid",
+			"enabled":               true,
+			"intercept":             false,
+			"http_port":             3128,
+			"https_port":            3129,
+			"interfaces":            []string{},
+			"networks":              []string{},
+			"peek_server_cert":      false,
+			"auto_bypass_pinned":    true,
+			"pinned_failures":       3,
+			"pinned_window_minutes": 10,
+			"pinned_retest_hours":   168,
+			"ipv6_listener":         "",
+			"block_page_port":       8082,
+			"workers":               1,
+			"squid_user":            "squid",
 		},
 		Schema: []core.SettingField{
 			{Key: "intercept", Label: "Intercept web traffic", Type: "bool",
@@ -90,6 +95,12 @@ func (m *Module) Info() core.ModuleInfo {
 			{Key: "https_port", Label: "HTTPS listener port", Type: "int"},
 			{Key: "peek_server_cert", Label: "Record server certificates without inspecting", Type: "bool",
 				Help: "Peeks one step further into the handshake to log the server certificate, then splices. A few servers dislike it."},
+			{Key: "auto_bypass_pinned", Label: "Relay pinned sites without inspecting", Type: "bool",
+				Help: "A client that pins its certificate refuses the inspection certificate and the site fails to load. With this on, FlowSight recognises that refusal and relays the name untouched from then on, so the site works; its server name, timing and volume are still recorded. No proxy can decrypt a pinned client."},
+			{Key: "pinned_failures", Label: "Refusals before a name counts as pinned", Type: "int"},
+			{Key: "pinned_window_minutes", Label: "Refusal window (minutes)", Type: "int"},
+			{Key: "pinned_retest_hours", Label: "Try inspecting a pinned name again after (hours)", Type: "int",
+				Help: "0 never retries. A name added by hand is never retried."},
 			{Key: "ipv6_listener", Label: "IPv6 listener address", Type: "string",
 				Help: "An IPv6 address the firewall holds on the LAN (a unique local address as a virtual IP works well). Empty: IPv6 web traffic is not intercepted."},
 			{Key: "block_page_port", Label: "Block page port", Type: "int"},
@@ -116,6 +127,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 		return err
 	}
 	m.tail = core.NewTailer(filepath.Join(m.logDir, "access.log"))
+	m.loadPinned()
+	ctx.Publish("pinned", m)
 	ctx.Provider(&provider{m: m})
 	ctx.Every("tail", 3*time.Second, m.pollLog)
 	ctx.Every("supervise", 20*time.Second, m.supervise)
@@ -124,6 +137,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/web/log", m.apiLog, core.Doc("Recent web requests"),
 		core.Params("ip", "client", "domain", "substring", "blocked", "only blocked", "limit", "rows"))
 	ctx.Route("GET", "/api/web/status", m.apiStatus, core.Doc("Proxy process state and configuration"))
+	ctx.Route("GET", "/api/web/pinned", m.apiPinned, core.Doc("Names whose clients pin their certificate and are therefore relayed without inspection"))
+	ctx.Route("POST", "/api/web/pinned", m.apiPinnedSet, core.Write(), core.Needs("tls.inspect"),
+		core.Doc("Add a name to the pinned list, or remove one ({name, remove})"))
 	ctx.Panel(core.Panel{ID: "web", Title: "Web", Group: "Visibility", Order: 45, Icon: "web"})
 	m.startBlockPage()
 	return nil
@@ -227,6 +243,7 @@ func (m *Module) waitListening(d time.Duration) bool {
 
 // supervise keeps the proxy in the state the configuration asks for.
 func (m *Module) supervise() error {
+	m.flushPinned()
 	wantRunning := m.wanted()
 	if !wantRunning {
 		if m.running() {
@@ -426,6 +443,12 @@ func (m *Module) pollLog() error {
 		}
 		if mode == "terminate" {
 			verdict = "blocked"
+		}
+		// Pinning shows up here: a bumped handshake the client walked away
+		// from carries no bytes and no status.
+		if mode == "bump" && domain != "" {
+			refused := status == "000" && bytesIn+bytesOut == 0
+			m.noteBumpResult(domain, client, !refused)
 		}
 		proto := "http"
 		if method == "CONNECT" || mode != "" && mode != "none" || sport == 443 {

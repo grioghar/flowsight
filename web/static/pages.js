@@ -207,7 +207,23 @@
       el.innerHTML = `<div class="grid cols-4">${kpi('TLS sessions', num(t.sessions), `${num(t.names)} server names · ${num(t.clients)} clients`)}${kpi('Inspected', num(t.inspected), FS.pct(t.inspected, t.sessions) + ' of sessions decrypted', t.inspected ? 'warn' : '')}${kpi('Problem certificates', num(s.problem_certificates), 'expired or self-signed, seen this window', s.problem_certificates ? 'warn' : '')}${card('Inspection CA', caCard)}</div>
       <div class="grid cols-3" style="margin-top:14px">${card('Versions', donut((s.versions || []).map(v => ({ label: v.version, value: v.sessions }))))}${card('Handling', donut((s.modes || []).map(v => ({ label: v.mode, value: v.sessions }))))}${card('Issuers', bars((s.issuers || []).map(i => ({ label: FS.issuerName(i.issuer), value: i.seen }))))}</div>
       <div style="margin-top:14px">${card('Certificates', table(c.certificates || [], [{ t: 'Subject', f: r => `<b>${esc((r.subject || '').replace(/^.*CN=/, ''))}</b><div class="muted small">${esc(r.subject || '')}</div>`, sort: 'subject' }, { t: 'Issuer', f: r => `<span title="${esc(r.issuer || '')}">${esc(FS.issuerName(r.issuer))}</span>`, sort: 'issuer' }, { t: 'Names', f: r => esc((JSON.parse(r.snis || '[]')).slice(0, 3).join(', ')) }, { t: 'Expires', f: r => r.not_after ? `<span class="${r.not_after < Date.now() / 1000 ? 'sev-high' : ''}">${new Date(r.not_after * 1000).toISOString().slice(0, 10)}</span>` : '—', sort: 'not_after' }, { t: 'Flags', f: r => (r.self_signed ? pill('self-signed', 'warn') : '') }, { t: 'Seen', f: r => num(r.seen), num: true, sort: 'seen' }, { t: 'Last', f: r => ago(r.last_seen), sort: 'last_seen' }, { t: 'Via', k: 'source' }]), `<a href="#tls?problem=1">problems only</a>`)}</div>
+      <div style="margin-top:14px" id="pinned-card"></div>
       <div style="margin-top:14px">${card('Recent sessions', table(sess.sessions || [], [{ t: 'When', f: r => when(r.ts), sort: 'ts' }, { t: 'Client', f: r => hostLink(r.src_ip), sort: 'src_ip' }, { t: 'Server name', k: 'sni' }, { t: 'Server', f: r => `${FS.ipTag(r.dst_ip)}:${r.dst_port || ''}` }, { t: 'Version', k: 'version' }, { t: 'Mode', f: r => pill(r.mode || 'splice', r.mode === 'bump' ? 'warn' : r.mode === 'terminate' ? 'bad' : ''), sort: 'mode' }, { t: 'JA3', f: r => `<span class="mono small">${esc((r.ja3 || '').slice(0, 12))}</span>` }, { t: 'Via', k: 'source' }]))}</div>`;
+      get('/api/web/pinned').then(p => {
+        const list = (p && p.pinned) || []; const box = FS.$('#pinned-card', el); if (!box) return;
+        box.innerHTML = card(`Pinned sites (${list.length})`, (list.length ? table(list, [
+          { t: 'Name', f: r => `<b>${esc(r.name)}</b>`, sort: 'name' },
+          { t: 'How', f: r => r.manual ? pill('by hand', '') : pill('detected', 'warn'), sort: 'manual' },
+          { t: 'Refusals', f: r => num(r.failures), num: true, sort: 'failures' },
+          { t: 'Clients', f: r => num(r.clients || 0), num: true },
+          { t: 'Last', f: r => ago(r.last), sort: 'last' },
+          { t: '', f: r => `<button class="btn small" data-unpin="${esc(r.name)}">Inspect again</button>` },
+        ]) : '<div class="empty">Nothing is pinned</div>') +
+          `<form class="f" id="pinf" style="display:flex;gap:8px;align-items:end;margin-top:8px"><div style="flex:1"><label>Add a name to relay without inspecting</label><input type="text" name="name" placeholder="app.example.com"></div><button class="btn">Add</button></form>` +
+          `<div class="help">${esc((p && p.note) || '')}</div>`);
+        FS.$$('[data-unpin]', box).forEach(b => b.onclick = async () => { const r = await post('/api/web/pinned', { name: b.dataset.unpin, remove: true }); FS.toast(r.error || 'Will be inspected again', !!r.error); FS.render(); });
+        FS.$('#pinf', box).onsubmit = async (e) => { e.preventDefault(); const r = await post('/api/web/pinned', { name: e.target.name.value }); FS.toast(r.error || 'Added', !!r.error); FS.render(); };
+      });
       const cr = FS.$('#ca-create', el); if (cr) cr.onclick = async () => { const name = prompt('Common name for the CA', 'FlowSight Inspection CA'); if (!name) return; const r = await post('/api/tls/ca/create', { name }); if (r.error) FS.toast(r.error, true); else { FS.toast('CA created'); FS.render(); } };
       const dl = FS.$('#ca-del', el); if (dl) dl.onclick = async () => { if (!await FS.confirm('Delete the inspection CA? Every policy with TLS inspection stops decrypting, and a new CA would have to be installed on devices again.')) return; const r = await post('/api/tls/ca/delete', {}); if (r.error) FS.toast(r.error, true); else FS.render(); };
     }

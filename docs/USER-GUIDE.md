@@ -154,6 +154,15 @@ Certificate transparency for the network.
   and the hosts that saw it. Findings flag expired, expiring, self-signed
   and weak certificates.
 - **Sessions**: recent TLS sessions with SNI, version, bump mode.
+- **Pinned sites**: names whose clients refuse the inspection certificate.
+  A pinned client carries the certificate it expects and accepts no other,
+  so no proxy can decrypt it; FlowSight recognises the refusal, relays the
+  name untouched from then on so the site keeps working, and still records
+  its server name, timing and volume. The card lists what was detected and
+  what you added by hand, lets you add a name, and lets you put one back
+  under inspection. The behaviour is *Settings › web › Relay pinned sites
+  without inspecting*, on by default, with the number of refusals, the
+  window and the retry interval beside it.
 
 **Decrypting sessions, step by step.** Without a CA the proxy only peeks
 at handshakes: you see server names, versions and certificates, never the
