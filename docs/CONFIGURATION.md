@@ -161,6 +161,23 @@ The declarative policy document, its compiler and continuous reconciliation onto
 | `enforce` | Enforce policy | bool | `true` | Off: the document is compiled and planned but never written to a backend. On: every provider is kept in step with it. |
 | `reconcile_seconds` | Reconcile interval (s) | int | `60` |  |
 
+### qos (Pro tier)
+
+Traffic priority. Moves the bottleneck off the carrier and onto this firewall with dummynet, then shares the link by weight.
+
+| Key | Setting | Type | Default | Notes |
+|---|---|---|---|---|
+| `active` | Shape traffic | bool | `false` | Off: nothing is queued and the link behaves exactly as it does now. On: every packet passes through a pipe on this firewall. |
+| `download_mbit` | Download the link really carries (Mbit/s) | int | `0` | Measure it. Set above the real rate and the pipe never fills, the carrier stays the bottleneck and nothing else here has any effect. |
+| `upload_mbit` | Upload the link really carries (Mbit/s) | int | `0` | The more important of the two: a saturated upload delays the acknowledgements downloads depend on. |
+| `headroom_percent` | Keep back (percent) | int | `7` | How far under the measured rate the pipes are sized. |
+| `lan_interface` | LAN interface | string | `""` | Where shaping is applied; addresses are untranslated here. Empty: detected from the local networks. |
+| `default_class` | Class for everything not named | choice (high, normal, low) | `"normal"` |  |
+| `weight_high` | Weight: high | int | `70` | Shares, not reservations. |
+| `weight_normal` | Weight: normal | int | `25` |  |
+| `weight_low` | Weight: low | int | `5` |  |
+| `rules` | Rules | list | `[]` | One per line: `what = class`, optionally with a rate as a ceiling. See the Priority page in the user guide. |
+
 ### reports
 
 HTML reports and CSV exports with scheduling.

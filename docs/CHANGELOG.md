@@ -12,6 +12,47 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609220957
+
+**Priority: decide who waits when the link is full.** A new module and page
+under Policy, and the first thing in FlowSight that changes traffic rather
+than describing it.
+
+It works by moving the bottleneck. When an uplink fills, the queue that
+decides what waits belongs to the modem or the carrier and nothing on this
+firewall can reach it, so shaping starts by sending everything through a pipe
+sized a little under what the link really carries. Once the queue is on this
+side, weights decide who waits. That is why the two rates are settings and
+why they have to be honest.
+
+Rules are written the way you would say them: `192.168.1.178 = low`,
+`redgifs.com = high`, `10.0.5.0/24 = low, 20Mbit`. An address is understood
+as a device here or as something out on the internet depending on which side
+of your local networks it falls. A domain matches the addresses the network
+has actually been seen using for it, and the page says per rule how many that
+currently is, rather than leaving a rule that matches nothing looking
+identical to one that works. The generated firewall rules are shown on the
+page so they can be read before they are trusted.
+
+Measured on the test gateway, against an unshaped baseline of several
+gigabits:
+
+| | |
+|---|---|
+| Link held to a 46.5 Mbit/s pipe | 44.9 Mbit/s |
+| Two flows, weights 70 and 5 | 93% and 7% of the link |
+| A rule capped at 10 Mbit/s | 9.7 Mbit/s |
+
+Three things had to be got right for any of that to work, and each looked
+fine while wrong. A queue named on a rule that specifies a direction applies
+only to that direction, so each rule needs a partner on the reply. Dummynet's
+fast path is off by default, and without it the engine dropped 4.6 percent of
+every packet it handled, which held a 14 Mbit/s pipe to 4.6 Mbit/s of real
+throughput. And a pipe's buffer has to be sized to the rate it carries, or
+TCP is throttled by loss long before it reaches the limit you set.
+
+Shaping is off by default and has to be switched on deliberately.
+
 ## 0.9.8r202609220914
 
 **Inspecting everything no longer discards your bypass lists.** Turning on

@@ -164,3 +164,36 @@ in front of traffic and keeps the data.
 stops the service, flushes the `flowsight/*` anchors, removes the Unbound
 include files, reloads the resolver and the filter and removes the menu.
 The configuration, policy, CA and store directories are left in place.
+
+## Shaping is on but nothing seems shaped
+
+Four things account for nearly every case, in the order worth checking.
+
+**The rates are wrong.** Shaping works by making this firewall the
+bottleneck. If `download_mbit` or `upload_mbit` is at or above what the link
+really carries, the pipe never fills, the carrier's queue stays the real
+bottleneck and no weight below has any effect. Measure the link with nothing
+else running and set the figures under what you measured.
+
+**The traffic does not cross the shaped interface.** Rules are applied on the
+LAN interface, where addresses are still untranslated. Traffic that
+terminates on the firewall itself, rather than being forwarded through it, is
+not shaped, and neither is traffic between two devices on the same segment.
+
+**The rule names the wrong end.** An address is read as a device here or as
+something out on the internet depending on which side of your local networks
+it falls. Check the Priority page: each rule says which it was taken to mean,
+and the generated firewall rules are printed there in full.
+
+**The connection already existed.** A queue is attached when a connection is
+first seen, so anything already open when shaping was switched on carries on
+unshaped until it is re-established.
+
+To confirm shaping is happening at all, the rule counters tell you plainly:
+
+```sh
+pfctl -a flowsight/qos -vsr
+```
+
+A rule with a large packet count on the direction you care about is doing its
+job. A rule with none is not being reached.

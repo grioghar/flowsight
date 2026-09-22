@@ -17,6 +17,7 @@ import (
 	_ "github.com/grioghar/flowsight/internal/modules/mitm"
 	_ "github.com/grioghar/flowsight/internal/modules/pihole"
 	_ "github.com/grioghar/flowsight/internal/modules/policy"
+	_ "github.com/grioghar/flowsight/internal/modules/qos"
 	_ "github.com/grioghar/flowsight/internal/modules/reports"
 	_ "github.com/grioghar/flowsight/internal/modules/rulehygiene"
 	_ "github.com/grioghar/flowsight/internal/modules/telemetry"

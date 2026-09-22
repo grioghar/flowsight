@@ -1,0 +1,461 @@
+// Package qos decides who waits when the link is full.
+//
+// Every other module here answers "what is happening". This one changes it,
+// which makes it the most dangerous thing in the product and the one with the
+// most ways to look like it is working while doing nothing.
+//
+// Two things have to be true before a priority means anything.
+//
+// The first is that the bottleneck has to be on this firewall. When an uplink
+// fills, the queue that decides what waits belongs to the modem or the
+// carrier, and no rule here can reach into it. So shaping starts by sending
+// everything through a pipe sized a little under what the link really
+// carries, which moves that queue to this side. That is why the link speeds
+// are settings and why they have to be honest: a pipe set above the real rate
+// never fills, the carrier's queue stays the real bottleneck, and every
+// weight below is decoration.
+//
+// The second is that the direction has to be the one you can actually
+// control. Upload is straightforward: this firewall is the sender. Download
+// is not, because the packets have already crossed the bottleneck by the time
+// they arrive; shaping them works only by holding them back so the senders
+// slow down, which is real but blunter. Anyone expecting downloads to be
+// prioritised as crisply as uploads is going to be disappointed, and the
+// interface says so rather than pretending.
+package qos
+
+import (
+	"fmt"
+	"net"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/grioghar/flowsight/internal/core"
+	"github.com/grioghar/flowsight/internal/modules/firewall"
+)
+
+func init() { core.Register(func() core.Module { return &Module{} }) }
+
+// Module implements core.Module.
+type Module struct {
+	ctx      *core.Context
+	fw       firewall.Firewall
+	identity core.Identity
+	dn       *dn
+
+	mu        sync.Mutex
+	applied   bool
+	lastErr   string
+	lastPlan  plan
+	rules     []Rule
+	addrs     map[string][]string
+	appliedAt time.Time
+}
+
+const anchorName = "qos"
+
+func (m *Module) Info() core.ModuleInfo {
+	return core.ModuleInfo{
+		Name:        "qos",
+		Version:     "1.0",
+		Tier:        "pro",
+		Description: "Decides who waits when the link is full. Moves the queue off the carrier and onto this firewall, then shares the link by weight, with optional ceilings per device or service.",
+		After:       []string{"firewall", "identity", "web"},
+		Defaults: map[string]any{
+			"enabled":          true,
+			"active":           false,
+			"lan_interface":    "",
+			"download_mbit":    0,
+			"upload_mbit":      0,
+			"headroom_percent": 7,
+			"weight_high":      70,
+			"weight_normal":    25,
+			"weight_low":       5,
+			"default_class":    "normal",
+			"rules":            []string{},
+		},
+		Schema: []core.SettingField{
+			{Key: "active", Label: "Shape traffic", Type: "bool",
+				Help: "Off: nothing is queued and the link behaves exactly as it does now. On: all traffic passes through a pipe on this firewall and the rules below decide who waits. Turn this on deliberately; it changes how every packet on the network is handled."},
+			{Key: "download_mbit", Label: "Download the link really carries (Mbit/s)", Type: "int",
+				Help: "Measure it, do not copy it off the bill. Shaping works by making this firewall the bottleneck, so this has to be a little under the true rate. Set it too high and the carrier stays the bottleneck and nothing below has any effect."},
+			{Key: "upload_mbit", Label: "Upload the link really carries (Mbit/s)", Type: "int",
+				Help: "The more important of the two. A saturated upload delays the acknowledgements that downloads depend on, so an uncontrolled upload ruins streaming in both directions."},
+			{Key: "headroom_percent", Label: "Keep back (percent)", Type: "int",
+				Help: "How far under the measured rate the pipes are sized. A few percent is what keeps the queue on this side of the link."},
+			{Key: "lan_interface", Label: "LAN interface", Type: "string",
+				Help: "Where shaping is applied. Addresses are still untranslated here, so a rule can name a device on this network. Empty: detected from the local networks."},
+			{Key: "default_class", Label: "Class for everything not named", Type: "choice", Choices: []string{"high", "normal", "low"}},
+			{Key: "weight_high", Label: "Weight: high", Type: "int",
+				Help: "Shares, not reservations. A class with twice the weight gets twice the link when both want it, and none of it is wasted when one does not."},
+			{Key: "weight_normal", Label: "Weight: normal", Type: "int"},
+			{Key: "weight_low", Label: "Weight: low", Type: "int"},
+			{Key: "rules", Label: "Rules", Type: "list",
+				Help: "One per line, written as \"what = class\". The left side is an address, a CIDR or a domain. Add a rate to cap it as well.\n\n    192.168.1.178 = low\n    redgifs.com = high\n    10.0.5.0/24 = low, 20Mbit\n\nA domain matches the addresses this network has actually been seen using for it, so a name nobody has looked up yet matches nothing until they do."},
+		},
+	}
+}
+
+func (m *Module) Setup(ctx *core.Context) error {
+	m.ctx = ctx
+	m.fw, _ = ctx.Service("firewall").(firewall.Firewall)
+	m.identity, _ = ctx.Service("identity").(core.Identity)
+	m.dn = newDN()
+	m.addrs = map[string][]string{}
+	ctx.Every("apply", 60*time.Second, m.reconcile)
+	ctx.Every("resolve", 120*time.Second, m.resolve)
+	ctx.Route("GET", "/api/qos/status", m.apiStatus, core.Needs("qos.shape"),
+		core.Doc("Whether shaping is on, the pipes in force, the rules and what each queue is holding"))
+	ctx.Route("GET", "/api/qos/preview", m.apiPreview, core.Needs("qos.shape"),
+		core.Doc("The firewall rules the current settings would produce, without applying them"))
+	ctx.Panel(core.Panel{ID: "qos", Title: "Priority", Group: "Policy", Order: 105, Icon: "qos", Feature: "qos.shape"})
+	return nil
+}
+
+func (m *Module) OnConfigChange(map[string]any) error { return m.reconcile() }
+
+func (m *Module) Stop() error { return m.tearDown() }
+
+func (m *Module) Health() core.Health {
+	if !core.Bool(m.ctx.Settings(), "active", false) {
+		return core.Health{OK: true, Detail: "off; nothing is queued"}
+	}
+	if err := m.ctx.License().Allowed("qos.shape"); err != nil {
+		return core.Health{OK: true, Detail: "needs the pro tier"}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.lastErr != "" {
+		return core.Health{OK: false, Detail: m.lastErr}
+	}
+	if !m.applied {
+		return core.Health{OK: false, Detail: "not applied yet"}
+	}
+	return core.Health{OK: true, Detail: fmt.Sprintf("shaping %.0f down / %.0f up Mbit/s, %d rules",
+		m.lastPlan.DownMbit, m.lastPlan.UpMbit, len(valid(m.rules)))}
+}
+
+// ---------------------------------------------------------------- applying
+
+func (m *Module) reconcile() error {
+	s := m.ctx.Settings()
+	want := core.Bool(s, "active", false) && m.ctx.License().Allowed("qos.shape") == nil
+	if !want {
+		return m.tearDown()
+	}
+	if m.fw == nil || !m.fw.Available() {
+		m.fail("no pf on this platform; shaping is unavailable")
+		return nil
+	}
+	down := float64(core.Int(s, "download_mbit", 0))
+	up := float64(core.Int(s, "upload_mbit", 0))
+	if down <= 0 || up <= 0 {
+		m.fail("set the download and upload rates the link really carries; without them there is nothing to share out")
+		return nil
+	}
+	lan := strings.TrimSpace(core.Str(s, "lan_interface", ""))
+	if lan == "" {
+		lan = m.detectLAN()
+	}
+	if lan == "" {
+		m.fail("could not work out which interface faces the local network; set it by hand")
+		return nil
+	}
+	if err := m.dn.available(); err != nil {
+		m.fail(err.Error())
+		return nil
+	}
+
+	head := float64(core.Int(s, "headroom_percent", 7))
+	if head < 0 || head > 50 {
+		head = 7
+	}
+	scale := 1 - head/100
+
+	rules := parseRules(core.Strs(s, "rules"))
+	ceilings := map[string]ceiling{}
+	var list []ceiling
+	n := 0
+	for _, r := range valid(rules) {
+		if r.Ceiling <= 0 {
+			continue
+		}
+		c := ceiling{Mbit: r.Ceiling, DownPipe: ceilDownBase + n, UpPipe: ceilUpBase + n}
+		ceilings[r.Match] = c
+		list = append(list, c)
+		n++
+	}
+	p := plan{
+		DownMbit: down * scale, UpMbit: up * scale,
+		WeightHigh: core.Int(s, "weight_high", 70), WeightNormal: core.Int(s, "weight_normal", 25),
+		WeightLow: core.Int(s, "weight_low", 5), Ceilings: list,
+	}
+	if err := m.dn.configure(p); err != nil {
+		m.fail(err.Error())
+		return nil
+	}
+
+	m.mu.Lock()
+	addrs := m.addrs
+	m.mu.Unlock()
+	def := Class(core.Str(s, "default_class", "normal"))
+	if !def.valid() {
+		def = Normal
+	}
+	text, tables := render(anchorInput{LAN: lan, Rules: rules, Addrs: addrs, DefaultClass: def,
+		Ceilings: ceilings, IsLocal: m.isLocal})
+	if err := m.fw.LoadAnchor(anchorName, text); err != nil {
+		m.fail(err.Error())
+		return nil
+	}
+	for t, addrs := range tables {
+		if err := m.fw.ReplaceTable(anchorName, t, addrs); err != nil {
+			m.fail(err.Error())
+			return nil
+		}
+	}
+	m.mu.Lock()
+	first := !m.applied
+	m.applied, m.lastErr, m.lastPlan, m.rules, m.appliedAt = true, "", p, rules, time.Now()
+	m.mu.Unlock()
+	if first {
+		m.ctx.Event("qos", fmt.Sprintf("traffic shaping is on: %.0f Mbit/s down, %.0f up, %d rules",
+			p.DownMbit, p.UpMbit, len(valid(rules))), map[string]any{"down": p.DownMbit, "up": p.UpMbit})
+	}
+	return nil
+}
+
+func (m *Module) fail(msg string) {
+	m.mu.Lock()
+	changed := m.lastErr != msg
+	m.lastErr = msg
+	m.mu.Unlock()
+	if changed {
+		m.ctx.Log.Warn("traffic shaping not applied", "reason", msg)
+	}
+}
+
+func (m *Module) tearDown() error {
+	m.mu.Lock()
+	was, ceils := m.applied, m.lastPlan.Ceilings
+	m.applied, m.lastErr = false, ""
+	m.mu.Unlock()
+	if !was {
+		return nil
+	}
+	if m.fw != nil {
+		_ = m.fw.FlushAnchor(anchorName)
+	}
+	m.dn.teardown(ceils)
+	m.ctx.Event("qos", "traffic shaping is off; the link is unmanaged again", nil)
+	return nil
+}
+
+// isLocal says whether an address rule names something on this network. A
+// CIDR counts as local when its first address does, which is what an operator
+// means by writing one.
+func (m *Module) isLocal(s string) bool {
+	if m.identity == nil {
+		return true // no better information; a bare address most often means a device here
+	}
+	ip := s
+	if i, _, err := net.ParseCIDR(s); err == nil {
+		ip = i.String()
+	}
+	return m.identity.IsLocal(ip)
+}
+
+// detectLAN picks the interface holding a local network, which is where
+// addresses are still untranslated and a rule can name a device here.
+func (m *Module) detectLAN() string {
+	if m.identity == nil {
+		return ""
+	}
+	var nets []*net.IPNet
+	for _, c := range m.identity.LocalNetworks() {
+		if _, n, err := net.ParseCIDR(c); err == nil {
+			nets = append(nets, n)
+		}
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, i := range ifaces {
+		if i.Flags&net.FlagLoopback != 0 || i.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, _ := i.Addrs()
+		for _, a := range addrs {
+			ip, _, err := net.ParseCIDR(a.String())
+			if err != nil {
+				continue
+			}
+			for _, n := range nets {
+				if n.Contains(ip) {
+					return i.Name
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------- names
+
+// resolve keeps the address tables for domain rules current. A pf table holds
+// addresses, so a rule naming a service matches the addresses this network has
+// actually been seen using for it: the server names in handshakes and the
+// answers the resolver gave.
+func (m *Module) resolve() error {
+	rules := parseRules(core.Strs(m.ctx.Settings(), "rules"))
+	want := map[string]bool{}
+	for _, r := range valid(rules) {
+		if !r.IsHost {
+			want[r.Match] = true
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	found := map[string]map[string]bool{}
+	for name := range want {
+		found[name] = map[string]bool{}
+	}
+	add := func(host, ip string) {
+		host = strings.TrimSuffix(strings.ToLower(host), ".")
+		for name := range want {
+			if host == name || strings.HasSuffix(host, "."+name) {
+				found[name][ip] = true
+			}
+		}
+	}
+	since := time.Now().Add(-7 * 24 * time.Hour).Unix()
+	if rows, err := m.ctx.Store.Rows(
+		`SELECT sni, dst_ip FROM tls_sessions WHERE ts >= ? AND sni <> '' GROUP BY sni, dst_ip LIMIT 50000`, since); err == nil {
+		for _, r := range rows {
+			s, _ := r["sni"].(string)
+			ip, _ := r["dst_ip"].(string)
+			if s != "" && ip != "" {
+				add(s, ip)
+			}
+		}
+	}
+	if rows, err := m.ctx.Store.Rows(`SELECT ip, name FROM dns_names WHERE name <> '' LIMIT 50000`); err == nil {
+		for _, r := range rows {
+			ip, _ := r["ip"].(string)
+			n, _ := r["name"].(string)
+			if ip != "" && n != "" {
+				add(n, ip)
+			}
+		}
+	}
+	out := map[string][]string{}
+	for name, set := range found {
+		for ip := range set {
+			out[name] = append(out[name], ip)
+		}
+	}
+	m.mu.Lock()
+	changed := len(out) != len(m.addrs)
+	if !changed {
+		for k, v := range out {
+			if len(v) != len(m.addrs[k]) {
+				changed = true
+				break
+			}
+		}
+	}
+	m.addrs = out
+	m.mu.Unlock()
+	if changed {
+		return m.reconcile()
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------- API
+
+func (m *Module) apiStatus(r *core.Req) (any, error) {
+	s := m.ctx.Settings()
+	m.mu.Lock()
+	applied, err, p, rules, at := m.applied, m.lastErr, m.lastPlan, m.rules, m.appliedAt
+	addrs := map[string]int{}
+	for k, v := range m.addrs {
+		addrs[k] = len(v)
+	}
+	m.mu.Unlock()
+	if rules == nil {
+		rules = parseRules(core.Strs(s, "rules"))
+	}
+	stats, _ := m.dn.stats()
+	return map[string]any{
+		"active":    core.Bool(s, "active", false),
+		"applied":   applied,
+		"error":     err,
+		"since":     at.Unix(),
+		"down_mbit": p.DownMbit, "up_mbit": p.UpMbit,
+		"rules":    rules,
+		"resolved": addrs,
+		"queues":   parseQueueStats(stats),
+		"note":     "Weights are shares, not reservations: a class only holds anything back when something else wants the link at the same moment. Download shaping is blunter than upload, because those packets have already crossed the carrier's bottleneck by the time this firewall sees them.",
+	}, nil
+}
+
+func (m *Module) apiPreview(r *core.Req) (any, error) {
+	s := m.ctx.Settings()
+	lan := strings.TrimSpace(core.Str(s, "lan_interface", ""))
+	if lan == "" {
+		lan = m.detectLAN()
+	}
+	rules := parseRules(core.Strs(s, "rules"))
+	def := Class(core.Str(s, "default_class", "normal"))
+	if !def.valid() {
+		def = Normal
+	}
+	ceilings := map[string]ceiling{}
+	n := 0
+	for _, r := range valid(rules) {
+		if r.Ceiling > 0 {
+			ceilings[r.Match] = ceiling{Mbit: r.Ceiling, DownPipe: ceilDownBase + n, UpPipe: ceilUpBase + n}
+			n++
+		}
+	}
+	m.mu.Lock()
+	addrs := m.addrs
+	m.mu.Unlock()
+	text, tables := render(anchorInput{LAN: lan, Rules: rules, Addrs: addrs, DefaultClass: def,
+		Ceilings: ceilings, IsLocal: m.isLocal})
+	counts := map[string]int{}
+	for t, a := range tables {
+		counts[t] = len(a)
+	}
+	return map[string]any{"lan": lan, "rules": rules, "anchor": text, "tables": counts}, nil
+}
+
+// parseQueueStats turns `dnctl queue show` into something a page can render:
+// per queue, how much is waiting and how much has been dropped.
+func parseQueueStats(out string) []map[string]any {
+	var res []map[string]any
+	name := map[int]string{
+		qDownHigh: "download high", qDownNormal: "download normal", qDownLow: "download low",
+		qUpHigh: "upload high", qUpNormal: "upload normal", qUpLow: "upload low",
+	}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "q") {
+			continue
+		}
+		var id int
+		if _, err := fmt.Sscanf(line, "q%d", &id); err != nil {
+			continue
+		}
+		label, ok := name[id]
+		if !ok {
+			continue
+		}
+		res = append(res, map[string]any{"queue": id, "name": label, "detail": line})
+	}
+	return res
+}

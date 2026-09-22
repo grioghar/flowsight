@@ -251,4 +251,48 @@
     }
   });
 
+  // ------------------------------------------------------------- Priority
+  // The page for the one module that changes traffic rather than describing
+  // it, so it leads with whether shaping is actually in force and what the
+  // queues are holding, not with the settings.
+  FS.registerPage('qos', {
+    title: 'Priority', refresh: 15,
+    async render(el, ctx) {
+      const [s, p] = await Promise.all([get('/api/qos/status'), get('/api/qos/preview')]);
+      if (s.error && !s.rules) { el.innerHTML = FS.err(s.error); return; }
+      const rules = s.rules || [];
+      const broken = rules.filter(r => r.error);
+      const state = !s.active ? pill('off', '')
+        : s.applied ? pill('shaping', 'warn') : pill('not applied', 'bad');
+
+      el.innerHTML = `<div class="grid cols-4">
+        ${card('State', `<div>${state}</div><div class="small muted" style="margin-top:6px">${s.applied ? 'The queue is on this firewall' : 'The carrier still decides what waits'}</div>`)}
+        ${kpi('Link, as shaped', s.applied ? `${Math.round(s.down_mbit)} / ${Math.round(s.up_mbit)}` : '—', 'Mbit/s down / up, after headroom')}
+        ${kpi('Rules', num(rules.length - broken.length), broken.length ? `${broken.length} cannot be read` : 'all readable', broken.length ? 'bad' : '')}
+        ${kpi('Resolved names', num(Object.keys(s.resolved || {}).length), 'domains with addresses to match on')}</div>
+
+      ${!s.active ? `<div class="help" style="margin-top:14px">Shaping is off, so the link behaves exactly as it does now and nothing below is in force. It is switched on in <a href="#modules?m=qos">Settings › qos</a>, which also needs the rates the link really carries.</div>` : ''}
+      ${s.error ? `<div style="margin-top:14px">${card('Not applied', `<div class="sev-high">${esc(s.error)}</div>`)}</div>` : ''}
+
+      <div style="margin-top:14px">${card('Rules', table(rules, [
+        { t: 'Match', f: r => `<b>${esc(r.match)}</b><div class="muted small">${r.is_host ? 'an address here' : 'a service out there'}</div>`, sort: 'match' },
+        { t: 'Class', f: r => r.class ? pill(r.class, r.class === 'high' ? 'ok' : r.class === 'low' ? '' : 'info') : '<span class="muted">unchanged</span>', sort: 'class' },
+        { t: 'Ceiling', f: r => r.ceiling ? `${r.ceiling} Mbit/s` : '<span class="muted">none</span>', num: true, sort: 'ceiling' },
+        { t: 'Matches', f: r => r.is_host ? '<span class="muted small">the address itself</span>'
+            : ((s.resolved || {})[r.match] ? `${num(s.resolved[r.match])} addresses` : '<span class="muted small">nothing looked it up yet</span>') },
+        { t: 'Problem', f: r => r.error ? `<span class="sev-high small">${esc(r.error)}</span>` : '' }],
+        { empty: 'No rules. Everything shares the link equally.' }))}</div>
+
+      ${s.applied ? `<div style="margin-top:14px">${card('Queues', table(s.queues || [], [
+        { t: 'Queue', f: r => esc(r.name), sort: 'name' },
+        { t: 'From dummynet', f: r => `<span class="mono small">${esc(r.detail)}</span>` }],
+        { empty: 'Nothing queued yet. A queue only holds something back when the link is full.' }))}</div>` : ''}
+
+      <div style="margin-top:14px">${card('Firewall rules these settings produce', `<pre class="mono small" style="white-space:pre-wrap;overflow-x:auto">${esc(p.anchor || 'nothing; there is no rule to apply')}</pre>`,
+        p.lan ? `on <b>${esc(p.lan)}</b>` : '<span class="sev-high">no LAN interface detected</span>')}</div>
+
+      <div class="help" style="margin-top:12px">${esc(s.note || '')}</div>`;
+    }
+  });
+
 })();

@@ -220,6 +220,53 @@ never will by design (see [Security](SECURITY.md)). Traffic that never
 crosses the firewall, such as two devices on the same subnet talking to
 each other, is not seen by any of this; only routed traffic is.
 
+### Priority (Pro)
+
+The one page that changes traffic rather than describing it. It decides who
+waits when the link is full.
+
+**It only works if the bottleneck is here.** When an uplink fills, the queue
+that decides what waits belongs to the modem or the carrier, and nothing on
+this firewall can reach into it. So shaping starts by sending everything
+through a pipe sized a little under what the link really carries, which moves
+that queue onto the firewall. That is why the two rates are settings and why
+they have to be honest: set them above the real rate and the pipe never
+fills, the carrier stays the bottleneck, and every weight below is
+decoration. Measure the link, do not copy the figure off the bill.
+
+**Upload matters more than it looks.** A saturated upload delays the
+acknowledgements that downloads depend on, so one device pushing hard ruins
+streaming in both directions. Downloads can be shaped too, but less crisply:
+those packets have already crossed the carrier's bottleneck by the time the
+firewall sees them, so the only lever is holding them back until the senders
+slow down.
+
+**Rules** are written the way you would say them:
+
+```
+192.168.1.178 = low
+redgifs.com = high
+10.0.5.0/24 = low, 20Mbit
+backup.example = 5Mbit
+```
+
+The left side is an address, a CIDR or a domain. An address is understood as
+a device on this network or as something out on the internet depending on
+which side of your local networks it falls, and the rules are written the
+right way round either way. A domain matches the addresses this network has
+actually been seen using for it, so a name nobody has looked up yet matches
+nothing until they do; the page says so per rule rather than leaving you to
+wonder.
+
+The three classes are shares, not reservations. A class with twice the weight
+gets twice the link when both want it at the same moment, and none of it is
+wasted when one does not. A rate on a rule is different: that is a ceiling,
+enforced whether anything else wants the link or not.
+
+The page shows the rules, what each one currently matches, the queues and
+what they are holding, and the firewall rules the settings would produce, so
+you can read them before trusting them.
+
 ### Data out (Business)
 
 The one page written in the present tense. Everything else in FlowSight

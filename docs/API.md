@@ -142,6 +142,13 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | POST | `/api/policy/schedule` | Create or update a schedule |  |
 | POST | `/api/policy/schedule/delete` | Delete a schedule |  |
 
+### qos
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/qos/status` | Whether shaping is on, the pipes in force, the rules and what each queue is holding |  |
+| GET | `/api/qos/preview` | The firewall rules the current settings would produce, without applying them |  |
+
 ### reports
 
 | Method | Path | What | Parameters |

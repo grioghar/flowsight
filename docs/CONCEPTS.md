@@ -38,6 +38,7 @@ the UI, and services other modules can consume. Each can be disabled.
 | firewall | Owns the pf anchors `flowsight/*`; provides `net.block` and the tables for `app.block`; maintains the local-networks table. |
 | appcontrol | Subscribes to the flow bus; a denied application's far end goes into a pf table and the state is killed. |
 | tls | The inspection CA (Pro), the certificate inventory, findings about weak or expiring certificates. |
+| qos | Traffic priority (Pro): moves the queue off the carrier and onto this firewall with dummynet, then shares the link by weight, with ceilings per device or service. The only module that changes traffic rather than describing it. |
 | egress | Live egress (Business): samples the firewall's connection counters every few seconds, so what is leaving is visible while it leaves, including pinned sessions, QUIC and tunnels that cannot be decrypted at all. Publishes an event stream other modules subscribe to. |
 | mitm | Deep inspection (Business): the proxy hands decrypted requests here, and their headers, content types and DNS-over-HTTPS questions are recorded. Bodies are decoded, never stored. |
 | ids | Reads Suricata's EVE log: alerts, TLS sessions and certificates. |

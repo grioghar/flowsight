@@ -14,6 +14,7 @@ Community expires, phones home or needs registration.
 | Device enrolment: enforce mode | monitor only | yes | yes |
 | Scheduled reports, CSV export | on-screen reports | yes | yes |
 | Notification channels (e-mail, webhook, chat) | alerts in the UI | yes | yes |
+| Traffic priority and shaping | | yes | yes |
 | Deep inspection of decrypted sessions | | | yes |
 | Live egress monitoring and interdiction | | | yes |
 | Telemetry export (OTLP / SIEM) | | | yes |
