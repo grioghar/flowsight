@@ -43,6 +43,7 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 	res, _ := m.ctx.Service("member_resolver").(core.MemberResolver)
 	now := time.Now()
 	excluded := doc.ExcludedCIDRs(res)
+	excluded = m.alsoOtherFamily(excluded)
 	exclSet := map[string]bool{}
 	for _, e := range excluded {
 		exclSet[e] = true
@@ -341,4 +342,87 @@ func (p *provider) Apply(a core.Artifact) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(a.Files[filepath.Join(m.dir, "squid.conf")]))
 	return "proxy reconfigured, interception loaded (" + hex.EncodeToString(sum[:5]) + ")", nil
+}
+
+// alsoOtherFamily widens an exclusion written in one address family to cover
+// the same devices in the other.
+//
+// An operator who excludes 192.168.2.0/24 means "those things over there",
+// not "those things over there, but only when they speak IPv4". The devices
+// that most need excluding are the ones that cannot be excluded any other
+// way: appliances with no writable trust store, which are also the ones most
+// likely to be IPv6-native. And on a flat network their IPv6 addresses sit in
+// the same prefix as everything else, so there is no range to write even if
+// the operator wanted to.
+//
+// So the range is resolved to the devices inside it, and every other address
+// those devices hold is added. The link between the two is the MAC, which is
+// the only identifier that spans both families.
+func (m *Module) alsoOtherFamily(excluded []string) []string {
+	if len(excluded) == 0 || m.ctx.Store == nil {
+		return excluded
+	}
+	var nets []*net.IPNet
+	have := map[string]bool{}
+	for _, e := range excluded {
+		have[e] = true
+		if _, n, err := net.ParseCIDR(e); err == nil {
+			nets = append(nets, n)
+		} else if ip := net.ParseIP(e); ip != nil {
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+		}
+	}
+	if len(nets) == 0 {
+		return excluded
+	}
+	rows, err := m.ctx.Store.Rows(`SELECT ip, mac FROM hosts WHERE mac IS NOT NULL AND mac <> ''`)
+	if err != nil {
+		return excluded
+	}
+	// Which devices fall inside an excluded range, and every address each holds.
+	macs := map[string]bool{}
+	byMAC := map[string][]string{}
+	for _, r := range rows {
+		ipStr, _ := r["ip"].(string)
+		mac, _ := r["mac"].(string)
+		ip := net.ParseIP(ipStr)
+		if ip == nil || mac == "" {
+			continue
+		}
+		byMAC[mac] = append(byMAC[mac], ipStr)
+		for _, n := range nets {
+			if n.Contains(ip) {
+				macs[mac] = true
+				break
+			}
+		}
+	}
+	out := append([]string(nil), excluded...)
+	for mac := range macs {
+		for _, ipStr := range byMAC[mac] {
+			if have[ipStr] {
+				continue
+			}
+			// Only widen into the family the range did not already cover.
+			ip := net.ParseIP(ipStr)
+			covered := false
+			for _, n := range nets {
+				if n.Contains(ip) {
+					covered = true
+					break
+				}
+			}
+			if covered {
+				continue
+			}
+			have[ipStr] = true
+			out = append(out, ipStr)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

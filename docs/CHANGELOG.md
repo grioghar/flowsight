@@ -12,6 +12,29 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609232121
+
+**Every device was being classified as the first rule in the list.** The rule
+loader took the whole rule object as its condition set, so `id`, `zone`,
+`confidence` and `why` sat alongside the real conditions, and the matcher
+treated any key it did not recognise as a match. Between them, every rule
+matched every device. On a live network that filed all 106 devices as
+infrastructure, televisions and smart plugs included, which made it
+impossible to write a policy that said "IoT" and have it mean anything.
+
+The conditions are now read from the rule's `when` block, and an unrecognised
+condition no longer counts as a match. A rule that fails open turns one typo
+into "everything" without saying so, which is the worst way for this to be
+wrong.
+
+**An exclusion now covers the device, not just one of its addresses.**
+Excluding a range exempted traffic in that address family only, so a
+television excluded by its IPv4 address was still intercepted over IPv6. The
+redirect rules are emitted for both families, and an exclusion written as an
+IPv4 range is resolved to the devices inside it and widened to every address
+those devices hold. The link between the two is the MAC, the only identifier
+that spans both.
+
 ## 0.9.8r202609220957
 
 **Priority: decide who waits when the link is full.** A new module and page

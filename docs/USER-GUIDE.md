@@ -220,6 +220,23 @@ never will by design (see [Security](SECURITY.md)). Traffic that never
 crosses the firewall, such as two devices on the same subnet talking to
 each other, is not seen by any of this; only routed traffic is.
 
+### Devices, zones and IPv6
+
+**A device is one thing, not one address.** A phone has an IPv4 address, one
+or more IPv6 addresses, and a MAC that ties them together. Exclusions follow
+the device: excluding a range in one address family also exempts the same
+devices when they speak the other, because "do not inspect those things over
+there" was never meant to apply only to IPv4. On a flat network this matters
+more than it sounds, since every device shares one IPv6 prefix and there is
+no range to write even if you wanted to.
+
+**Classification rules match on their conditions and nothing else.** A rule's
+`when` block is the whole of what it tests, and a condition FlowSight does
+not recognise never counts as a match. That last part is deliberate: a rule
+that fails open turns one typo into "everything", quietly, and you find out
+when every device on the network has been filed under the first rule in the
+list.
+
 ### Priority (Pro)
 
 The one page that changes traffic rather than describing it. It decides who

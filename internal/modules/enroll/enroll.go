@@ -347,8 +347,15 @@ func (m *Module) loadRules() error {
 			if !ok {
 				continue
 			}
-			rule := &Rule{
-				When: ruleMap,
+			// The conditions are the "when" object, not the rule that
+			// contains it. Assigning the whole rule put id, zone, confidence
+			// and why alongside the real conditions; combined with an
+			// unrecognised key counting as a match, every rule matched every
+			// device and the first one won. On a live network that classified
+			// all 106 devices as infrastructure.
+			rule := &Rule{}
+			if when, ok := ruleMap["when"].(map[string]interface{}); ok {
+				rule.When = when
 			}
 			if id, ok := ruleMap["id"].(string); ok {
 				rule.ID = id
@@ -726,7 +733,10 @@ func (m *Module) matchCondition(key string, want interface{}, d *Device, sig *Si
 			return false
 		}
 	}
-	return true
+	// An unrecognised condition must not match. Failing open here means one
+	// typo, or one key this build does not understand yet, silently turns a
+	// narrow rule into "everything", which is both wrong and invisible.
+	return false
 }
 
 // ============================================================================

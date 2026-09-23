@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -223,17 +224,76 @@ func Bool(m map[string]any, key string, def bool) bool {
 	return def
 }
 
+// Strs reads a list setting, with commented-out entries removed. Every list
+// in the product goes through here, so a bypass list, a rule list and a feed
+// list all comment the same way.
 func Strs(m map[string]any, key string) []string {
-	var out []string
+	var raw []string
 	switch v := m[key].(type) {
 	case []any:
 		for _, x := range v {
 			if s, ok := x.(string); ok {
-				out = append(out, s)
+				raw = append(raw, s)
 			}
 		}
 	case []string:
-		out = v
+		raw = v
+	}
+	return StripComments(raw)
+}
+
+// StripComments removes the entries of a list that have been commented out.
+//
+// Keeping a line while switching it off is how people actually work: an
+// entry is taken out to test something and put back an hour later, and
+// deleting it loses both the spelling and the reason it was there. Three
+// forms are understood, and they are the three people already type:
+//
+//	# this line is off
+//	// so is this one
+//	/* everything from here
+//	   to here is off */
+//
+// Only a marker at the start of a line counts. That is deliberate rather
+// than lazy: entries in these lists are addresses, domains and feed URLs, and
+// a URL contains "//" in the middle of every single one. Treating that as a
+// comment would quietly delete half the list.
+func StripComments(lines []string) []string {
+	var out []string
+	inBlock := false
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		if inBlock {
+			if i := strings.Index(t, "*/"); i >= 0 {
+				inBlock = false
+				// Anything after the close on the same line still counts.
+				if rest := strings.TrimSpace(t[i+2:]); rest != "" && !commented(rest) {
+					out = append(out, rest)
+				}
+			}
+			continue
+		}
+		if t == "" {
+			continue
+		}
+		if strings.HasPrefix(t, "/*") {
+			if i := strings.Index(t, "*/"); i >= 0 {
+				if rest := strings.TrimSpace(t[i+2:]); rest != "" && !commented(rest) {
+					out = append(out, rest)
+				}
+				continue
+			}
+			inBlock = true
+			continue
+		}
+		if commented(t) {
+			continue
+		}
+		out = append(out, line)
 	}
 	return out
+}
+
+func commented(t string) bool {
+	return strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//")
 }

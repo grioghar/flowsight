@@ -2,10 +2,14 @@ package enroll
 
 import (
 	"net"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/grioghar/flowsight/internal/core"
 )
 
 // TestIsRandomizedMAC tests the locally-administered MAC detection.
@@ -444,4 +448,54 @@ func makeMac(i int) string {
 		"aa:bb:cc:dd:ee:02",
 		"aa:bb:cc:dd:ee:03",
 	}[i]
+}
+
+// A rule's conditions are the "when" object, not the rule around it. Loading
+// the whole rule as the condition set put id, zone, confidence and why
+// alongside the real conditions, and an unrecognised key used to count as a
+// match, so every rule matched every device and the first one won. On a live
+// network that classified all 106 devices as infrastructure, including the
+// televisions and smart plugs.
+func TestRuleConditionsAreTheWhenObject(t *testing.T) {
+	dir := t.TempDir()
+	doc := `{"rules":[
+      {"id":"hypervisor-guest","zone":"infra","confidence":"high","why":"a guest",
+       "when":{"guest_kind":["vm","ct","node"]}},
+      {"id":"iot-vendor","zone":"iot","confidence":"high","why":"a gadget",
+       "when":{"vendor":["Tuya","Roku","Amazon Technologies"]}}]}`
+	if err := os.WriteFile(filepath.Join(dir, "enroll-rules.json"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := &Module{ctx: &core.Context{Platform: &core.Platform{EtcDir: dir}}}
+	if err := m.loadRules(); err != nil {
+		t.Fatalf("loadRules: %v", err)
+	}
+	if len(m.rules) != 2 {
+		t.Fatalf("want 2 rules, got %d", len(m.rules))
+	}
+	for _, r := range m.rules {
+		for _, leaked := range []string{"id", "zone", "confidence", "why", "when"} {
+			if _, ok := r.When[leaked]; ok {
+				t.Errorf("rule %s: %q leaked into the conditions", r.ID, leaked)
+			}
+		}
+	}
+
+	// A Roku must not match the hypervisor rule just because that rule is first.
+	roku := &Device{Vendor: "Roku, Inc", Hostname: "roku-ultra"}
+	if m.ruleMatches(m.rules[0], roku, nil) {
+		t.Error("a gadget matched the hypervisor rule; conditions are not being applied")
+	}
+	if !m.ruleMatches(m.rules[1], roku, nil) {
+		t.Error("a Roku should match the vendor rule")
+	}
+}
+
+// An unrecognised condition must never count as a match, or one typo turns a
+// narrow rule into "everything" with nothing to show for it.
+func TestUnknownConditionDoesNotMatch(t *testing.T) {
+	m := &Module{}
+	if m.matchCondition("not_a_real_condition", []interface{}{"x"}, &Device{Vendor: "Tuya"}, nil) {
+		t.Error("an unknown condition key must not match")
+	}
 }

@@ -335,7 +335,12 @@ func pfRules(lanIfaces []string, nets []string, exclusions []string, httpPort, h
 		}
 		if excl != "" {
 			// pf has no "from A and not B" in one rule; use no rdr for the exclusions first.
+			// Both families: a device excluded by its IPv4 address is the same
+			// device when it speaks IPv6, and exempting only half of it is how
+			// a television ends up intercepted on one protocol and not the
+			// other. The table carries whichever addresses were resolved.
 			fmt.Fprintf(&b, "no rdr %sinet proto tcp from <fs_web_excluded> to any port { 80, 443 }\n", on)
+			fmt.Fprintf(&b, "no rdr %sinet6 proto tcp from <fs_web_excluded> to any port { 80, 443 }\n", on)
 		}
 		fmt.Fprintf(&b, "rdr %sinet proto tcp from %s to ! <%s> port 80 -> 127.0.0.1 port %d\n", on, src, localTable, httpPort)
 		fmt.Fprintf(&b, "rdr %sinet proto tcp from %s to ! <%s> port 443 -> 127.0.0.1 port %d\n", on, src, localTable, httpsPort)
