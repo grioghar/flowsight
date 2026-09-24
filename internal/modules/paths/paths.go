@@ -61,6 +61,11 @@ type Module struct {
 	assistAsked   []time.Time
 	assistTotal   int
 	assistErr     string
+	nsidQueue     []assistCandidate
+	nsidAsked     int
+	nsidPlaced    int
+	rootSites     []rootSite
+	rootByID      map[string]rootSite
 	abuseAsked    int
 	cableErr      string
 	pending       map[string]bool // addresses still needing the slow registry lookup
@@ -108,6 +113,7 @@ func (m *Module) Info() core.ModuleInfo {
 			"terrestrial_urls":       "",
 			"osm_telecom":            true,
 			"provider_feeds":         true,
+			"identify":               true,
 			"geofeeds":               true,
 			"abuseipdb_key":          "",
 			"ai_provider":            "off",
@@ -158,6 +164,8 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "With a key, every hop on a route is checked against AbuseIPDB -- abuse confidence, reports, ISP, usage type -- and the answer shown on its card and kept a week. Twenty addresses are asked about every few minutes, well inside the free allowance of a thousand a day. To get a key: create a free account at abuseipdb.com, open Account \u203a API, click Create Key, and paste it here. Leave empty to disable."},
 			{Section: "Where things are", Key: "geofeeds", Label: "Follow geofeeds named in the registry", Type: "bool",
 				Help: "Some operators publish where their prefixes are (RFC 8805, prefix, country, region, city) and name the file in their registry object. FlowSight already asks the registry about every hop; with this on it keeps any geofeed it is pointed to, fetches each once a week, and uses its rows like a provider's own range list. Listed at /api/paths/geofeeds."},
+			{Section: "Where things are", Key: "identify", Label: "Ask anycast servers to identify themselves", Type: "bool",
+				Help: "Root servers and large resolvers answer a CHAOS TXT query for id.server with the name of the instance that answered -- DFW.cf.f.root-servers.org, c01.MCI.eroot. The root operators publish their site lists with those identifiers, fetched weekly, so an answer is looked up rather than guessed; elsewhere the airport code in it is read like a router name. The clock still rules. One small packet per server, twenty per run, remembered a week."},
 			{Section: "Where things are", Key: "provider_feeds", Label: "Use the clouds' published address ranges", Type: "bool",
 				Help: "AWS, Google Cloud, Microsoft Azure, Oracle Cloud, DigitalOcean and Linode publish which prefixes they use in which region; Cloudflare and Fastly publish their anycast ranges. For an address in one of those ranges this is the operator's own statement of where it is and outranks the address database and a latency estimate. An anycast address is announced everywhere at once, so a database position for one is set aside and the hop is placed by timing. Fetched weekly; Microsoft's file is read as a stream and kept compact."},
 			{Section: "Where things are", Key: "azure_service_tags_url", Label: "Azure service tags file", Type: "string",
@@ -210,6 +218,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("geofeeds", 30*time.Minute, m.refreshGeofeeds, core.Delayed())
 	ctx.Every("reputation", 5*time.Minute, m.reputationJob, core.Delayed())
 	ctx.Every("assistant", 5*time.Minute, m.assistantJob, core.Delayed())
+	ctx.Every("identify", 5*time.Minute, m.identifyJob, core.Delayed())
+	ctx.Every("rootsites", 24*time.Hour, m.refreshRootSites, core.Delayed())
+	_ = m.loadRootSites()
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/geofeeds", m.apiGeofeeds, core.Needs("paths.map"),

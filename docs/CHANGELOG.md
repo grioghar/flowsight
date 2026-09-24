@@ -12,6 +12,24 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242123
+
+**Anycast servers are asked where they are.** Root servers and large
+resolvers answer a CHAOS TXT query for `id.server` with the name of the
+instance that answered -- `DFW.cf.f.root-servers.org`, `c01.MCI.eroot`,
+`groot-con2-1` -- and the root operators publish, per letter, their sites
+with those identifiers and the town each is in. FlowSight now fetches those
+site lists weekly (verified today against IANA's root hints and live DNS:
+all twenty-six addresses agree) and asks each anycast hop to identify
+itself, one small packet, once a week. An identifier on a published site
+list is looked up; any other is read like a router name; either way the
+round trip may veto it. The hop is then drawn at the instance that actually
+answered -- for this network A, F and E at Dallas and Kansas City, B and I
+at Ashburn, J and L at Los Angeles, M at San Jose, C at Querétaro, K at
+London -- and its card shows the answer, the site and how it was read.
+*Ask anycast servers to identify themselves* under *Where things are*
+turns it off; the *Data sources* card counts them.
+
 ## 0.9.8r202609242119
 
 **A language model, for the hops nothing else can place.** *Settings › paths

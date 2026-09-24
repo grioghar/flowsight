@@ -191,6 +191,14 @@ public service; an AS number must be digits before it is placed in a URL.
 The fixed public services asked -- RIPE IPmap, rdap.org, PeeringDB, Team Cymru
 over DNS -- are asked at bounded rates and their answers cached for weeks.
 
+## Server identification
+
+A CHAOS-class TXT query for `id.server` is a single 30-byte UDP packet to
+port 53 of an address already seen as a hop; nothing about this network is in
+it, and the answer is a short string that is parsed, bounded and cached. The
+root operators' site lists come from root-servers.org through the public-only
+client, weekly.
+
 ## AI lookup
 
 Off by default. When a provider is configured, the daemon sends -- only for

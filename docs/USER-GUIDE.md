@@ -493,6 +493,13 @@ round trip -- and each row marks its hop on the map, travels to it on click,
 and frames the whole route from the endpoint. Both the key and the table fold
 to their titles.
 
+**Servers that say where they are.** Root servers and most large resolvers
+answer `id.server` with the name of the instance you reached; FlowSight asks
+each anycast hop once a week and, using the root operators' published site
+lists (or the airport code in the answer), draws the hop at the site that
+actually answered. The card shows the answer, the site and how it was read;
+the round trip can still veto it.
+
 **Anycast, and hops beside their upstream.** Resolvers and root servers are
 announced from dozens of sites at once; the instance you reach is the one
 beside the last router before it. A hop answering within a couple of

@@ -38,6 +38,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		"providers":    m.provider,
 		"geofeeds":     m.geofeedStatus(),
 		"assistant":    m.assistStatus(),
+		"identify":     m.identifyStatus(),
 		"reputation":   map[string]any{"on": m.abuseKey() != "", "asked_this_session": m.abuseAsked, "known": m.ctx.Store.KVCount(abuseKV), "error": m.abuseErr},
 		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
@@ -628,6 +629,21 @@ func (m *Module) describe(nodes []Node, h Home) {
 						n.DBLat, n.DBLon = n.Lat, n.Lon
 						n.Lat, n.Lon, n.Located, n.Source = 0, 0, false, ""
 						n.City, n.Region, n.Country = "", "", ""
+					}
+					// The server itself is the one authority on which
+					// instance answered. Asked once a week; placed here
+					// when it said, and the clock agreed.
+					if id := m.identityFor(ip); id != nil {
+						ii := *id
+						n.Identity = &ii
+						if id.Located {
+							n.Lat, n.Lon, n.Located, n.Source = id.Lat, id.Lon, true, "identified"
+							n.City, n.Region, n.Country = splitPlace(id.Site)
+							n.SetAside = ""
+							n.Inferred = false
+						}
+					} else if n.RTT > 0 {
+						m.wantIdentity(ip, n.RTT)
 					}
 				} else if !n.Located || n.Source == "database" || n.Source == "corrected" {
 					if n.Located && n.Source == "database" {

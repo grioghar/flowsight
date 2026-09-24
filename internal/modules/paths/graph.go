@@ -99,10 +99,13 @@ type Node struct {
 	Anycast  bool   `json:"anycast,omitempty"`
 	// Guess is a language model's reading of the name, when that is what
 	// placed the hop; kept beside the position so the card can say so.
-	Guess       *Guess `json:"guess,omitempty"`
-	CorrectedBy string `json:"corrected_by,omitempty"`
-	CorrectedAt int64  `json:"corrected_at,omitempty"`
-	SetAside    string `json:"database_set_aside,omitempty"`
+	Guess *Guess `json:"guess,omitempty"`
+	// Identity is what an anycast server said about itself when asked, and
+	// where that put it.
+	Identity    *Identity `json:"identity,omitempty"`
+	CorrectedBy string    `json:"corrected_by,omitempty"`
+	CorrectedAt int64     `json:"corrected_at,omitempty"`
+	SetAside    string    `json:"database_set_aside,omitempty"`
 	// Detail is who runs this hop and, where it can be told, which building.
 	// Kept as a pointer so a hop nothing is known about costs nothing in the
 	// payload rather than carrying a page of empty fields.
