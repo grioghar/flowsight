@@ -12,6 +12,18 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241626
+
+**The map's notes fold away.** They say where the land and the cables come
+from and what the map does not claim, which is worth keeping and worth reading
+once -- but four dense lines sat open under every visit, and they were the
+last thing pushing the map card past the bottom of the window. They are now
+behind *About this map*, folded to start, and whether you leave them open is
+remembered.
+
+That was the remaining overflow: the card now ends well inside the window
+rather than just past it.
+
 ## 0.9.8r202609241624
 
 **The map fills the screen, and everything that belongs with it is on the

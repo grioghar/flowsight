@@ -672,7 +672,15 @@
           <div class="muted small hphint">Hover or click any hop on the map, or any step in the route, for who runs it, where it is, and how that was decided.</div>
         </aside>
         </div>
-        <div class="help" style="margin-top:8px">Land outlines are Natural Earth 1:110m, public domain. ${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. Coordinates come from an address database: dependable for end-user addresses and rough for carrier equipment, which is why placements the measured latency rules out are circled rather than trusted. Where a router's hostname carries a site code, that is used instead of the database, and an amber line shows where the two disagreed.</div>`)}</div>
+        ${/* Folded by default. It is worth having -- it says where the land
+              and the cables come from, and what the map does not claim -- but
+              it is four dense lines that a reader needs once and then never
+              again, and unfolded it pushed the map itself off the bottom of
+              the window. */''}
+        <details class="maphelp" id="maphelp">
+          <summary>About this map</summary>
+          <div class="help" style="margin-top:6px">Land outlines are Natural Earth 1:110m, public domain. ${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. Coordinates come from an address database: dependable for end-user addresses and rough for carrier equipment, which is why placements the measured latency rules out are circled rather than trusted. Where a router's hostname carries a site code, that is used instead of the database, and an amber line shows where the two disagreed.</div>
+        </details>`)}</div>
 
       <div class="grid cols-4">
         ${kpi('Destinations with a route', num((dests.destinations || []).length), `${num(st.hops)} hops measured`)}
@@ -762,6 +770,15 @@
 
       // Folded or not is a per-reader preference, so it is remembered here and
       // nowhere else; losing it costs nothing.
+      // Whether the notes are open is the same kind of preference as the key.
+      const mh = FS.$('#maphelp', el);
+      if (mh) {
+        try { mh.open = localStorage.getItem('fs.maphelp') === '1'; } catch (e) { }
+        mh.addEventListener('toggle', () => {
+          try { localStorage.setItem('fs.maphelp', mh.open ? '1' : '0'); } catch (e) { }
+        });
+      }
+
       const lgd = FS.$('#maplegend', el), lgb = FS.$('#lgtoggle', el);
       if (lgd && lgb) {
         const set = (open) => {

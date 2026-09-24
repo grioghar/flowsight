@@ -385,3 +385,15 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .trailbox .crumb { flex: none; }
 .trailbox .help, .trailbox .actions { flex: none; }
 .trailbox .help { margin-top: 6px !important; }
+
+/* The map's notes, folded. Worth keeping -- they say where the land and the
+   cables come from and what the map does not claim -- but they are read once
+   and then never again, and open they pushed the map off the window. */
+.maphelp { margin-top: 8px; }
+.maphelp > summary { cursor: pointer; font-size: 11.5px; color: var(--muted);
+  list-style: none; display: inline-flex; align-items: center; gap: 5px; }
+.maphelp > summary::-webkit-details-marker { display: none; }
+.maphelp > summary::before { content: "+"; width: 13px; height: 13px; line-height: 12px;
+  text-align: center; border: 1px solid var(--line); border-radius: 3px; font-size: 11px; }
+.maphelp[open] > summary::before { content: "\2212"; }
+.maphelp > summary:hover { color: var(--ink); }

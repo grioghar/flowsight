@@ -251,7 +251,9 @@ parallel links, that is one point carrying several addresses rather than
 several points.
 
 The map fills the window, with the hop detail beside it and the route beneath
-it, so nothing you click scrolls what it fills out of view. The key sits in
+it, so nothing you click scrolls what it fills out of view. *About this map*
+under it unfolds the notes on where the land and cable data come from and what
+the map does not claim. The key sits in
 the map's bottom corner and stays there at any zoom; fold it away with *Key*
 if it is covering something.
 

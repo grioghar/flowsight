@@ -261,6 +261,12 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('class="land"') < 0) throw new Error('the map has no land on it');
   if (!FS.landPath || FS.landPath.length < 10000) throw new Error('land outlines look truncated');
   if (h.indexOf('Natural Earth') < 0) throw new Error('the land source should be credited');
+  // The notes are kept, but folded: read once, then in the way.
+  if (h.indexOf('<details class="maphelp"') < 0) throw new Error('the map notes should fold');
+  if (h.indexOf('About this map') < 0) throw new Error('the fold needs a label saying what is inside');
+  var det = h.slice(h.indexOf('<details class="maphelp"'), h.indexOf('</details>'));
+  if (det.indexOf(' open') >= 0) throw new Error('the notes should start folded');
+  if (det.indexOf('Natural Earth') < 0) throw new Error('folding must keep the credit, not drop it');
   if (mapOnly.indexOf('class="cable"') < 0) throw new Error('cables are not drawn');
   if ((mapOnly.match(/class="cable"/g) || []).length !== 2) throw new Error('want one path per cable run');
   var pac = mapOnly.slice(mapOnly.indexOf('class="cable"', mapOnly.indexOf('class="cable"') + 1));
