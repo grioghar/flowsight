@@ -66,6 +66,7 @@ func (m *Module) Info() core.ModuleInfo {
 			"retrace_hours":    24,
 			"max_destinations": 300,
 			"trace_ipv6":       true,
+			"home":             "",
 		},
 		Schema: []core.SettingField{
 			{Key: "active", Label: "Trace paths", Type: "bool",
@@ -77,6 +78,8 @@ func (m *Module) Info() core.ModuleInfo {
 			{Key: "max_destinations", Label: "Destinations kept", Type: "int",
 				Help: "The busiest destinations are traced first; beyond this the long tail is left alone."},
 			{Key: "trace_ipv6", Label: "Trace IPv6 destinations too", Type: "bool"},
+			{Key: "home", Label: "Your location", Type: "string", Placeholder: "39.1836,-96.5717",
+				Help: "Latitude and longitude, comma separated. The map is drawn from here, and it is the reference for checking whether a hop could really be where the database says: nothing can answer faster than light in fibre takes to get there and back. Empty: worked out from this gateway's public address, which is usually the right town and sometimes the wrong state. The Map page can fill it in from your browser, which knows precisely."},
 		},
 	}
 }
@@ -103,7 +106,11 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/paths/graph", m.apiGraph, core.Needs("paths.map"),
 		core.Doc("The whole picture as nodes and legs, with shared legs collapsed"),
 		core.Params("device", "source address", "country", "filter", "max_latency", "ms"))
-	ctx.Panel(core.Panel{ID: "paths", Title: "Paths", Group: "Visibility", Order: 50, Icon: "paths", Feature: "paths.map"})
+	ctx.Route("GET", "/api/paths/home", m.apiGetHome, core.Needs("paths.map"),
+		core.Doc("The origin the map is drawn from, and what could be detected for it"))
+	ctx.Route("POST", "/api/paths/home", m.apiSetHome, core.Write(), core.Needs("paths.map"),
+		core.Doc("Declare your location ({lat, lon}), or {clear:true} to go back to detecting it"))
+	ctx.Panel(core.Panel{ID: "paths", Title: "Map", Group: "Visibility", Order: 50, Icon: "paths", Feature: "paths.map"})
 	return nil
 }
 

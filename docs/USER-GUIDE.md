@@ -220,7 +220,7 @@ never will by design (see [Security](SECURITY.md)). Traffic that never
 crosses the firewall, such as two devices on the same subnet talking to
 each other, is not seen by any of this; only routed traffic is.
 
-### Paths (Pro)
+### Map (Pro)
 
 Where traffic actually goes, measured rather than assumed. Everything else in
 FlowSight watches the first hop; this traces the rest of the route and keeps
@@ -264,6 +264,23 @@ underneath rather than placed at zero, which would pile a stack of routers
 into the Gulf of Guinea. Hops that never answered are counted and not drawn
 at all, and they keep their position in the numbering so the path is not
 quietly reported as shorter than it is.
+
+**Your location.** The map is drawn from an origin, and that origin is also
+the reference for the one check that can prove a placement wrong. Left alone
+it is worked out from the gateway's own public address, which is usually the
+right town and occasionally the wrong state, because it is where the carrier
+registered the block rather than where the wire ends. The page can fill it in
+from your browser, which knows precisely and asks your permission first, or
+from the public address, or you can type it. It is also *Settings › paths ›
+Your location*.
+
+**Placements the physics rules out.** Light in fibre covers about 200,000 km
+per second, so a round trip cannot beat twice the straight-line distance
+divided by that, before any routing detour or equipment delay. A hop that
+answers faster than that floor is not where the database says it is, and the
+map circles it and lists it with the numbers. On a typical network several
+hops fail this: anycast addresses are the usual cause, because the block is
+registered in one place and answered from wherever is nearest you.
 
 This needs the city-level database, since the country one carries no
 coordinates. See *Settings › enrich › How much detail*.

@@ -48,6 +48,30 @@ placed.
 Saving a device's zone no longer counts as seeing it, so *last seen* is
 when the device was actually heard from.
 
+## 0.9.8r202609240741
+
+**The map has its own place in the menu, and knows where you are.** It is
+**Map** under FlowSight now rather than buried, and the page carries the
+origin it is drawn from.
+
+Left alone the origin is worked out from the gateway's public address, which
+is usually the right town and occasionally the wrong state, because it is
+where the carrier registered the block rather than where the wire ends. You
+can declare it instead: type it, take the address database's answer, or let
+the browser tell you, which knows precisely and asks permission first.
+
+**And that origin earns its keep immediately.** Light in fibre covers about
+200,000 km per second, so a round trip cannot beat twice the straight-line
+distance divided by that, before any routing detour or equipment delay. A hop
+that answers faster than that floor is not where the database says it is. The
+map circles those and lists them with the numbers.
+
+On this gateway seven of twenty-seven placements fail it. The clearest is
+1.1.1.1, which the database puts in Sydney, 14,071 km away, where nothing
+could answer in under 141 ms. It answers in 22. It is anycast: registered in
+one place, answered from whichever site is nearest you. The map no longer
+draws a line to Australia and calls it measurement.
+
 ## 0.9.8r202609240731
 
 **Which addresses belong to which device now survives a restart.** A device's

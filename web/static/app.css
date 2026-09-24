@@ -179,3 +179,5 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .pathmap .hop { stroke: var(--panel); stroke-width: .6; }
 .pathmap .hop.silent { fill: none; stroke: var(--muted); stroke-dasharray: 1.5 1.5; }
 .unlocated { margin-top: 10px; }
+/* A placement the measured latency rules out. */
+.pathmap .ruledout { fill: none; stroke: var(--bad); stroke-width: 1.4; opacity: .95; }

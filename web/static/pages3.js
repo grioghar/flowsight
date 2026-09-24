@@ -313,16 +313,18 @@
       if (ctx.params.country) q.push('country=' + encodeURIComponent(ctx.params.country));
       if (ctx.params.max_latency) q.push('max_latency=' + encodeURIComponent(ctx.params.max_latency));
       if (ctx.params.max_hops) q.push('max_hops=' + encodeURIComponent(ctx.params.max_hops));
-      const [st, g, dests, devs] = await Promise.all([
+      const [st, g, dests, devs, home] = await Promise.all([
         get('/api/paths/status'),
         get('/api/paths/graph' + (q.length ? '?' + q.join('&') : '')),
         get('/api/paths/destinations?limit=400'),
-        get('/api/paths/devices')]);
+        get('/api/paths/devices'),
+        get('/api/paths/home')]);
       if (st.error && !g.nodes) { el.innerHTML = FS.err(st.error); return; }
 
       const nodes = g.nodes || [], legs = g.legs || [];
       const byId = {}; nodes.forEach(n => byId[n.id] = n);
       const located = nodes.filter(n => n.located);
+      const impossible = nodes.filter(n => n.impossible);
       const unlocated = nodes.filter(n => !n.located && !n.silent);
       const silent = nodes.filter(n => n.silent).length;
 
@@ -348,8 +350,22 @@
       located.forEach(n => {
         const [x, y] = xy(n);
         const label = [n.city, n.region, n.country].filter(Boolean).join(', ');
-        dots += `<circle class="hop" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2 + Math.min(3, n.ips.length)).toFixed(1)}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${n.names && n.names.length ? '\n' + esc(n.names.join(', ')) : ''}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}</title></circle>`;
+        if (n.impossible) dots += `<circle class="ruledout" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7"/>`;
+        dots += `<circle class="hop" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2 + Math.min(3, n.ips.length)).toFixed(1)}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${n.names && n.names.length ? '\n' + esc(n.names.join(', ')) : ''}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\nRULED OUT: ' + esc(n.why) : ''}</title></circle>`;
       });
+
+      // Built before the template so it is part of the page, not appended to it.
+      const rulesOut = impossible.length ? `<div style="margin-top:14px">${card('Placements the physics rules out', table(impossible.map(n => ({
+          index: n.index, ips: n.ips.join(', '),
+          where: [n.city, n.region, n.country].filter(Boolean).join(', '),
+          rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km })), [
+          { t: 'Hop', f: r => num(r.index), num: true, sort: 'index' },
+          { t: 'Address', f: r => `<span class="mono small">${esc(r.ips)}</span>`, sort: 'ips' },
+          { t: 'Database says', f: r => esc(r.where) || '<span class="muted">unknown</span>', sort: 'where' },
+          { t: 'Answered in', f: r => `${r.rtt} ms`, num: true, sort: 'rtt' },
+          { t: 'Could not beat', f: r => `${r.floor} ms`, num: true, sort: 'floor' },
+          { t: 'Away', f: r => `${num(r.km)} km`, num: true, sort: 'km' }]),
+          'light in fibre covers about 200,000 km/s, so nothing can answer sooner than twice the distance divided by that')}</div>` : '';
 
       const countries = {};
       nodes.forEach(n => { if (n.country) countries[n.country] = (countries[n.country] || 0) + 1; });
@@ -357,9 +373,24 @@
       el.innerHTML = `<div class="grid cols-4">
         ${kpi('Destinations with a route', num((dests.destinations || []).length), `${num(st.hops)} hops measured`)}
         ${kpi('Placed on the map', num(located.length), `${num(unlocated.length)} have no coordinates`, unlocated.length > located.length ? 'warn' : '')}
-        ${kpi('Shared legs', num(legs.filter(l => l.shared).length), `of ${num(legs.length)} total`)}
+        ${kpi('Ruled out by latency', num(impossible.length), impossible.length ? 'too far away to have answered that fast' : 'every placement is possible', impossible.length ? 'bad' : '')}
         ${card('Tracing', st.active ? `<div>${pill('on', 'ok')}</div><div class="small muted" style="margin-top:6px">Last run ${st.last_run > 0 ? ago(st.last_run) : 'not yet'}.</div>`
           : `<div>${pill('off', '')}</div><div class="small muted" style="margin-top:6px">Switch it on in <a href="#modules?m=paths">Settings &rsaquo; paths</a>. Nothing is probed that this network has not already contacted.</div>`)}</div>
+
+      <div style="margin-top:14px">${card('Your location', `
+        <div class="small">${home.ok
+          ? `Drawing from <b>${home.lat.toFixed(4)}, ${home.lon.toFixed(4)}</b> <span class="muted">(${esc(home.source)})</span>`
+          : `<span class="sev-high">Not known yet.</span> Without it the map has no origin and nothing can be checked against the speed of light.`}</div>
+        ${home.detected && (home.detected.lat || home.detected.lon) ? `<div class="muted small" style="margin-top:4px">Your public address ${esc(home.public_address || '')} places you near ${esc([home.detected.city, home.detected.region, home.detected.country].filter(Boolean).join(', '))}.</div>` : ''}
+        <div class="actions" style="margin-top:8px">
+          <input id="h-lat" style="width:110px" placeholder="latitude" value="${home.ok ? home.lat.toFixed(4) : ''}">
+          <input id="h-lon" style="width:110px" placeholder="longitude" value="${home.ok ? home.lon.toFixed(4) : ''}">
+          <button class="btn primary" id="h-save">Save</button>
+          <button class="btn" id="h-browser">Use this browser's location</button>
+          ${home.detected && (home.detected.lat || home.detected.lon) ? `<button class="btn" id="h-detect">Use the public address</button>` : ''}
+          ${home.configured ? `<button class="btn" id="h-clear">Go back to detecting it</button>` : ''}
+        </div>
+        <div class="help" style="margin-top:6px">${esc(home.note || '')}</div>`)}</div>
 
       <div style="margin-top:14px">${card('Where the traffic goes', `
         <div class="actions" style="margin-bottom:8px">
@@ -382,6 +413,8 @@
         </svg>
         <div class="help" style="margin-top:8px">Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. The grid is longitude and latitude, not a map of land: these coordinates come from an address database and are dependable for end-user addresses and rough for carrier equipment.</div>`)}</div>
 
+      ${rulesOut}
+
       ${unlocated.length || silent ? `<div class="unlocated">${card('Not on the map', table(unlocated.map(n => ({
           index: n.index, ips: n.ips.join(', '), names: (n.names || []).join(', '), country: n.country || '' })), [
           { t: 'Hop', f: r => num(r.index), num: true, sort: 'index' },
@@ -399,6 +432,35 @@
         { t: 'Reached', f: r => r.complete ? pill('yes', 'ok') : pill('no', ''), sort: 'complete' },
         { t: 'Traced', f: r => ago(r.ts), sort: 'ts' }],
         { empty: 'Nothing traced yet.' }))}</div>`;
+
+
+      const saveHome = async (lat, lon) => {
+        const r = await post('/api/paths/home', { lat: lat, lon: lon });
+        FS.toast(r.error || 'Location saved', !!r.error);
+        if (!r.error) FS.render();
+      };
+      FS.$('#h-save', el).onclick = () => {
+        const la = parseFloat(FS.$('#h-lat', el).value), lo = parseFloat(FS.$('#h-lon', el).value);
+        if (isNaN(la) || isNaN(lo)) { FS.toast('Give a latitude and a longitude', true); return; }
+        saveHome(la, lo);
+      };
+      const browserBtn = FS.$('#h-browser', el);
+      if (browserBtn) browserBtn.onclick = () => {
+        if (!navigator.geolocation) { FS.toast('This browser will not share a location', true); return; }
+        FS.toast('Asking the browser…');
+        navigator.geolocation.getCurrentPosition(
+          (p) => saveHome(p.coords.latitude, p.coords.longitude),
+          (e) => FS.toast('The browser declined: ' + (e && e.message ? e.message : 'no reason given'), true),
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
+      };
+      const detectBtn = FS.$('#h-detect', el);
+      if (detectBtn) detectBtn.onclick = () => saveHome(home.detected.lat, home.detected.lon);
+      const clearBtn = FS.$('#h-clear', el);
+      if (clearBtn) clearBtn.onclick = async () => {
+        const r = await post('/api/paths/home', { clear: true });
+        FS.toast(r.error || 'Back to detecting it', !!r.error);
+        if (!r.error) FS.render();
+      };
 
       FS.panZoomHandle = FS.panZoom(FS.$('#pathmap', el), MAPW, MAPH);
       const go = () => {

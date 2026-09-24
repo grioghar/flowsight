@@ -267,3 +267,59 @@ func TestDeviceFilterCoversEveryAddress(t *testing.T) {
 		t.Errorf("the laptop holds three addresses, got %d", len(groups["aa:bb:cc:dd:ee:01"]))
 	}
 }
+
+// The origin is the reference for the only check that can falsify a
+// placement, so getting it wrong turns correct hops into impossible ones and
+// back again. It has to parse strictly.
+func TestParseLatLon(t *testing.T) {
+	for in, want := range map[string][2]float64{
+		"39.1836,-96.5717":    {39.1836, -96.5717},
+		" 51.5074 , -0.1278 ": {51.5074, -0.1278},
+		"-33.8688,151.2093":   {-33.8688, 151.2093},
+	} {
+		lat, lon, ok := parseLatLon(in)
+		if !ok || lat != want[0] || lon != want[1] {
+			t.Errorf("%q -> %v,%v ok=%v; want %v", in, lat, lon, ok, want)
+		}
+	}
+	for _, bad := range []string{"", "39.1836", "north,west", "91,0", "-91,0", "0,181", "0,-181", "0,0"} {
+		if _, _, ok := parseLatLon(bad); ok {
+			t.Errorf("%q should not parse as a location", bad)
+		}
+	}
+}
+
+// Light in fibre covers about 200,000 km/s, so a round trip cannot beat twice
+// the straight-line distance divided by that. Anything faster means the
+// placement is wrong, not the measurement.
+func TestImpossiblePlacementsAreFlagged(t *testing.T) {
+	home := Home{Lat: 39.1836, Lon: -96.5717, OK: true} // Kansas
+	m := &Module{}
+	nodes := []Node{
+		// Anycast: the database says Sydney, the answer comes in 22 ms.
+		{ID: "a", Located: true, Lat: -33.8688, Lon: 151.2093, RTT: 22.3},
+		// Dallas at 17 ms is entirely ordinary.
+		{ID: "b", Located: true, Lat: 32.7767, Lon: -96.7970, RTT: 17.0},
+		// No round trip measured, so nothing can be said.
+		{ID: "c", Located: true, Lat: -33.8688, Lon: 151.2093},
+	}
+	m.checkPlausible(nodes, home)
+	if !nodes[0].Impossible {
+		t.Errorf("Sydney in 22 ms is impossible; floor was %v ms over %v km", nodes[0].FloorMS, nodes[0].DistanceKM)
+	}
+	if nodes[0].FloorMS < 130 {
+		t.Errorf("Kansas to Sydney should floor above 130 ms, got %v", nodes[0].FloorMS)
+	}
+	if nodes[1].Impossible {
+		t.Errorf("Dallas in 17 ms is fine; floor was %v ms", nodes[1].FloorMS)
+	}
+	if nodes[2].Impossible {
+		t.Error("a hop with no measured round trip cannot be ruled out")
+	}
+	// With no origin, nothing is claimed either way.
+	clean := []Node{{ID: "a", Located: true, Lat: -33.8688, Lon: 151.2093, RTT: 1}}
+	m.checkPlausible(clean, Home{})
+	if clean[0].Impossible {
+		t.Error("without an origin there is no reference, so nothing should be flagged")
+	}
+}

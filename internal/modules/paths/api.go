@@ -9,6 +9,7 @@ package paths
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -101,8 +102,57 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	}
 	g := buildGraph(rows)
 	m.locate(g.Nodes)
+	h := m.home()
+	m.checkPlausible(g.Nodes, h)
 	g = filterGraph(g, r.Q("country", ""), float64(r.QInt("max_latency", 0, 0, 100000)), r.QInt("max_hops", 0, 0, 64))
+	g.Home = &h
 	return g, nil
+}
+
+func (m *Module) apiGetHome(r *core.Req) (any, error) {
+	h := m.home()
+	out := map[string]any{
+		"configured": core.Str(m.ctx.Settings(), "home", ""),
+		"ok":         h.OK, "lat": h.Lat, "lon": h.Lon, "source": h.Source,
+		"note": "Declaring this matters more than it looks: it is the reference for deciding whether a hop could be where the database claims. An origin that is out by a few hundred kilometres turns correct placements into impossible ones and back again.",
+	}
+	// What the public address would give, offered as a starting point.
+	if ip := m.publicAddress(); ip != "" {
+		out["public_address"] = ip
+		if m.rdns != nil {
+			if info, ok := m.rdns.Lookup([]string{ip})[ip]; ok {
+				out["detected"] = map[string]any{
+					"lat": info.Lat, "lon": info.Lon, "city": info.City,
+					"region": info.Region, "country": info.Country,
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+func (m *Module) apiSetHome(r *core.Req) (any, error) {
+	var in struct {
+		Lat   float64 `json:"lat"`
+		Lon   float64 `json:"lon"`
+		Clear bool    `json:"clear"`
+	}
+	if err := r.Decode(&in); err != nil {
+		return nil, err
+	}
+	value := ""
+	if !in.Clear {
+		v := strconv.FormatFloat(in.Lat, 'f', 4, 64) + "," + strconv.FormatFloat(in.Lon, 'f', 4, 64)
+		if _, _, ok := parseLatLon(v); !ok {
+			return nil, core.BadRequest("latitude must be between -90 and 90, longitude between -180 and 180")
+		}
+		value = v
+	}
+	if err := m.ctx.Config.SetModule("paths", map[string]any{"home": value}); err != nil {
+		return nil, err
+	}
+	h := m.home()
+	return map[string]any{"ok": true, "lat": h.Lat, "lon": h.Lon, "source": h.Source}, nil
 }
 
 // addressesOf expands one address into every address the same device holds,

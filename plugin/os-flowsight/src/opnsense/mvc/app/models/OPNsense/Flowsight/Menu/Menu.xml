@@ -16,7 +16,7 @@
         <Hosts order="20" url="/flowsight.php?page=hosts" cssClass="fa fa-desktop fa-fw"/>
         <Sessions order="30" url="/flowsight.php?page=flows" cssClass="fa fa-exchange fa-fw"/>
         <Applications order="40" url="/flowsight.php?page=apps" cssClass="fa fa-cubes fa-fw"/>
-        <Paths order="50" url="/flowsight.php?page=paths" cssClass="fa fa-share-alt fa-fw"/>
+        <Map order="50" url="/flowsight.php?page=paths" cssClass="fa fa-map-o fa-fw"/>
         <Web order="60" url="/flowsight.php?page=web" cssClass="fa fa-globe fa-fw"/>
         <DNS order="70" url="/flowsight.php?page=dns" cssClass="fa fa-book fa-fw"/>
         <DataOut VisibleName="Data out" order="75" url="/flowsight.php?page=egress" cssClass="fa fa-upload fa-fw"/>

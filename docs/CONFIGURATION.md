@@ -164,6 +164,7 @@ Traces the route to destinations this network already contacts, and keeps what i
 | `retrace_hours` | Trace a destination again after (hours) | int | `24` | How stale a route may get before it is measured again. |
 | `max_destinations` | Destinations kept | int | `300` | Busiest first; the long tail is left alone. |
 | `trace_ipv6` | Trace IPv6 destinations too | bool | `true` |  |
+| `home` | Your location | string | `""` | Latitude and longitude, comma separated. The origin the map is drawn from, and the reference for checking a hop could really be where the database says. Empty: worked out from the gateway's public address. The Map page can fill it in from your browser. |
 
 Needs `enrich` with `geoip_detail` set to `city`, since the country database carries no coordinates.
 

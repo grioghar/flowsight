@@ -39,6 +39,13 @@ type Node struct {
 	Index   int     `json:"index"`                     // distance from here, in hops
 	RTT     float64 `json:"rtt_ms,omitempty"`
 	Silent  bool    `json:"silent,omitempty"` // nothing answered at this position
+	// Impossible marks a placement the measured latency rules out: the point
+	// is too far away to have answered as quickly as it did. The location is
+	// wrong, not the measurement.
+	Impossible bool    `json:"impossible,omitempty"`
+	DistanceKM float64 `json:"distance_km,omitempty"`
+	FloorMS    float64 `json:"floor_ms,omitempty"`
+	Why        string  `json:"why,omitempty"`
 }
 
 // Leg is one step from one node to the next, and everything that uses it.
@@ -53,6 +60,7 @@ type Leg struct {
 type Graph struct {
 	Nodes []Node `json:"nodes"`
 	Legs  []Leg  `json:"legs"`
+	Home  *Home  `json:"home,omitempty"`
 	Note  string `json:"note"`
 }
 
