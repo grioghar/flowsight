@@ -3,7 +3,7 @@
 (function () {
   const { $, $$, esc, get } = FS;
   const ICONS = { paths: '⇢', qos: '⇅', egress: '⇱', license: '◈', zones: '▦', deep: '⌖', overview: '◉', hosts: '▣', flows: '⇄', apps: '◇', web: '◍', dns: '◎', threats: '⚠', tls: '🔒', policy: '☰', groups: '⦿', categories: '▤', firewall: '▦', enroll: '⌂', reports: '▥', alerts: '🔔', system: '⚙', findings: '✓', events: '≡', modules: '⚙', audit: '≡' };
-  const ORDER = { Visibility: 1, Security: 2, Policy: 3, Operations: 4 };
+  const ORDER = { Monitor: 1, Inventory: 2, Protect: 3, Administration: 4 };
   let timer = null;
 
   FS.setTitle = (t) => { $('#title').textContent = t; document.title = t + ' · FlowSight'; };
@@ -57,9 +57,9 @@
     const [p, info] = await Promise.all([get('/api/system/panels'), get('/api/system/info')]);
     if (p.error && p.error.includes('authentication')) return;
     const panels = (p.panels || []).filter(x => !x.detail);
-    // Panels the core always offers, in the Operations group.
-    panels.push({ id: 'findings', title: 'Findings', group: 'Operations', order: 200 }, { id: 'events', title: 'Events', group: 'Operations', order: 210 },
-      { id: 'system', title: 'Status', group: 'Operations', order: 220 }, { id: 'modules', title: 'Settings', group: 'Operations', order: 230 });
+    // Panels the core always offers, under Administration.
+    panels.push({ id: 'findings', title: 'Findings', group: 'Administration', order: 200 }, { id: 'events', title: 'Events', group: 'Administration', order: 210 },
+      { id: 'system', title: 'Status', group: 'Administration', order: 220 }, { id: 'modules', title: 'Settings', group: 'Administration', order: 230 });
     const groups = {};
     panels.forEach(x => { (groups[x.group || 'Other'] = groups[x.group || 'Other'] || []).push(x); });
     const html = Object.keys(groups).sort((a, b) => (ORDER[a] || 9) - (ORDER[b] || 9)).map(g => `<div class="group">${esc(g)}</div>` + groups[g].sort((a, b) => a.order - b.order).map(x => `<a href="#${esc(x.id)}" data-page="${esc(x.id)}" ${x.locked ? 'title="Requires the ' + esc(x.required) + ' tier"' : ''}><span class="ico">${ICONS[x.icon || x.id] || '•'}</span>${esc(x.title)}${x.locked ? '<span class="lock">🔒</span>' : ''}</a>`).join('')).join('');

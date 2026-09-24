@@ -96,7 +96,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Params("ip", "address"))
 	ctx.Route("GET", "/api/dns/timeseries", m.apiTimeseries, core.Doc("Queries and blocks over time"),
 		core.Params("hours", "window"))
-	ctx.Panel(core.Panel{ID: "dns", Title: "DNS", Group: "Visibility", Order: 50, Icon: "dns"})
+	ctx.Panel(core.Panel{ID: "dns", Title: "DNS", Group: "Monitor", Order: 50, Icon: "dns"})
 	return nil
 }
 

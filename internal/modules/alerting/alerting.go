@@ -71,7 +71,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/alerting/notifications", m.apiNotifications, core.Doc("Recent notifications"),
 		core.Params("limit", "rows"))
 
-	ctx.Panel(core.Panel{ID: "alerts", Title: "Alerting", Group: "Operations", Order: 190, Icon: "alerts"})
+	ctx.Panel(core.Panel{ID: "alerts", Title: "Alerting", Group: "Administration", Order: 190, Icon: "alerts"})
 
 	return nil
 }

@@ -141,7 +141,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/web/pinned", m.apiPinned, core.Doc("Names whose clients pin their certificate and are therefore relayed without inspection"))
 	ctx.Route("POST", "/api/web/pinned", m.apiPinnedSet, core.Write(), core.Needs("tls.inspect"),
 		core.Doc("Add a name to the pinned list, or remove one ({name, remove})"))
-	ctx.Panel(core.Panel{ID: "web", Title: "Web", Group: "Visibility", Order: 45, Icon: "web"})
+	ctx.Panel(core.Panel{ID: "web", Title: "Web", Group: "Monitor", Order: 45, Icon: "web"})
 	m.startBlockPage()
 	return nil
 }

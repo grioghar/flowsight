@@ -293,7 +293,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("The origin the map is drawn from, and what could be detected for it"))
 	ctx.Route("POST", "/api/paths/home", m.apiSetHome, core.Write(), core.Needs("paths.map"),
 		core.Doc("Declare your location ({lat, lon}), or {clear:true} to go back to detecting it"))
-	ctx.Panel(core.Panel{ID: "paths", Title: "Map", Group: "Visibility", Order: 50, Icon: "paths", Feature: "paths.map"})
+	ctx.Panel(core.Panel{ID: "paths", Title: "Map", Group: "Monitor", Order: 50, Icon: "paths", Feature: "paths.map"})
 	return nil
 }
 

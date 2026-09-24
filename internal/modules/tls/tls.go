@@ -87,7 +87,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Params("hours", "window"))
 	ctx.Route("GET", "/api/tls/sessions", m.apiSessions, core.Doc("Recent TLS sessions"),
 		core.Params("ip", "client", "sni", "substring", "limit", "rows"))
-	ctx.Panel(core.Panel{ID: "tls", Title: "TLS", Group: "Security", Order: 70, Icon: "tls"})
+	ctx.Panel(core.Panel{ID: "tls", Title: "TLS", Group: "Protect", Order: 70, Icon: "tls"})
 	return nil
 }
 

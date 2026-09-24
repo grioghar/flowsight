@@ -89,8 +89,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Params("ip", "address"))
 	ctx.Route("GET", "/api/identity/leases", m.apiLeases, core.Doc("Current DHCP leases"))
 	ctx.Route("POST", "/api/identity/name", m.apiSetName, core.Write(), core.Doc("Assign a display name to an address"))
-	ctx.Panel(core.Panel{ID: "hosts", Title: "Hosts", Group: "Visibility", Order: 20, Icon: "hosts"})
-	ctx.Panel(core.Panel{ID: "host", Title: "Host", Group: "Visibility", Order: 21, Detail: true})
+	ctx.Panel(core.Panel{ID: "hosts", Title: "IP Addresses", Group: "Inventory", Order: 20, Icon: "hosts"})
+	ctx.Panel(core.Panel{ID: "host", Title: "IP address", Group: "Inventory", Order: 21, Detail: true})
 	return nil
 }
 

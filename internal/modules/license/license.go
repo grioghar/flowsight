@@ -125,7 +125,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Refresh the online lease now"))
 	ctx.Route("POST", "/api/license/remove", m.apiRemove, core.Write(),
 		core.Doc("Remove the license and return to Community (tells the server, when it was an online activation)"))
-	ctx.Panel(core.Panel{ID: "license", Title: "License", Group: "Operations", Order: 250, Icon: "license"})
+	ctx.Panel(core.Panel{ID: "license", Title: "License", Group: "Administration", Order: 250, Icon: "license"})
 	return nil
 }
 

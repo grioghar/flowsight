@@ -46,7 +46,17 @@ Pages marked **Pro** or **Business** need that license tier; below it they
 show a card that explains what the tier adds and links to the License page.
 A lock next to a menu entry means the same.
 
-## Visibility
+## Finding your way
+
+The menu has four areas, by what you are doing. **Monitor** is watching
+traffic: Overview, Sessions, Applications, Web, DNS and the Map. **Inventory**
+is what is on the network: IP Addresses, Devices and Zones. **Protect** is
+what is allowed: Policies, Priority, Groups & schedules, Categories, Deep
+inspection, TLS, Threats, Data out and Firewall hygiene. **Administration**
+is FlowSight itself: Reports, Alerting, API, Updates, License, Status and
+Settings. The chapters below follow the same order.
+
+## Monitor
 
 ### Overview
 
@@ -61,45 +71,6 @@ sessions, applications, DNS queries, blocked requests. Charts of
 throughput over time, one line each for inbound and outbound; the top hosts by traffic; the top applications; web
 categories; the busiest DNS names; recent alerts and findings. Every item
 links to its detail page.
-
-### Hosts
-
-Every device seen in the window. Columns: name (from DHCP, reservation or
-resolver), address, MAC and vendor, whether the MAC is randomised, bytes in
-and out, sessions, blocked requests, last seen. Sort by any column; filter
-by name or address. A host that stops appearing is not deleted, it just
-falls out of the window.
-
-**One row per device.** The checkbox beside the count folds every address
-behind the same hardware address into one row: traffic summed, the other
-addresses listed under the name, the IPv4 address as the link. Addresses
-with no known device stay their own rows. The range bar shows *since <date>*
-when the window reaches back past the oldest record, so 7d and 30d reading
-the same on a young installation is expected, not a fault.
-
-Hosts and Devices overlap on purpose and answer different questions.
-**Hosts** is what the traffic shows: one row per address seen in flows and
-DNS within the window, with its traffic, and it includes far ends and
-transient visitors. **Devices** (under Policy) is the enrolment inventory:
-one row per physical device known by its MAC from DHCP, with a class and a
-zone, listed whether or not it is talking right now. A device's address
-opens its host page; a host page shows the device's class and zone.
-
-A device is one device whatever address it is using. FlowSight ties every
-address a device holds, IPv4 and IPv6 alike, to its MAC: names, vendor,
-policy membership (`mac:` and `device:` members) and the device inventory
-follow all of them, and an address stays associated for a day after it was
-last seen so the temporary IPv6 addresses operating systems rotate through
-do not shake a device loose from its policy. A host page lists the device's
-other addresses and links them.
-
-**Host page** (click a host): identity details and how each was learned;
-throughput over time; applications, sites and DNS names with bytes and
-counts; the session list; alerts and blocks; a **Blocked queries** card
-listing the most recent DNS blocks for the host with the list that blocked
-each (FlowSight policy or Pi-hole gravity, regex, denylist) and the
-resolver they came through; the policies that match it and which group
-brought it in; enrolment class and zone.
 
 ### Sessions
 
@@ -157,7 +128,7 @@ verdict and list (gravity, regex, denylist, upstream blocked). Client
 names Pi-hole knows are used for hosts FlowSight has no name for. Nothing is
 written to the Pi-holes.
 
-## Security
+## Protect
 
 ### Threats
 
@@ -794,7 +765,7 @@ overly broad, changed since the last analysis. Each carries a severity and
 what to do. A **risk score** summarises. **Changes** is the history of
 ruleset changes with diffs. *Run now* re-analyses immediately.
 
-## Policy
+## Protect: policy
 
 ### Policies
 
@@ -832,6 +803,49 @@ a domain falls into. **Custom categories** are your own lists (domains one
 per line) usable in policies like any other. Feeds refresh on a schedule set
 in Settings › categories; roughly six million domains are indexed in memory
 in a compact form.
+
+## Inventory
+
+What is on the network, by address and by device.
+
+### IP Addresses
+
+Every device seen in the window. Columns: name (from DHCP, reservation or
+resolver), address, MAC and vendor, whether the MAC is randomised, bytes in
+and out, sessions, blocked requests, last seen. Sort by any column; filter
+by name or address. A host that stops appearing is not deleted, it just
+falls out of the window.
+
+**One row per device.** The checkbox beside the count folds every address
+behind the same hardware address into one row: traffic summed, the other
+addresses listed under the name, the IPv4 address as the link. Addresses
+with no known device stay their own rows. The range bar shows *since <date>*
+when the window reaches back past the oldest record, so 7d and 30d reading
+the same on a young installation is expected, not a fault.
+
+IP Addresses and Devices overlap on purpose and answer different questions.
+**IP Addresses** (once called Hosts) is what the traffic shows: one row per address seen in flows and
+DNS within the window, with its traffic, and it includes far ends and
+transient visitors. **Devices** (under Policy) is the enrolment inventory:
+one row per physical device known by its MAC from DHCP, with a class and a
+zone, listed whether or not it is talking right now. A device's address
+opens its host page; a host page shows the device's class and zone.
+
+A device is one device whatever address it is using. FlowSight ties every
+address a device holds, IPv4 and IPv6 alike, to its MAC: names, vendor,
+policy membership (`mac:` and `device:` members) and the device inventory
+follow all of them, and an address stays associated for a day after it was
+last seen so the temporary IPv6 addresses operating systems rotate through
+do not shake a device loose from its policy. A host page lists the device's
+other addresses and links them.
+
+**Host page** (click a host): identity details and how each was learned;
+throughput over time; applications, sites and DNS names with bytes and
+counts; the session list; alerts and blocks; a **Blocked queries** card
+listing the most recent DNS blocks for the host with the list that blocked
+each (FlowSight policy or Pi-hole gravity, regex, denylist) and the
+resolver they came through; the policies that match it and which group
+brought it in; enrolment class and zone.
 
 ### Devices
 
@@ -878,7 +892,7 @@ class, hostname pattern, OUI to a class and a zone). *Plan placement* shows
 what enforce mode would write, *Apply placement* writes it. A captive page
 on the LAN explains to an unplaced device what happens next.
 
-## Operations
+## Administration
 
 ### Reports
 

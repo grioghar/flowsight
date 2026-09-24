@@ -221,9 +221,14 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/enroll/devices", m.apiDevices, core.Doc("All devices with filtering"),
 		core.Params("zone", "filter by zone", "q", "search query"))
 	ctx.Route("GET", "/api/enroll/zones", m.apiGetZones, core.Doc("Current zones configuration"))
+	ctx.Route("GET", "/api/enroll/zones/{id}", m.apiGetZoneByID, core.Doc("Get a zone by ID"))
 	ctx.Route("POST", "/api/enroll/zones", m.apiSetZones, core.Write(), core.Doc("Update zones"))
+	ctx.Route("PUT", "/api/enroll/zones/{id}", m.apiUpdateZoneByID, core.Write(), core.Doc("Update a zone"))
+	ctx.Route("DELETE", "/api/enroll/zones/{id}", m.apiDeleteZoneByID, core.Write(), core.Doc("Delete a zone"))
 	ctx.Route("GET", "/api/enroll/rules", m.apiGetRules, core.Doc("Current rules configuration"))
 	ctx.Route("POST", "/api/enroll/rules", m.apiSetRules, core.Write(), core.Doc("Update rules"))
+	ctx.Route("GET", "/api/enroll/devices/{mac}", m.apiGetDeviceByMAC, core.Doc("Get a device by MAC"))
+	ctx.Route("DELETE", "/api/enroll/devices/{mac}", m.apiDeleteDeviceByMAC, core.Write(), core.Doc("Delete a device"))
 	ctx.Route("POST", "/api/enroll/assign", m.apiAssign, core.Write(), core.Doc("Assign a device to a zone and pin it there; an empty zone unpins it so the rules place it ({mac, zone})"))
 	ctx.Route("POST", "/api/enroll/reconcile", m.apiReconcile, core.Write(), core.Doc("Re-classify devices"))
 	ctx.Route("POST", "/api/enroll/apply", m.apiApply, core.Write(), core.Needs("device.enroll"), core.Doc("Apply enforcement"))
@@ -240,8 +245,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 
 	// Panel
-	ctx.Panel(core.Panel{ID: "devices", Title: "Devices", Group: "Policy", Order: 130, Icon: "enroll"})
-	ctx.Panel(core.Panel{ID: "zones", Title: "Zones", Group: "Policy", Order: 131, Icon: "zones"})
+	ctx.Panel(core.Panel{ID: "devices", Title: "Devices", Group: "Inventory", Order: 130, Icon: "enroll"})
+	ctx.Panel(core.Panel{ID: "zones", Title: "Zones", Group: "Inventory", Order: 131, Icon: "zones"})
 
 	// Publish the zone resolver
 	m.publishZoneResolver()

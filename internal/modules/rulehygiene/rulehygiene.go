@@ -93,7 +93,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Panel(core.Panel{
 		ID:      "firewall",
 		Title:   "Firewall hygiene",
-		Group:   "Security",
+		Group:   "Protect",
 		Order:   80,
 		Icon:    "firewall",
 		Feature: "firewall.analyse",

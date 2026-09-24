@@ -12,29 +12,44 @@
       up with each other.
     -->
     <FlowSight order="65" cssClass="fa fa-eye">
-        <Overview order="10" url="/flowsight.php?page=overview" cssClass="fa fa-dashboard fa-fw"/>
-        <Hosts order="20" url="/flowsight.php?page=hosts" cssClass="fa fa-desktop fa-fw"/>
-        <Sessions order="30" url="/flowsight.php?page=flows" cssClass="fa fa-exchange fa-fw"/>
-        <Applications order="40" url="/flowsight.php?page=apps" cssClass="fa fa-cubes fa-fw"/>
-        <Map order="50" url="/flowsight.php?page=paths" cssClass="fa fa-map-o fa-fw"/>
-        <Web order="60" url="/flowsight.php?page=web" cssClass="fa fa-globe fa-fw"/>
-        <DNS order="70" url="/flowsight.php?page=dns" cssClass="fa fa-book fa-fw"/>
-        <DataOut VisibleName="Data out" order="75" url="/flowsight.php?page=egress" cssClass="fa fa-upload fa-fw"/>
-        <Threats order="80" url="/flowsight.php?page=threats" cssClass="fa fa-exclamation-triangle fa-fw"/>
-        <TLS order="90" url="/flowsight.php?page=tls" cssClass="fa fa-lock fa-fw"/>
-        <DeepInspection VisibleName="Deep inspection" order="95" url="/flowsight.php?page=deep" cssClass="fa fa-crosshairs fa-fw"/>
-        <Policies order="100" url="/flowsight.php?page=policy" cssClass="fa fa-list fa-fw"/>
-        <Priority order="105" url="/flowsight.php?page=qos" cssClass="fa fa-sort-amount-desc fa-fw"/>
-        <Groups VisibleName="Groups &amp; schedules" order="110" url="/flowsight.php?page=groups" cssClass="fa fa-users fa-fw"/>
-        <Categories order="120" url="/flowsight.php?page=categories" cssClass="fa fa-tags fa-fw"/>
-        <Devices order="130" url="/flowsight.php?page=devices" cssClass="fa fa-mobile fa-fw"/>
-        <Zones order="131" url="/flowsight.php?page=zones" cssClass="fa fa-th-large fa-fw"/>
-        <Firewall VisibleName="Firewall hygiene" order="140" url="/flowsight.php?page=firewall" cssClass="fa fa-fire fa-fw"/>
-        <Reports order="180" url="/flowsight.php?page=reports" cssClass="fa fa-file-text fa-fw"/>
-        <Alerting order="190" url="/flowsight.php?page=alerts" cssClass="fa fa-bell fa-fw"/>
-        <Updates order="240" url="/flowsight.php?page=updates" cssClass="fa fa-refresh fa-fw"/>
-        <License order="250" url="/flowsight.php?page=license" cssClass="fa fa-balance-scale fa-fw"/>
-        <Status order="260" url="/flowsight.php?page=system" cssClass="fa fa-heartbeat fa-fw"/>
-        <Settings order="270" url="/flowsight.php?page=modules" cssClass="fa fa-cog fa-fw"/>
+        <!--
+          Four areas, by what a person is doing: watching traffic, keeping
+          the inventory of what is on the network, deciding what is allowed,
+          and running FlowSight itself. Each area is a second-level entry
+          with the pages beneath it, the way System and Services nest.
+        -->
+        <Monitor order="10" cssClass="fa fa-area-chart fa-fw">
+            <Overview order="10" url="/flowsight.php?page=overview"/>
+            <Sessions order="30" url="/flowsight.php?page=flows"/>
+            <Applications order="40" url="/flowsight.php?page=apps"/>
+            <Web order="60" url="/flowsight.php?page=web"/>
+            <DNS order="70" url="/flowsight.php?page=dns"/>
+            <Map order="50" url="/flowsight.php?page=paths"/>
+        </Monitor>
+        <Inventory order="20" cssClass="fa fa-sitemap fa-fw">
+            <IPAddresses VisibleName="IP Addresses" order="20" url="/flowsight.php?page=hosts"/>
+            <Devices order="130" url="/flowsight.php?page=devices"/>
+            <Zones order="131" url="/flowsight.php?page=zones"/>
+        </Inventory>
+        <Protect order="30" cssClass="fa fa-shield fa-fw">
+            <Policies order="100" url="/flowsight.php?page=policy"/>
+            <Priority order="105" url="/flowsight.php?page=qos"/>
+            <Groups VisibleName="Groups &amp; schedules" order="110" url="/flowsight.php?page=groups"/>
+            <Categories order="120" url="/flowsight.php?page=categories"/>
+            <DeepInspection VisibleName="Deep inspection" order="95" url="/flowsight.php?page=deep"/>
+            <TLS order="90" url="/flowsight.php?page=tls"/>
+            <Threats order="80" url="/flowsight.php?page=threats"/>
+            <DataOut VisibleName="Data out" order="75" url="/flowsight.php?page=egress"/>
+            <Firewall VisibleName="Firewall hygiene" order="140" url="/flowsight.php?page=firewall"/>
+        </Protect>
+        <Administration order="40" cssClass="fa fa-cog fa-fw">
+            <Reports order="180" url="/flowsight.php?page=reports"/>
+            <Alerting order="190" url="/flowsight.php?page=alerts"/>
+            <API order="200" url="/flowsight.php?page=api"/>
+            <Updates order="240" url="/flowsight.php?page=updates"/>
+            <License order="250" url="/flowsight.php?page=license"/>
+            <Status order="260" url="/flowsight.php?page=system"/>
+            <Settings order="270" url="/flowsight.php?page=modules"/>
+        </Administration>
     </FlowSight>
 </menu>

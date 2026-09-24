@@ -109,7 +109,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Whether shaping is on, the pipes in force, the rules and what each queue is holding"))
 	ctx.Route("GET", "/api/qos/preview", m.apiPreview, core.Needs("qos.shape"),
 		core.Doc("The firewall rules the current settings would produce, without applying them"))
-	ctx.Panel(core.Panel{ID: "qos", Title: "Priority", Group: "Policy", Order: 105, Icon: "qos", Feature: "qos.shape"})
+	ctx.Panel(core.Panel{ID: "qos", Title: "Priority", Group: "Protect", Order: 105, Icon: "qos", Feature: "qos.shape"})
 	return nil
 }
 

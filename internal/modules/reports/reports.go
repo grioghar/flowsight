@@ -60,7 +60,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("POST", "/api/reports/schedules", m.apiSetSchedules, core.Needs("reports.schedule"), core.Write(), core.Doc("Replace report schedules"))
 	ctx.Route("POST", "/api/reports/run", m.apiRunReport, core.Needs("reports.schedule"), core.Write(), core.Doc("Generate and send a report now"))
 
-	ctx.Panel(core.Panel{ID: "reports", Title: "Reports", Group: "Operations", Order: 180, Icon: "reports"})
+	ctx.Panel(core.Panel{ID: "reports", Title: "Reports", Group: "Administration", Order: 180, Icon: "reports"})
 
 	return nil
 }

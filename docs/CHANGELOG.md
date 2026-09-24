@@ -12,6 +12,22 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242336
+
+**The menu has four areas.** Twenty-five pages in one flat list became
+four groups by what you are doing: *Monitor* (Overview, Sessions,
+Applications, Web, DNS, Map), *Inventory* (IP Addresses, Devices, Zones),
+*Protect* (Policies, Priority, Groups & schedules, Categories, Deep
+inspection, TLS, Threats, Data out, Firewall hygiene) and *Administration*
+(Reports, Alerting, API, Updates, License, Status, Settings). The OPNsense
+menu nests the same way, and the in-product sidebar follows. Page addresses
+are unchanged, so bookmarks keep working.
+
+**Hosts is now IP Addresses.** The page lists addresses, so it says so; the
+address is the row and the device it belongs to reads under it, with a
+*Device* column to sort by. The one-row-per-device checkbox still folds a
+device's addresses together.
+
 ## 0.9.8r202609242333
 
 **Traffic totals were inflated, badly.** The flow probe reports a cumulative

@@ -109,7 +109,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/mitm/status", m.apiStatus, core.Doc("Deep inspection: whether it is listening and what it has seen"))
 	ctx.Route("GET", "/api/mitm/requests", m.apiRequests, core.Needs("deep.inspect"),
 		core.Doc("The most recent decrypted requests with their headers"), core.Params("limit", "rows", "q", "substring"))
-	ctx.Panel(core.Panel{ID: "deep", Title: "Deep inspection", Group: "Security", Order: 75, Icon: "deep", Feature: "deep.inspect"})
+	ctx.Panel(core.Panel{ID: "deep", Title: "Deep inspection", Group: "Protect", Order: 75, Icon: "deep", Feature: "deep.inspect"})
 	ctx.Every("supervise", 30*time.Second, m.supervise)
 	ctx.Publish("mitm", m)
 	return m.start()

@@ -51,9 +51,9 @@
     }
   });
 
-  // ------------------------------------------------------------- Hosts
+  // ------------------------------------------------------------- IP Addresses
   FS.registerPage('hosts', {
-    title: 'Hosts', refresh: 30,
+    title: 'IP Addresses', refresh: 30,
     async render(el, ctx) {
       const d = await get(`/api/identity/hosts?${FS.since()}${ctx.params.all ? '&all=1' : ''}`);
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
@@ -79,9 +79,11 @@
         });
         rows = out;
       }
-      el.innerHTML = `<div class="actions"><span class="muted">${byDevice ? `${rows.length} devices (${seen} addresses)` : `${rows.length} hosts`} seen in the last ${FS.state.hours}h</span><label class="small" style="margin-left:12px;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="by-device" ${byDevice ? 'checked' : ''}> one row per device</label><span class="spacer" style="flex:1"></span><a class="btn" href="#hosts?all=1">Include inactive</a></div>` +
-        card('Hosts', table(rows, [
-          { t: 'Host', f: r => hostLink(r.ip, r.name) + (r.addrs && r.addrs.length > 1 ? `<div class="muted small mono">${r.addrs.filter(a => a !== r.ip).map(a => `<a href="#host/${encodeURIComponent(a)}">${esc(a)}</a>`).join(' · ')}</div>` : ''), sort: 'name' },
+      el.innerHTML = `<div class="actions"><span class="muted">${byDevice ? `${rows.length} devices (${seen} addresses)` : `${rows.length} addresses`} seen in the last ${FS.state.hours}h</span><label class="small" style="margin-left:12px;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="by-device" ${byDevice ? 'checked' : ''}> one row per device</label><span class="spacer" style="flex:1"></span><a class="btn" href="#hosts?all=1">Include inactive</a></div>` +
+        card('IP Addresses', table(rows, [
+          // The address is the row; the device it belongs to reads under it.
+          { t: 'Address', f: r => `<a href="#host/${encodeURIComponent(r.ip)}" class="mono">${esc(r.ip)}</a>${r.name ? `<div class="muted small">${esc(r.name)}</div>` : ''}` + (r.addrs && r.addrs.length > 1 ? `<div class="muted small mono">${r.addrs.filter(a => a !== r.ip).map(a => `<a href="#host/${encodeURIComponent(a)}">${esc(a)}</a>`).join(' · ')}</div>` : ''), sort: 'ip' },
+          { t: 'Device', f: r => esc(r.name || ''), sort: 'name' },
           { t: 'MAC', f: r => `<span class="mono">${esc(r.mac || '')}</span>${r.randomized ? ' ' + pill('private', '') : ''}`, sort: 'mac' },
           { t: 'Vendor', k: 'vendor' }, { t: 'Zone', f: r => r.zone ? pill(r.zone, 'info') : '', sort: 'zone' },
           { t: 'Down', f: r => bytes(r.bytes_in), num: true, sort: 'bytes_in' }, { t: 'Up', f: r => bytes(r.bytes_out), num: true, sort: 'bytes_out' },

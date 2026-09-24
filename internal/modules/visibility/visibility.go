@@ -138,9 +138,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/visibility/host", m.apiHost, core.Doc("Everything about one host"),
 		core.Params("ip", "address", "hours", "window"))
 	ctx.Route("GET", "/api/visibility/catalog", m.apiCatalog, core.Doc("Known applications and categories"))
-	ctx.Panel(core.Panel{ID: "overview", Title: "Overview", Group: "Visibility", Order: 1, Icon: "overview"})
-	ctx.Panel(core.Panel{ID: "flows", Title: "Sessions", Group: "Visibility", Order: 30, Icon: "flows"})
-	ctx.Panel(core.Panel{ID: "apps", Title: "Applications", Group: "Visibility", Order: 40, Icon: "apps"})
+	ctx.Panel(core.Panel{ID: "overview", Title: "Overview", Group: "Monitor", Order: 1, Icon: "overview"})
+	ctx.Panel(core.Panel{ID: "flows", Title: "Sessions", Group: "Monitor", Order: 30, Icon: "flows"})
+	ctx.Panel(core.Panel{ID: "apps", Title: "Applications", Group: "Monitor", Order: 40, Icon: "apps"})
 	return nil
 }
 

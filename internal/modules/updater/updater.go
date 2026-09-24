@@ -129,7 +129,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Panel(core.Panel{
 		ID:    "updates",
 		Title: "Updates",
-		Group: "Operations",
+		Group: "Administration",
 		Order: 240,
 		Icon:  "updates",
 	})

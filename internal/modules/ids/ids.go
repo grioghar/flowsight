@@ -65,7 +65,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/ids/alerts", m.apiAlerts, core.Doc("Recent alerts"),
 		core.Params("hours", "window", "severity", "filter", "ip", "either end", "limit", "rows"))
 	ctx.Route("POST", "/api/ids/alerts/ack", m.apiAck, core.Write(), core.Doc("Acknowledge alerts"))
-	ctx.Panel(core.Panel{ID: "threats", Title: "Threats", Group: "Security", Order: 60, Icon: "threats"})
+	ctx.Panel(core.Panel{ID: "threats", Title: "Threats", Group: "Protect", Order: 60, Icon: "threats"})
 	return nil
 }
 

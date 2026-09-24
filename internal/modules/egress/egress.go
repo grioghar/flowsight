@@ -178,7 +178,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Transfers that crossed a threshold, most recent first"), core.Params("limit", "rows"))
 	ctx.Route("POST", "/api/egress/stop", m.apiStop, core.Write(), core.Needs("egress.watch"),
 		core.Doc("Drop a transfer that is running ({local, peer, port}); the connection is killed at the firewall"))
-	ctx.Panel(core.Panel{ID: "egress", Title: "Data out", Group: "Security", Order: 72, Icon: "egress", Feature: "egress.watch"})
+	ctx.Panel(core.Panel{ID: "egress", Title: "Data out", Group: "Protect", Order: 72, Icon: "egress", Feature: "egress.watch"})
 	ctx.Publish("egress", m)
 	return nil
 }
