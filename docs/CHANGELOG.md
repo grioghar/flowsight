@@ -12,6 +12,49 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240743
+
+**The last phantom devices are removed, including those Windows made.** The
+cleanup in 0.9.8r202609240739 recognised the client identifiers most systems
+send, but Windows writes part of its identifier in the other byte order, so
+its phantom stayed. Any recorded device whose address starts the way a
+client identifier does and that has no IP address, name or vendor is now
+removed at startup; real hardware whose address happens to start the same
+way always has an IP address, so it stays, as does anything you pinned.
+
+## 0.9.8r202609240742
+
+**Working out where you are no longer picks the gateway's own LAN address.**
+It looked for an address that was globally routable and not private, and a
+delegated IPv6 prefix is exactly that while still belonging to this network,
+so the LAN interface won and the map had no origin at all. It now skips
+anything identity recognises as ours, which is the only thing that can tell
+the two apart.
+
+## 0.9.8r202609240741
+
+**The map has its own place in the menu, and knows where you are.** It is
+**Map** under FlowSight now rather than buried, and the page carries the
+origin it is drawn from.
+
+Left alone the origin is worked out from the gateway's public address, which
+is usually the right town and occasionally the wrong state, because it is
+where the carrier registered the block rather than where the wire ends. You
+can declare it instead: type it, take the address database's answer, or let
+the browser tell you, which knows precisely and asks permission first.
+
+**And that origin earns its keep immediately.** Light in fibre covers about
+200,000 km per second, so a round trip cannot beat twice the straight-line
+distance divided by that, before any routing detour or equipment delay. A hop
+that answers faster than that floor is not where the database says it is. The
+map circles those and lists them with the numbers.
+
+On this gateway seven of twenty-seven placements fail it. The clearest is
+1.1.1.1, which the database puts in Sydney, 14,071 km away, where nothing
+could answer in under 141 ms. It answers in 22. It is anycast: registered in
+one place, answered from whichever site is nearest you. The map no longer
+draws a line to Australia and calls it measurement.
+
 ## 0.9.8r202609240739
 
 **The device list no longer contains devices that do not exist.** DHCPv6
@@ -47,39 +90,6 @@ placed.
 
 Saving a device's zone no longer counts as seeing it, so *last seen* is
 when the device was actually heard from.
-
-## 0.9.8r202609240742
-
-**Working out where you are no longer picks the gateway's own LAN address.**
-It looked for an address that was globally routable and not private, and a
-delegated IPv6 prefix is exactly that while still belonging to this network,
-so the LAN interface won and the map had no origin at all. It now skips
-anything identity recognises as ours, which is the only thing that can tell
-the two apart.
-
-## 0.9.8r202609240741
-
-**The map has its own place in the menu, and knows where you are.** It is
-**Map** under FlowSight now rather than buried, and the page carries the
-origin it is drawn from.
-
-Left alone the origin is worked out from the gateway's public address, which
-is usually the right town and occasionally the wrong state, because it is
-where the carrier registered the block rather than where the wire ends. You
-can declare it instead: type it, take the address database's answer, or let
-the browser tell you, which knows precisely and asks permission first.
-
-**And that origin earns its keep immediately.** Light in fibre covers about
-200,000 km per second, so a round trip cannot beat twice the straight-line
-distance divided by that, before any routing detour or equipment delay. A hop
-that answers faster than that floor is not where the database says it is. The
-map circles those and lists them with the numbers.
-
-On this gateway seven of twenty-seven placements fail it. The clearest is
-1.1.1.1, which the database puts in Sydney, 14,071 km away, where nothing
-could answer in under 141 ms. It answers in 22. It is anycast: registered in
-one place, answered from whichever site is nearest you. The map no longer
-draws a line to Australia and calls it measurement.
 
 ## 0.9.8r202609240731
 

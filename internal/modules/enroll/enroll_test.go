@@ -356,9 +356,6 @@ func TestPseudoMAC(t *testing.T) {
 		{"33:33:00:00:00:01", true},  // IPv6 multicast
 		{"00:AA:BB:CC:DD:EE", false}, // unicast
 		{"aa:bb:cc:dd:ee:ff", false}, // unicast lowercase
-		{"00:01:00:01:c7:93", true},  // DHCPv6 DUID-LLT prefix
-		{"00:03:00:01:fa:29", true},  // DHCPv6 DUID-LL prefix
-		{"00:01:00:02:c7:93", false}, // an ordinary address in the same OUI
 	}
 
 	for _, tt := range tests {
@@ -697,7 +694,9 @@ func TestLoadRegistryDropsClientIDs(t *testing.T) {
 	m := reconcileModule(t, "monitor")
 	for _, d := range []*Device{
 		{MAC: "00:01:00:01:c7:93"},
+		{MAC: "00:01:01:00:31:aa"}, // Windows writes its DUID hardware type byte-swapped
 		{MAC: "00:03:00:01:fa:29", Pinned: 1},
+		{MAC: "00:03:00:01:02:ea", IP: "192.168.1.40"}, // real hardware with that prefix
 		{MAC: "ec:71:db:8c:b1:67", Vendor: "Reolink Innovation Limited"},
 	} {
 		if err := m.saveDevice(d); err != nil {
@@ -705,8 +704,13 @@ func TestLoadRegistryDropsClientIDs(t *testing.T) {
 		}
 	}
 	m.loadRegistry()
-	if _, ok := m.devices["00:01:00:01:c7:93"]; ok {
-		t.Error("client ID still listed as a device")
+	for _, mac := range []string{"00:01:00:01:c7:93", "00:01:01:00:31:aa"} {
+		if _, ok := m.devices[mac]; ok {
+			t.Errorf("client ID %s still listed as a device", mac)
+		}
+	}
+	if _, ok := m.devices["00:03:00:01:02:ea"]; !ok {
+		t.Error("a device with an address was dropped")
 	}
 	if _, ok := m.devices["00:03:00:01:fa:29"]; !ok {
 		t.Error("a pinned entry was dropped")

@@ -423,7 +423,7 @@ func (m *Module) loadRegistry() {
 		}
 		// Not a device: a DHCPv6 client ID an earlier build mistook for an
 		// address. Drop it rather than list it as unidentified forever.
-		if isPseudoMAC(mac) && getInt(row, "pinned") == 0 {
+		if isStoredClientID(row) {
 			_ = m.ctx.Store.Exec(`DELETE FROM devices WHERE mac = ?`, mac)
 			continue
 		}
@@ -1623,6 +1623,26 @@ func (zr *zoneResolver) Resolve(member string) []string {
 // Helpers
 // ============================================================================
 
+// isStoredClientID reports whether a stored device row is really the first
+// six octets of a DHCPv6 client DUID, which builds before 0.9.8r202609240739
+// read from DHCPv6 log lines as an address. A DUID starts with its type, 1 to
+// 4, as two octets; the rows those builds made carry nothing else, since the
+// lines they came from name no IPv4 address. Real hardware whose vendor
+// prefix happens to start the same way has an address, a name or a vendor,
+// and a pinned row is someone's decision, so both are kept.
+func isStoredClientID(row map[string]any) bool {
+	mac := strings.ToLower(getStr(row, "mac"))
+	if len(mac) != 17 || !strings.HasPrefix(mac, "00:0") || mac[4] < '1' || mac[4] > '4' {
+		return false
+	}
+	for _, k := range []string{"ip", "ip6", "hostname", "vendor", "guest_name"} {
+		if getStr(row, k) != "" {
+			return false
+		}
+	}
+	return getInt(row, "pinned") == 0
+}
+
 func isPseudoMAC(mac string) bool {
 	// Broadcast and multicast addresses are destinations, not devices
 	mac = strings.ToUpper(mac)
@@ -1630,12 +1650,6 @@ func isPseudoMAC(mac string) bool {
 		return true
 	}
 	if strings.HasPrefix(mac, "01:00:5E") || strings.HasPrefix(mac, "33:33") {
-		return true
-	}
-	// The first six octets of a DHCPv6 client DUID for an Ethernet client:
-	// type 1 (link-layer plus time) or type 3 (link-layer), hardware type 1.
-	// Earlier builds read these from DHCPv6 log lines as addresses.
-	if strings.HasPrefix(mac, "00:01:00:01:") || strings.HasPrefix(mac, "00:03:00:01:") {
 		return true
 	}
 	// Check if multicast bit (bit 0 of first octet) is set
