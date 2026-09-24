@@ -237,6 +237,11 @@ whichever device asked for it. Filtering by device is a join: it shows the
 routes used by the destinations that device has talked to, without tracing
 anything extra.
 
+**Clicking a hop lights the routes through it**, and dims the rest. A dashed
+grey leg means the route continues through hops that could not be placed: the
+traffic went that way, but where it was in between is unknown, so it is not
+drawn as though it were one router to the next.
+
 **Shared legs are drawn once.** Every route out of your network starts the
 same way, and drawn literally that is a hundred lines on top of each other. A
 leg used by several destinations becomes one thicker grey line carrying them
@@ -287,8 +292,8 @@ rotating IPv6 privacy addresses is one thing to filter by, and filtering on
 whichever address happened to be handy would show a fraction of where it has
 actually been.
 
-**What each hop tells you.** Click any point on the map. The panel below it
-gives, in this order and under these headings:
+**What each hop tells you.** Click any point on the map. The panel to the
+right of it gives, in this order and under these headings:
 
 - *Measured* -- the round trip, and where the hop falls in the route. This is
   observation; nothing else on the card is.

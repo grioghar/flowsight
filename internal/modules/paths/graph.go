@@ -75,6 +75,12 @@ type Leg struct {
 	// traceroute cannot say which cable carried a packet.
 	Cables     []Candidate `json:"cables,omitempty"`
 	StraightKM float64     `json:"straight_km,omitempty"`
+	// Gap marks a leg that stands in for a stretch of route whose hops could
+	// not be placed. The traffic certainly went this way; what is unknown is
+	// where it was in between, so the leg is drawn differently rather than
+	// presented as one hop to the next.
+	Gap     bool `json:"gap,omitempty"`
+	Through int  `json:"through,omitempty"` // hops crossed that have no position
 }
 
 // Graph is what the map draws.
@@ -198,4 +204,95 @@ func mergeAddresses(into, from *Node) {
 		}
 	}
 	sort.Strings(into.IPs)
+}
+
+// bridgeGaps joins placed hops across the ones that could not be placed.
+//
+// Most hops have no usable position -- a great many never answer at all, and
+// plenty that do sit in address blocks no database can locate. A leg is only
+// drawable when both of its ends are placed, so a placed hop whose neighbours
+// are not becomes a dot on the map with nothing attached to it. On this
+// network that was one placed dot in five: a scatter of points that look
+// unreachable, when in truth every one of them is on a route that arrives
+// somewhere.
+//
+// So where a placed hop is followed, further along the same route, by another
+// placed hop, they are joined. The leg is marked as a gap and carries how many
+// unplaced hops it covers, because it is not the same claim as a leg between
+// adjacent routers and must not be drawn as though it were.
+func bridgeGaps(g *Graph) {
+	byID := make(map[string]*Node, len(g.Nodes))
+	for i := range g.Nodes {
+		byID[g.Nodes[i].ID] = &g.Nodes[i]
+	}
+	// What each destination's route passes through, and what is already joined.
+	onRoute := map[string]map[string]bool{}
+	direct := map[string]bool{}
+	for _, l := range g.Legs {
+		direct[l.From+">"+l.To] = true
+		for _, d := range l.Destinations {
+			if onRoute[d] == nil {
+				onRoute[d] = map[string]bool{}
+			}
+			onRoute[d][l.From] = true
+			onRoute[d][l.To] = true
+		}
+	}
+
+	added := map[string]*Leg{}
+	for _, dst := range sortedKeys(onRoute) {
+		ids := make([]string, 0, len(onRoute[dst]))
+		for id := range onRoute[dst] {
+			ids = append(ids, id)
+		}
+		// Hop number is the order of travel, and it is the only ordering that
+		// means anything here: two hops can share an address and a route never
+		// visits the same distance twice.
+		sort.Slice(ids, func(i, j int) bool {
+			a, b := byID[ids[i]], byID[ids[j]]
+			if a == nil || b == nil {
+				return ids[i] < ids[j]
+			}
+			if a.Index != b.Index {
+				return a.Index < b.Index
+			}
+			return a.ID < b.ID
+		})
+
+		prev, skipped := "", 0
+		for _, id := range ids {
+			n := byID[id]
+			if n == nil {
+				continue
+			}
+			if !n.Located {
+				if prev != "" {
+					skipped++
+				}
+				continue
+			}
+			if prev != "" && skipped > 0 && !direct[prev+">"+id] {
+				key := prev + ">" + id
+				l := added[key]
+				if l == nil {
+					l = &Leg{From: prev, To: id, Gap: true, Through: skipped}
+					added[key] = l
+				}
+				if skipped > l.Through {
+					l.Through = skipped
+				}
+				if !contains(l.Destinations, dst) {
+					l.Destinations = append(l.Destinations, dst)
+				}
+			}
+			prev, skipped = id, 0
+		}
+	}
+
+	for _, k := range sortedKeys(added) {
+		l := added[k]
+		sort.Strings(l.Destinations)
+		l.Shared = len(l.Destinations) > 1
+		g.Legs = append(g.Legs, *l)
+	}
 }

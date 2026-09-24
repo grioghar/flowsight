@@ -339,3 +339,86 @@ func TestPublicAddressSkipsOurOwnRoutablePrefix(t *testing.T) {
 		t.Error("the WAN address is not local and must be usable")
 	}
 }
+
+// A placed hop whose neighbours could not be placed used to appear as a dot
+// with nothing attached to it -- on a real network, one placed dot in five.
+// The traffic did reach it and did leave it; what is missing is where it was
+// in between, which is a different thing from being unreachable.
+func TestGapsAreBridgedAcrossUnplacedHops(t *testing.T) {
+	g := buildGraph([]hopRow{
+		{Dst: "9.9.9.9", Index: 1, IP: "10.0.0.1", RTT: 1},
+		{Dst: "9.9.9.9", Index: 2, IP: "10.0.0.2", RTT: 2}, // will not be placed
+		{Dst: "9.9.9.9", Index: 3, IP: "10.0.0.3", RTT: 3}, // nor this
+		{Dst: "9.9.9.9", Index: 4, IP: "10.0.0.4", RTT: 4},
+	})
+	for i := range g.Nodes {
+		n := &g.Nodes[i]
+		if n.Index == 1 || n.Index == 4 {
+			n.Located, n.Lat, n.Lon = true, 39, -96
+		}
+	}
+	before := len(g.Legs)
+	bridgeGaps(&g)
+	if len(g.Legs) != before+1 {
+		t.Fatalf("expected one bridging leg, got %d new", len(g.Legs)-before)
+	}
+	l := g.Legs[len(g.Legs)-1]
+	if !l.Gap {
+		t.Error("a bridging leg must be marked as one, or it reads as router to router")
+	}
+	if l.Through != 2 {
+		t.Errorf("should record the 2 hops it covers, got %d", l.Through)
+	}
+	if len(l.Destinations) != 1 || l.Destinations[0] != "9.9.9.9" {
+		t.Errorf("the bridge belongs to the route that made it: %v", l.Destinations)
+	}
+	a, b := nodeIndex(g, l.From), nodeIndex(g, l.To)
+	if a != 1 || b != 4 {
+		t.Errorf("should join hop 1 to hop 4, got %d to %d", a, b)
+	}
+}
+
+// Adjacent placed hops are already joined; inventing a second leg would draw
+// the same connection twice and double its apparent weight.
+func TestNoBridgeWhereHopsAreAlreadyJoined(t *testing.T) {
+	g := buildGraph([]hopRow{
+		{Dst: "9.9.9.9", Index: 1, IP: "10.0.0.1", RTT: 1},
+		{Dst: "9.9.9.9", Index: 2, IP: "10.0.0.2", RTT: 2},
+	})
+	for i := range g.Nodes {
+		g.Nodes[i].Located, g.Nodes[i].Lat, g.Nodes[i].Lon = true, 39, -96
+	}
+	before := len(g.Legs)
+	bridgeGaps(&g)
+	if len(g.Legs) != before {
+		t.Fatalf("bridged hops that were already joined: %d new", len(g.Legs)-before)
+	}
+}
+
+// A route that never reaches a second placed hop has nothing to join to, and
+// must not acquire a leg to somewhere it never went.
+func TestNothingToBridgeIsLeftAlone(t *testing.T) {
+	g := buildGraph([]hopRow{
+		{Dst: "9.9.9.9", Index: 1, IP: "10.0.0.1", RTT: 1},
+		{Dst: "9.9.9.9", Index: 2, IP: "10.0.0.2", RTT: 2},
+	})
+	for i := range g.Nodes {
+		if g.Nodes[i].Index == 1 {
+			g.Nodes[i].Located, g.Nodes[i].Lat, g.Nodes[i].Lon = true, 39, -96
+		}
+	}
+	before := len(g.Legs)
+	bridgeGaps(&g)
+	if len(g.Legs) != before {
+		t.Fatalf("invented %d leg(s) with only one placed hop", len(g.Legs)-before)
+	}
+}
+
+func nodeIndex(g Graph, id string) int {
+	for _, n := range g.Nodes {
+		if n.ID == id {
+			return n.Index
+		}
+	}
+	return -1
+}

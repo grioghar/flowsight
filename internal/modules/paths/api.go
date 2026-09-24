@@ -167,6 +167,9 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	}
 	g := buildGraph(rows)
 	m.locate(g.Nodes)
+	// Before anything measures the legs: a placed hop whose neighbours could
+	// not be placed would otherwise be drawn with nothing attached to it.
+	bridgeGaps(&g)
 	h := m.home()
 	m.checkPlausible(g.Nodes, h)
 	m.annotateCables(g)
@@ -419,18 +422,10 @@ func (m *Module) describe(nodes []Node) {
 	if len(pairs) == 0 {
 		return
 	}
-	if len(pairs) > 400 {
-		// A cap rather than a queue: this runs while somebody is waiting for
-		// the page, and the sources are other people's.
-		trimmed := make(map[string]string, 400)
-		for ip, h := range pairs {
-			if len(trimmed) >= 400 {
-				break
-			}
-			trimmed[ip] = h
-		}
-		pairs = trimmed
-	}
+	// No cap here: reading a site out of a name already in hand costs nothing,
+	// and capping it would leave hops placed by the address database purely
+	// because of where they fell in a map iteration. describeFast rations the
+	// part that actually costs something.
 	// A reader waits for this, so it gets a budget rather than a promise.
 	detail, cold := m.describeFast(pairs, 6*time.Second)
 	m.note(cold)

@@ -199,6 +199,19 @@ print('plain table OK');
   v = box();
   if (v[3] < 320) throw new Error('a tall box must not be cropped: h=' + v[3]);
 
+  // One world is as far out as a wrapping map may go. Wider than that and the
+  // copies that make the wrap work come into view, and the reader sees the
+  // same country twice on one screen.
+  h.reset();
+  for (var i = 0; i < 12; i++) handlers.wheel({ preventDefault: function () {}, deltaY: 1, clientX: 360, clientY: 180 });
+  v = box();
+  if (v[2] > 720.001) throw new Error('zoomed out past one world: w=' + v[2]);
+  if (v[3] > 360.001) throw new Error('zoomed out past one world: h=' + v[3]);
+  // Framing something enormous cannot escape it either.
+  h.fit(-5000, -5000, 5000, 5000);
+  v = box();
+  if (v[2] > 720.001) throw new Error('fit escaped the one-world limit: w=' + v[2]);
+
   this.requestAnimationFrame = realRAF; window.PointerEvent = realPE;
-  print('FS.panZoom measures across the antimeridian the short way OK');
+  print('FS.panZoom measures across the antimeridian the short way, and stops at one world OK');
 })();

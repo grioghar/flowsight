@@ -388,6 +388,21 @@
         }
         return best;
       };
+      // Which legs touch a node, and which destinations run through it. A hop
+      // means little on its own: the reader wants the journey it belongs to.
+      const legsAt = {};
+      legs.forEach(l => {
+        (legsAt[l.from] = legsAt[l.from] || []).push(l);
+        (legsAt[l.to] = legsAt[l.to] || []).push(l);
+      });
+      const routeOf = (id) => {
+        const seen = {}, out = [];
+        (legsAt[id] || []).forEach(l => (l.destinations || []).forEach(d => {
+          if (!seen[d]) { seen[d] = 1; out.push(d); }
+        }));
+        return out;
+      };
+
       let lines = '', dots = '';
       legs.forEach(l => {
         const a = byId[l.from], b = byId[l.to];
@@ -399,7 +414,10 @@
           ? `\ncould have crossed: ${l.cables.map(c => `${c.name} (${num(c.km)} km)`).join(', ')}`
           : (l.straight_km ? `\nno cable serves both ends` : '');
         const rc = picked ? (onRoute[l.from + '>' + l.to] ? ' onroute' : ' offroute') : '';
-        lines += `<path class="leg ${l.shared ? 'shared' : ''}${rc}" data-leg="${esc(l.to)}" stroke="${legColour(l)}" d="M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${esc(cbl)}</title></path>`;
+        // A leg standing in for hops that could not be placed is a weaker
+        // claim than one router to the next, and is drawn as one.
+        const gap = l.gap ? ' gapleg' : '';
+        lines += `<path class="leg ${l.shared ? 'shared' : ''}${rc}${gap}" data-dsts="${esc((l.destinations || []).join(' '))}" stroke="${legColour(l)}" d="M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${l.gap ? `\nthrough ${l.through} hop${l.through === 1 ? '' : 's'} with no known position` : ''}${esc(cbl)}</title></path>`;
       });
       located.forEach(n => {
         const [x, y] = xy(n);
@@ -593,16 +611,35 @@
           <button class="btn small" id="f-clear">Clear</button>
           <button class="btn small" id="f-reset">Reset zoom</button>
         </div>
+        ${/* Map and detail side by side. The detail used to sit under the map,
+              which meant every answer cost a scroll away from the thing that
+              raised the question -- and by the time you were reading it the
+              hop you had clicked was off screen. */''}
+        <div class="mapsplit">
+        <div class="mapcol">
         <svg class="pathmap" id="pathmap" viewBox="0 0 ${MAPW} ${MAPH}" preserveAspectRatio="xMidYMid meet">
-          <defs><g id="fs-world">${FS.landPath ? `<path class="land" d="${FS.landPath}"/>` : ''}${FS.graticule(MAPW, MAPH, 30)}${cables}</g></defs>
-          ${/* The backdrop is heavy -- one land outline and a couple of thousand
-                cable runs -- so the copies either side reference it rather than
-                repeat it. Nothing in it is clickable, so a reference is enough. */''}
+          ${/* Land and cables are the heavy part -- one long outline and up to a
+                couple of thousand cable runs -- so the copies either side
+                reference them rather than repeat them.
+
+                Their styling is written inline rather than left to the
+                stylesheet. A <use> renders a shadow copy that a descendant
+                selector like `.pathmap .land` does not reach, so the clone
+                falls back to the SVG default and the continents come out
+                solid black. Inline style travels with the clone, and var()
+                still resolves, so the theme is not lost. */''}
+          <defs><g id="fs-world">
+            ${FS.landPath ? `<path class="land" style="fill:color-mix(in srgb, var(--ink) 13%, transparent);stroke:var(--line);stroke-width:.4;vector-effect:non-scaling-stroke" d="${FS.landPath}"/>` : ''}
+            <g style="fill:none;stroke:var(--line);stroke-width:.6;opacity:.9;vector-effect:non-scaling-stroke">${cables}</g>
+          </g></defs>
           <use href="#fs-world" x="${-MAPW}"/><use href="#fs-world"/><use href="#fs-world" x="${MAPW}"/>
-          ${/* Routes and markers are light and have to stay clickable, which a
-                <use> copy does not, so these are drawn three times for real.
-                Pan past the edge and the hop under the cursor still answers. */''}
-          ${[-MAPW, 0, MAPW].map(dx => `<g transform="translate(${dx},0)">${lines}${dots}</g>`).join('')}
+          ${/* The graticule is drawn rather than referenced because its labels
+                need a fill of their own, which they would not inherit inside
+                the group above. It is a few dozen elements; the saving was
+                never there. Routes and markers are drawn for real too: a <use>
+                copy cannot be clicked, and a reader who pans past the edge
+                would find a map whose hops no longer answer. */''}
+          ${[-MAPW, 0, MAPW].map(dx => `<g transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${dots}</g>`).join('')}
         </svg>
         ${(() => {
           // Nothing on this map is self-evident: a thick grey line and a thin
@@ -620,12 +657,18 @@
             ${it(dot(FS.palette[2], 'rich'), 'operator known')}
             ${it(dot('', 'ruledout'), 'the latency rules this placement out')}
             ${it(dot('', 'doubtful'), 'possible, but only just: doubtful')}
+            ${it(sw('leg gapleg', 'stroke:var(--muted)'), 'the route continues through hops with no known position')}
             ${it(sw('corrected'), 'correction: database \u2192 the site in the router\u2019s name')}
             ${picked ? it(sw('leg onroute', 'stroke:' + FS.palette[0]), 'the route you picked; the rest is dimmed') : ''}
           </div>`;
         })()}
-        <div class="hoppanel" id="hoppanel">${hopCards || '<div class="muted small">No hop has coordinates yet.</div>'}
-          <div class="muted small" style="margin-top:9px">Click any hop on the map for who runs it, where it is, and how that was decided.</div></div>
+        </div>
+        <aside class="hoppanel" id="hoppanel">
+          <div class="hphead">Hop detail</div>
+          <div class="hpbody">${hopCards || '<div class="muted small">No hop has coordinates yet.</div>'}</div>
+          <div class="muted small hphint">Hover or click any hop on the map, or any step in the route, for who runs it, where it is, and how that was decided.</div>
+        </aside>
+        </div>
         <div class="help" style="margin-top:8px">Land outlines are Natural Earth 1:110m, public domain. ${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. Coordinates come from an address database: dependable for end-user addresses and rough for carrier equipment, which is why placements the measured latency rules out are circled rather than trusted. Where a router's hostname carries a site code, that is used instead of the database, and an amber line shows where the two disagreed.</div>`)}</div>
 
       ${trail ? `<div style="margin-top:14px">${trail}</div>` : ''}
@@ -687,10 +730,33 @@
       const showHop = (want) => {
         cards.forEach(d => { d.hidden = d.getAttribute('data-for') !== want; });
       };
+      // Clicking a hop lights the routes that run through it. A lone dot
+      // answers "what is this"; the journey it sits on answers "why is it
+      // here", which is the question somebody clicking a router actually has.
+      const legEls = el.querySelectorAll('.leg');
+      const litRoute = (dsts) => {
+        el.querySelectorAll('.hop.onpath').forEach(x => x.classList.remove('onpath'));
+        legEls.forEach(p => p.classList.remove('onpath', 'offpath'));
+        if (!dsts || !dsts.length) return;
+        const want = {}; dsts.forEach(d => want[d] = 1);
+        const ends = {};
+        legEls.forEach(p => {
+          const on = (p.getAttribute('data-dsts') || '').split(' ').some(d => want[d]);
+          p.classList.add(on ? 'onpath' : 'offpath');
+        });
+        legs.forEach(l => {
+          if (!(l.destinations || []).some(d => want[d])) return;
+          ends[l.from] = 1; ends[l.to] = 1;
+        });
+        Object.keys(ends).forEach(id => {
+          el.querySelectorAll('.hop[data-hop="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]')
+            .forEach(x => x.classList.add('onpath'));
+        });
+      };
       el.querySelectorAll('.hop').forEach(c => {
-        const show = () => showHop(c.getAttribute('data-hop'));
-        c.addEventListener('click', show);
-        c.addEventListener('mouseenter', show);
+        const id = c.getAttribute('data-hop');
+        c.addEventListener('mouseenter', () => showHop(id));
+        c.addEventListener('click', () => { showHop(id); litRoute(routeOf(id)); });
       });
 
       // A step in the trail and its dot on the map are the same hop, so

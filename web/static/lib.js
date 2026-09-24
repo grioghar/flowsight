@@ -319,7 +319,12 @@ FS.panZoom = (svg, w, h, opts) => {
     svg.style.setProperty('--z', z);
     if (onZoom) onZoom(z);
   };
-  const clampW = (x) => Math.min(w * 4, Math.max(w / 40, x));
+  // How far out you may zoom. On a map that wraps, one world is the limit:
+  // any wider and the copies that make the wrap work come into view, and the
+  // same place is on screen twice. Somewhere that does not wrap has no such
+  // problem and keeps the old room to pull back from its content.
+  const maxOut = opts.wrapX ? w : w * 4;
+  const clampW = (x) => Math.min(maxOut, Math.max(w / 40, x));
   // Where a point on screen falls in the drawing, as a fraction of each side.
   const frac = (cx, cy) => {
     const r = svg.getBoundingClientRect();

@@ -12,6 +12,48 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241537
+
+**Hop detail sits beside the map, not under it.** It used to be below, so
+every answer cost a scroll away from the thing that raised the question -- and
+by the time you were reading it, the hop you clicked was off screen. The panel
+is now a column to the right of the map, matched to its height, scrolling its
+own contents so the page never moves when you pick a different hop.
+
+**Clicking a hop lights the routes running through it.** A dot on its own says
+what a router is; the journey it belongs to says why it is there. The rest is
+dimmed rather than hidden, for the same reason picking a route dims rather
+than hides.
+
+**Placed hops are no longer left floating.** A leg can only be drawn when both
+its ends have a position, and most hops have none -- so a placed hop between
+two unplaceable ones appeared as a dot with nothing attached to it. On this
+network that was one placed dot in five, and only one of them was genuinely
+unconnected: the rest were on routes whose neighbouring hops simply could not
+be located. Those stretches are now bridged by a dashed leg that says how many
+hops it stands in for. The traffic did go that way; what is unknown is where
+it was in between, and that is a different claim from a leg between adjacent
+routers, so it is drawn differently.
+
+**Zooming out stops at one world.** Further out than that and the copies that
+make the map wrap come into view, and the same place is on screen twice.
+
+**Two bugs found by looking at the thing rather than the tests.**
+
+The continents rendered solid black. Land and cables are drawn once and
+referenced either side to make the wrap cheap, and a `<use>` renders a shadow
+copy that a stylesheet rule like `.pathmap .land` does not reach -- so the
+copies fell back to the SVG default, which is black fill. Their paint travels
+with them now.
+
+And where a hop was placed came down to scheduling. Reading a site out of a
+name already in hand is free, but it was queued behind DNS lookups that were
+going to time out, under a shared six-second budget. When the budget ran out,
+hops whose names were already known were left with the address database's
+answer. A router called `ae-6.a03.londen12.uk.bb.gin.ntt.net` was being shown
+in Ashburn, Virginia. The free pass now runs first and in full; only the
+lookups are rationed.
+
 ## 0.9.8r202609241520
 
 **A third verdict: doubtful.** The speed of light gives a hard floor for a

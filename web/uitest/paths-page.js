@@ -47,7 +47,10 @@ var GRAPH = { nodes: [
   legs: [
     { from:'h2', to:'h3', destinations:['1.1.1.1','8.8.8.8'], shared:true },
     { from:'h3', to:'h4', destinations:['1.1.1.1'], shared:false, straight_km:13500,
-      cables:[{ name:'Southern Cross NEXT', km:13700, floor_ms:137 }] } ] };
+      cables:[{ name:'Southern Cross NEXT', km:13700, floor_ms:137 }] },
+    // Stands in for hops that could not be placed; without it h35 is a dot
+    // with nothing attached to it.
+    { from:'h4', to:'h35', destinations:['1.1.1.1'], shared:false, gap:true, through:3 } ] };
 var DESTS = { destinations: [ { dst:'1.1.1.1', name:'one.one.one.one', country:'AU', city:'Sydney', hops:6, answered:5, complete:1, ts:1790200000 } ] };
 var DEVS = { devices: [
   { key:'192.168.1.119', name:'MacBookPro', addresses:['192.168.1.119','2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6'], destinations:9 },
@@ -111,6 +114,12 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     throw new Error('the backdrop should be referenced three times, not redrawn');
   if ((h.match(/<path class="land"/g) || []).length !== 1)
     throw new Error('the land outline must be drawn once and referenced, not tripled');
+  // A <use> shadow copy is not reached by `.pathmap .land`, so the styling has
+  // to travel with the element or the continents render solid black.
+  var landTag = h.slice(h.indexOf('<path class="land"'), h.indexOf('d="', h.indexOf('<path class="land"')));
+  if (landTag.indexOf('style=') < 0 || landTag.indexOf('fill:') < 0)
+    throw new Error('land inside <defs> needs its paint inline, not from a descendant selector');
+  if (landTag.indexOf('var(--') < 0) throw new Error('inline paint must still follow the theme');
   if (h.indexOf('transform="translate(-720,0)"') < 0 || h.indexOf('transform="translate(720,0)"') < 0)
     throw new Error('routes and markers need a copy a world either side');
 
@@ -136,6 +145,12 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('London, England, GB') < 0) throw new Error('the overruled answer must be quoted');
   if (h.indexOf('the router\u2019s own name') < 0) throw new Error('the placement source should be named');
   if (h.indexOf('hoppanel') < 0) throw new Error('there should be a panel for hop detail');
+  // The detail belongs beside the map, not under it: an answer must not cost
+  // a scroll away from the hop that raised the question.
+  if (h.indexOf('class="mapsplit"') < 0) throw new Error('map and detail should sit side by side');
+  var split = h.indexOf('class="mapsplit"'), svgAt = h.indexOf('class="pathmap"'), panelAt = h.indexOf('class="hoppanel"');
+  if (!(split < svgAt && svgAt < panelAt)) throw new Error('the panel should follow the map inside the split');
+  if (h.indexOf('class="hpbody"') < 0) throw new Error('the panel needs its own scrolling body');
   // None of the map's marks are self-evident, so there has to be a key.
   if (h.indexOf('class="legend"') < 0) throw new Error('the map needs a legend');
   ['a leg several destinations share', 'a leg used by one destination', 'submarine cable',
@@ -180,6 +195,13 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('Ruled out by latency') < 0) throw new Error('impossible placements need a count');
   // Disproved and merely doubted are different claims and get different marks.
   if (h.indexOf('class="doubtful"') < 0) throw new Error('a doubtful placement needs its own mark on the map');
+  // A placed hop whose neighbours could not be placed must still be joined to
+  // the route, and the join must read as the weaker claim it is.
+  if (h.indexOf('gapleg') < 0) throw new Error('a leg across unplaced hops needs its own style');
+  if (h.indexOf('through 3 hops with no known position') < 0)
+    throw new Error('a bridging leg should say how much it is standing in for');
+  if (h.indexOf('the route continues through hops with no known position') < 0)
+    throw new Error('the legend should explain the bridging leg');
   if (h.indexOf('Placements the latency makes doubtful') < 0) throw new Error('doubtful placements need their own table');
   if (h.indexOf('just not provably') < 0) throw new Error('the doubtful table must say what it is not claiming');
   if (h.indexOf('possible, but only just') < 0) throw new Error('the legend should explain the doubtful mark');

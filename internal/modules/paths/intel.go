@@ -31,6 +31,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -500,10 +501,7 @@ func (m *Module) detailFor(ip, host string) Detail {
 	if host == "" {
 		host = reverseName(ip)
 	}
-	d.Name = host
-	if code, p, ok := decodePoP(host); ok {
-		d.PoPCode, d.PoPCity, d.PoPLat, d.PoPLon = code, p.City, p.Lat, p.Lon
-	}
+	d = fromName(host)
 	d.ASN, d.Prefix, d.RIR, d.Allocated = originASN(ip)
 	d.ASName = asName(d.ASN)
 
@@ -518,28 +516,49 @@ func (m *Module) detailFor(ip, host string) Detail {
 	return d
 }
 
-// describeFast is what a waiting reader gets: whatever is already cached, plus
-// a reverse lookup for anything that is not, under a deadline. A name alone is
-// enough to place a router, which is the part that changes the map; the rest
-// arrives on the next load once the warmer has fetched it.
+// describeFast is what a waiting reader gets.
+//
+// The work splits in two, and keeping it split is the point. Reading a site
+// out of a name already in hand is arithmetic: no network, no waiting, and
+// nothing that can fail. Finding a name for an address is a DNS lookup that
+// routinely takes seconds and usually comes back empty.
+//
+// Running both under one deadline let the second starve the first. Hops whose
+// names were already known sat in the queue behind lookups that were going to
+// time out, the budget ran down, and they were left with the address
+// database's answer -- so whether a router was placed in London or in Ashburn
+// came down to where it happened to sit in the queue. The free pass now runs
+// first and completely, for every address, and only the lookups are rationed.
 func (m *Module) describeFast(pairs map[string]string, budget time.Duration) (map[string]Detail, []string) {
 	out := make(map[string]Detail, len(pairs))
-	var cold []string
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 8)
-	deadline := time.Now().Add(budget)
+	var cold, needName []string
 
 	for ip, host := range pairs {
 		if d, ok := m.cached(ip); ok {
 			out[ip] = d
 			continue
 		}
-		mu.Lock()
 		cold = append(cold, ip)
-		mu.Unlock()
+		if host == "" {
+			needName = append(needName, ip)
+			continue
+		}
+		out[ip] = fromName(host)
+	}
+
+	// Only the lookups are rationed, and only so many of them: this runs while
+	// somebody waits for a page.
+	sort.Strings(needName)
+	if len(needName) > 400 {
+		needName = needName[:400]
+	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	deadline := time.Now().Add(budget)
+	for _, ip := range needName {
 		wg.Add(1)
-		go func(ip, host string) {
+		go func(ip string) {
 			defer wg.Done()
 			if time.Now().After(deadline) {
 				return
@@ -549,27 +568,31 @@ func (m *Module) describeFast(pairs map[string]string, budget time.Duration) (ma
 			if time.Now().After(deadline) {
 				return
 			}
-			if host == "" {
-				host = reverseName(ip)
-			}
+			host := reverseName(ip)
 			if host == "" {
 				return
-			}
-			var d Detail
-			d.Name = host
-			if code, p, ok := decodePoP(host); ok {
-				d.PoPCode, d.PoPCity, d.PoPLat, d.PoPLon = code, p.City, p.Lat, p.Lon
 			}
 			// Deliberately not cached: this is a partial answer, and writing
 			// it under the same key the warmer uses would make "not asked
 			// yet" indistinguishable from "asked, and there is nothing".
 			mu.Lock()
-			out[ip] = d
+			out[ip] = fromName(host)
 			mu.Unlock()
-		}(ip, host)
+		}(ip)
 	}
 	wg.Wait()
 	return out, cold
+}
+
+// fromName is everything a router's own name gives up, which is the part that
+// decides where it is drawn.
+func fromName(host string) Detail {
+	var d Detail
+	d.Name = host
+	if code, p, ok := decodePoP(host); ok {
+		d.PoPCode, d.PoPCity, d.PoPLat, d.PoPLon = code, p.City, p.Lat, p.Lon
+	}
+	return d
 }
 
 // note remembers addresses that still need the slow lookup.
