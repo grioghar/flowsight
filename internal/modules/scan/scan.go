@@ -112,7 +112,7 @@ func (m *Module) Info() core.ModuleInfo {
 		Capabilities: []string{core.CapHostInventory},
 		After:        []string{"identity"},
 		Defaults: map[string]any{
-			"enabled":            false,
+			"scanning":           false,
 			"max_parallel_hosts": 2,
 			"max_parallel_ports": 64,
 			"port_set":           "top100",
@@ -124,7 +124,7 @@ func (m *Module) Info() core.ModuleInfo {
 			"rate_limit_pps":     200,
 		},
 		Schema: []core.SettingField{
-			{Key: "enabled", Label: "Enable active scanning", Type: "bool"},
+			{Key: "scanning", Label: "Allow active scanning", Type: "bool", Help: "Off by default. Scans go out from the gateway to local addresses only; they can trip host firewalls and the IDS."},
 			{Key: "max_parallel_hosts", Label: "Max parallel hosts", Type: "int"},
 			{Key: "max_parallel_ports", Label: "Max parallel ports per host", Type: "int"},
 			{Key: "port_set", Label: "Port set", Type: "string", Help: "top100, top1000, or custom"},
@@ -260,6 +260,7 @@ func (m *Module) apiStart(r *core.Req) (any, error) {
 }
 
 func (m *Module) apiStatus(r *core.Req) (any, error) {
+	m.updateSettings()
 	m.scheduler.mu.Lock()
 	defer m.scheduler.mu.Unlock()
 
@@ -290,7 +291,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	}
 
 	return map[string]any{
-		"enabled":        m.enabled,
+		"scanning":       m.enabled,
 		"queued":         queued,
 		"running":        running,
 		"nmap_installed": nmapInstalled,
@@ -424,7 +425,7 @@ func (m *Module) apiSweep(r *core.Req) (any, error) {
 func (m *Module) updateSettings() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.enabled = core.Bool(m.ctx.Settings(), "enabled", false)
+	m.enabled = core.Bool(m.ctx.Settings(), "scanning", false)
 	m.maxParallel = core.Int(m.ctx.Settings(), "max_parallel_hosts", 2)
 	m.maxPorts = core.Int(m.ctx.Settings(), "max_parallel_ports", 64)
 	m.portSet = core.Str(m.ctx.Settings(), "port_set", "top100")

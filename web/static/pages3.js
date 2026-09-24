@@ -155,9 +155,9 @@
     async render(el, ctx) {
       const [s, r] = await Promise.all([get('/api/mitm/status'), get('/api/mitm/requests?limit=300' + (ctx.params.q ? '&q=' + encodeURIComponent(ctx.params.q) : ''))]);
       if (s.error) { el.innerHTML = FS.err(s.error); return; }
-      const state = !s.licensed ? pill('business tier', 'warn') : !s.enabled ? pill('off', '') : s.listening ? pill('inspecting', 'ok') : pill('not listening', 'bad');
+      const state = !s.licensed ? pill('business tier', 'warn') : !s.scanning ? pill('off', '') : s.listening ? pill('inspecting', 'ok') : pill('not listening', 'bad');
       el.innerHTML = `<div class="grid cols-4">
-        ${kpi('State', state, s.error ? esc(s.error) : (s.enabled ? `loopback port ${s.port}` : 'switch it on under Settings › mitm'))}
+        ${kpi('State', state, s.error ? esc(s.error) : (s.scanning ? `loopback port ${s.port}` : 'switch it on under Settings › mitm'))}
         ${kpi('Requests', num(s.requests), `${bytes(s.bytes_in)} in · ${bytes(s.bytes_out)} out`)}
         ${kpi('Decoded', num(s.decoded), 'DNS-over-HTTPS questions recovered')}
         ${card('Scope', `<div class="small">Clients: ${(s.clients || []).length ? (s.clients || []).map(c => `<span class="mono">${esc(c)}</span>`).join(', ') : '<span class="muted">every client a policy decrypts</span>'}</div>
@@ -1571,12 +1571,12 @@
     async render(el, ctx) {
       const [status, results] = await Promise.all([get('/api/scan/status'), get('/api/scan/results?hours=24')]);
       if (status.error) { el.innerHTML = FS.err(status.error); return; }
-      const state = !status.enabled ? pill('disabled', 'warn') : status.running > 0 ? pill('scanning', 'info') : pill('ready', 'ok');
+      const state = !status.scanning ? pill('disabled', 'warn') : status.running > 0 ? pill('scanning', 'info') : pill('ready', 'ok');
       el.innerHTML = `<div class="grid cols-4">
         ${kpi('Status', state, status.nmap_installed ? 'nmap installed' : 'native probes only')}
         ${kpi('Queue', num(status.queued), status.running ? num(status.running) + ' running' : 'ready')}
         ${kpi('Last sweep', status.last_sweep ? ago(status.last_sweep) : 'never')}
-        ${card('Actions', `<div class="actions"><button class="btn" id="scan-btn" ${!status.enabled ? 'disabled' : ''}>Scan a host…</button><button class="btn" id="sweep-btn" ${!status.enabled ? 'disabled' : ''}>Sweep all local</button></div>${!status.enabled ? '<div class="small muted" style="margin-top:8px">Enable scanning in Settings › scan</div>' : ''}`)}
+        ${card('Actions', `<div class="actions"><button class="btn" id="scan-btn" ${!status.scanning ? 'disabled' : ''}>Scan a host…</button><button class="btn" id="sweep-btn" ${!status.scanning ? 'disabled' : ''}>Sweep all local</button></div>${!status.scanning ? '<div class="small muted" style="margin-top:8px">Enable scanning in Settings › scan</div>' : ''}`)}
       </div>
       <div style="margin-top:14px">${card('Recent scans', table((results.results || []), [
         { t: 'Host', f: x => `<b>${esc(x.hostname || x.ip)}</b>${x.mac ? ` <div class="muted small mono">${esc(x.mac)}</div>` : ''}` },

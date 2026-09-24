@@ -333,7 +333,7 @@ Active network scanning for local devices: ICMP, TCP/UDP probes, service detecti
 
 | Key | Setting | Type | Default | Notes |
 |---|---|---|---|---|
-| `enabled` | Enable active scanning | bool | `false` | Master switch. Off: all scans are refused. |
+| `scanning` | Allow active scanning | bool | `false` | Master switch. Off: all scans are refused. |
 | `max_parallel_hosts` | Max parallel hosts | int | `2` | Job queue limit. |
 | `max_parallel_ports` | Max parallel ports per host | int | `64` | TCP connect limit per target. |
 | `port_set` | Port set | string | `"top100"` | `top100`, `top1000`, or `custom`. |

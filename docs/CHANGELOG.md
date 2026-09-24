@@ -12,6 +12,15 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242356
+
+**The scan switch is its own switch.** The scan module's on/off setting was
+called `enabled`, which is also the name every module's load switch goes
+by, so turning scanning off would have unloaded the module and its page on
+the next restart, and the status card read the setting only once. The
+setting is now `scanning` (*Allow active scanning*), read live, and the
+status card agrees with it.
+
 ## 0.9.8r202609242353
 
 **Scan: what a device is, from the inside.** A new *Scan* page under
