@@ -247,6 +247,15 @@ type rdapReply struct {
 		Roles      []string        `json:"roles"`
 		VCardArray json.RawMessage `json:"vcardArray"`
 	} `json:"entities"`
+	// Where an operator says its own geofeed is: a remark or a link.
+	Remarks []struct {
+		Title       string   `json:"title"`
+		Description []string `json:"description"`
+	} `json:"remarks"`
+	Links []struct {
+		Rel  string `json:"rel"`
+		Href string `json:"href"`
+	} `json:"links"`
 }
 
 // rdapNet reads the allocation and the registrant off the registry.
@@ -257,24 +266,30 @@ type rdapReply struct {
 // in the "label" parameter, which is why this decodes the raw array instead of
 // unmarshalling into a struct.
 func rdapNet(c *http.Client, ip string) (netName, org, addr string) {
+	netName, org, addr, _ = rdapNetFeed(c, ip)
+	return
+}
+
+// rdapNetFeed is rdapNet with the geofeed URL the object named, if any.
+func rdapNetFeed(c *http.Client, ip string) (netName, org, addr, geofeed string) {
 	if !validIP(ip) {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	resp, err := c.Get("https://rdap.org/ip/" + url.PathEscape(ip))
 	if err != nil {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	var r rdapReply
 	if json.Unmarshal(body, &r) != nil {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	netName = r.Name
 	for _, e := range r.Entities {
@@ -289,7 +304,8 @@ func rdapNet(c *http.Client, ip string) (netName, org, addr string) {
 			addr = a
 		}
 	}
-	return netName, org, addr
+	geofeed = geofeedFromRDAP(&r)
+	return netName, org, addr, geofeed
 }
 
 func hasRole(roles []string, want string) bool {
@@ -523,7 +539,9 @@ func (m *Module) detailFor(ip, host string) Detail {
 
 	if m.registryOK() {
 		client := &http.Client{Timeout: 15 * time.Second}
-		d.NetName, d.Org, d.OrgAddr = rdapNet(client, ip)
+		var feed string
+		d.NetName, d.Org, d.OrgAddr, feed = rdapNetFeed(client, ip)
+		m.noteGeofeed(feed, ip)
 		if m.facilitiesOK() {
 			d.Facilities, d.Scoped = facilitiesFor(client, d.ASN, d.PoPCity)
 		}

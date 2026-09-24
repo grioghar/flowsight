@@ -506,6 +506,11 @@ block: abuse confidence, reports and reporters, ISP, usage type and domain,
 with Tor and whitelist flags. Answers are kept a week; the *Data sources* card
 counts them.
 
+**Geofeeds from the registry.** Where an operator names its own geofeed in
+its registry object, FlowSight fetches it weekly and places that operator's
+prefixes from it -- the operator's statement rather than the registrant's
+office address.
+
 **The clouds' own range lists.** For an address in a range AWS, Google,
 Azure, Oracle, DigitalOcean or Linode publishes, the map uses the provider's
 own region -- the campus the region is built in -- over the address database

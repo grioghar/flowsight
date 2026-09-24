@@ -229,6 +229,10 @@ push the daemon's heap past what the gateway can carry.
 The OpenStreetMap source is a POST to the configured Overpass endpoint through
 the same client, carrying only the fixed query for one region; the answer is
 capped at 64 MB and converted before it is kept.
+Geofeed URLs are taken from registry answers, so they are operator-supplied
+by a third party: each is checked by the same public-host rule before it is
+kept, at most five hundred are remembered, each is read at one megabyte a
+second and capped at 32 MB, and a feed that fails is retried weekly.
 Provider range feeds (AWS, Google, Microsoft, Oracle, DigitalOcean, Linode,
 Cloudflare, Fastly) are fixed URLs fetched the same way; Microsoft's weekly
 link is read off its download page and must match the expected host and file

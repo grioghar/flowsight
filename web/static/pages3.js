@@ -978,7 +978,7 @@
         const S = st.sources || {};
         const row = (name, on, detail, err) => `<tr><td>${esc(name)}</td><td>${on ? pill('on', 'ok') : pill('off', '')}</td><td class="small">${detail}</td><td class="small sev-high">${esc(err || '')}</td></tr>`;
         const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {}, fx = S.corrections || {}, osm = S.osm_telecom || {}, pv = S.providers || {};
-        const rep = S.reputation || {};
+        const rep = S.reputation || {}, gf = S.geofeeds || {};
         const pvFeeds = Object.values(pv.feeds || {});
         const pvText = pvFeeds.length ? pvFeeds.map(f => `${f.name} ${num(f.prefixes || 0)}${f.error ? ' (failed)' : ''}`).join(' \u00b7 ') : 'nothing fetched yet';
         const pvErr = pvFeeds.filter(f => f.error).map(f => `${f.name}: ${f.error}`).join('; ');
@@ -992,6 +992,7 @@
           ${row('Land routes', land.on, land.on ? `${num(land.loaded || 0)} routes loaded` : 'not loaded', land.error)}
           ${row('AbuseIPDB reputation', rep.on, rep.on ? `${num(rep.known || 0)} addresses known (${num(rep.asked_this_session || 0)} asked this session)` : 'no key \u2014 set one under Settings \u203a paths \u203a Reputation', rep.error)}
           ${row('Cloud provider ranges', pv.on, pv.on ? `${num(pv.prefixes || 0)} prefixes: ${pvText}` : 'off', pvErr)}
+          ${row('Registry geofeeds', gf.on, gf.on ? `${num(gf.urls || 0)} feeds named in registry objects, ${num(gf.fetched || 0)} fetched, ${num(gf.rows || 0)} placed prefixes${gf.failed ? `, ${num(gf.failed)} failing` : ''}` : 'off')}
           ${row('OpenStreetMap telecom lines', osm.on, osm.on ? `${num(osm.ways || 0)} lines from ${num(osm.regions_loaded || 0)} of ${num(osm.regions_total || 0)} regions, counted at ${Math.round((osm.weight || 0) * 100)}%${osm.next_region ? ` — next: ${esc(osm.next_region)}` : ''}${osm.backing_off_until && osm.backing_off_until * 1000 > Date.now() ? ` — backing off until ${FS.when(osm.backing_off_until)}` : ''}` : 'off', osm.error)}
           ${row('Learned corrections', fx.on, `${num(fx.prefixes || 0)} prefixes placed by their own routers, ${num(fx.set_aside || 0)} registrant addresses set aside`)}
         </table>`, `each is a setting under <a href="#modules/paths">Settings › paths</a>, grouped under <em>Where things are</em>`)}</div>`;

@@ -104,6 +104,7 @@ func (m *Module) Info() core.ModuleInfo {
 			"terrestrial_urls":       "",
 			"osm_telecom":            true,
 			"provider_feeds":         true,
+			"geofeeds":               true,
 			"abuseipdb_key":          "",
 			"azure_service_tags_url": "",
 			"osm_overpass_url":       "",
@@ -135,6 +136,8 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "One GeoJSON URL per line, replacing the defaults. Lines starting with # or // are ignored, so a source can be kept and turned off."},
 			{Section: "Reputation", Key: "abuseipdb_key", Label: "AbuseIPDB API key", Type: "secret",
 				Help: "With a key, every hop on a route is checked against AbuseIPDB -- abuse confidence, reports, ISP, usage type -- and the answer shown on its card and kept a week. Twenty addresses are asked about every few minutes, well inside the free allowance of a thousand a day. To get a key: create a free account at abuseipdb.com, open Account \u203a API, click Create Key, and paste it here. Leave empty to disable."},
+			{Section: "Where things are", Key: "geofeeds", Label: "Follow geofeeds named in the registry", Type: "bool",
+				Help: "Some operators publish where their prefixes are (RFC 8805, prefix, country, region, city) and name the file in their registry object. FlowSight already asks the registry about every hop; with this on it keeps any geofeed it is pointed to, fetches each once a week, and uses its rows like a provider's own range list. Listed at /api/paths/geofeeds."},
 			{Section: "Where things are", Key: "provider_feeds", Label: "Use the clouds' published address ranges", Type: "bool",
 				Help: "AWS, Google Cloud, Microsoft Azure, Oracle Cloud, DigitalOcean and Linode publish which prefixes they use in which region; Cloudflare and Fastly publish their anycast ranges. For an address in one of those ranges this is the operator's own statement of where it is and outranks the address database and a latency estimate. An anycast address is announced everywhere at once, so a database position for one is set aside and the hop is placed by timing. Fetched weekly; Microsoft's file is read as a stream and kept compact."},
 			{Section: "Where things are", Key: "azure_service_tags_url", Label: "Azure service tags file", Type: "string",
@@ -184,9 +187,12 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("terrestrial", 12*time.Hour, m.refreshTerrestrial)
 	ctx.Every("osm", 20*time.Minute, m.refreshOSM, core.Delayed())
 	ctx.Every("providers", 30*time.Minute, m.refreshProviders, core.Delayed())
+	ctx.Every("geofeeds", 30*time.Minute, m.refreshGeofeeds, core.Delayed())
 	ctx.Every("reputation", 5*time.Minute, m.reputationJob, core.Delayed())
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
+	ctx.Route("GET", "/api/paths/geofeeds", m.apiGeofeeds, core.Needs("paths.map"),
+		core.Doc("RFC 8805 geofeeds discovered in registry objects, with fetch state"))
 	ctx.Route("GET", "/api/paths/talkers", m.apiTalkers, core.Needs("paths.map"),
 		core.Doc("Which devices talked to an endpoint and over which services (application, name, port)"),
 		core.Params("dst", "the endpoint", "hours", "window, default 24"))

@@ -521,6 +521,35 @@ func (m *Module) loadProviders(stats map[string]providerStats) error {
 		st.Prefixes = count
 		stats[f.Key] = st
 	}
+	// Geofeeds discovered in the registry, kept beside the provider files.
+	geofeedRows := 0
+	if files, _ := filepath.Glob(filepath.Join(dir, "geofeed-*.csv")); len(files) > 0 {
+		for _, path := range files {
+			fh, err := os.Open(path)
+			if err != nil {
+				continue
+			}
+			sc := bufio.NewScanner(fh)
+			for sc.Scan() {
+				p := strings.Split(sc.Text(), ",")
+				if len(p) < 7 {
+					continue
+				}
+				_, n, err := net.ParseCIDR(p[0])
+				if err != nil {
+					continue
+				}
+				lat, _ := strconv.ParseFloat(p[3], 64)
+				lon, _ := strconv.ParseFloat(p[4], 64)
+				idx.add(providerRange{Net: n, Provider: p[1], Region: p[2], Lat: lat, Lon: lon, City: p[5]})
+				geofeedRows++
+			}
+			fh.Close()
+		}
+	}
+	if geofeedRows > 0 {
+		stats["geofeeds"] = providerStats{Name: "Registry geofeeds", Prefixes: geofeedRows, FetchedAt: time.Now().Unix()}
+	}
 	m.mu.Lock()
 	m.providers = idx
 	m.provider = providerState{On: true, Feeds: stats, Total: idx.n}

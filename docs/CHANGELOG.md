@@ -12,6 +12,19 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242116
+
+**Geofeeds named in the registry are followed.** The registries' own address
+for a block is the registrant's head office, but some operators publish a
+geofeed -- RFC 8805, a file of prefix, country, region and city -- and name
+it in the block's registry object. FlowSight already asks the registry about
+every hop; it now keeps any geofeed URL the answer carries (a *Geofeed*
+remark, a `geofeed` link), fetches each once a week through the public-only
+client at a walking pace, and uses its rows like a provider's own range list.
+The *Data sources* card counts feeds found, fetched and prefixes placed;
+`GET /api/paths/geofeeds` lists them; *Follow geofeeds named in the registry*
+under *Where things are* turns it off.
+
 ## 0.9.8r202609242113
 
 **Where the "too fast" hops actually are.** Of a hundred placements the
