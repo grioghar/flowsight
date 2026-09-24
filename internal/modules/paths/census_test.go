@@ -89,3 +89,27 @@ func TestOnlyNearbySitesAreKept(t *testing.T) {
 		t.Fatalf("without an origin the first six are kept, got %d", len(got))
 	}
 }
+
+func TestCensusAnycastAppliesToEndpointsOnly(t *testing.T) {
+	hint := &providerRange{Provider: "anycast census, AS7018", Anycast: true, Census: true, Sites: []anySite{{City: "Dallas", Lat: 32.8, Lon: -96.8}}, SiteTotal: 5}
+	g := Graph{Nodes: []Node{
+		{ID: "bb", Index: 3, IPs: []string{"2001:506:6000::9"}, RTT: 2.9, Located: true, Lat: 39.1, Lon: -94.6, City: "Kansas City", Source: "database", censusHint: hint},
+		{ID: "end", Index: 9, IPs: []string{"1.1.1.1"}, RTT: 20, Located: true, Lat: -33.9, Lon: 151.2, City: "Sydney", Source: "measured", censusHint: hint},
+	}, Legs: []Leg{{From: "bb", To: "end", Destinations: []string{"1.1.1.1"}}}}
+	markEndpoints(&g)
+	markOperatorAnycast(&g)
+	if g.Nodes[0].Anycast || !g.Nodes[0].Located {
+		t.Fatal("a router inside a census-listed /24 is not anycast")
+	}
+	if !g.Nodes[1].Anycast || g.Nodes[1].Located || g.Nodes[1].AnycastSites != 5 {
+		t.Fatalf("an endpoint in a census-listed range is anycast with its sites: %+v", g.Nodes[1])
+	}
+}
+
+func TestNearSitesNeverAliasesItsInput(t *testing.T) {
+	in := make([]anySite, 30)
+	out := nearSites(in, Home{})
+	if len(out) != 6 || cap(out) != 6 {
+		t.Fatalf("want a fresh six-element slice, got len %d cap %d", len(out), cap(out))
+	}
+}

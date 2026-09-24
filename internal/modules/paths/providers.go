@@ -73,6 +73,7 @@ type providerRange struct {
 	Anycast   bool
 	Sites     []anySite // the nearby sites an anycast prefix is served from
 	SiteTotal int       // how many worldwide
+	Census    bool      // detected by the census rather than published by the operator
 }
 
 // providerIndex answers "whose range, and where" for an address. Buckets by

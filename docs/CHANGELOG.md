@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242242
+
+**Census anycast applies to endpoints; and eighty megabytes given back.**
+The census works in /24s, and a backbone router can share one with a
+service: an AT&T router three milliseconds away was being called anycast.
+A census-listed range now marks a hop anycast only when the hop is where a
+route ends, as the operator rule already did. And the per-prefix site lists
+were sub-slices of the decoded thirty-element lists, keeping every one of
+them alive -- eighty megabytes a heap profile attributed to nothing in
+particular; they are copied now.
+
 ## 0.9.8r202609242239
 
 **Three small things the live violator list showed.** The provider files

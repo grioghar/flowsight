@@ -101,6 +101,10 @@ type Node struct {
 	// from; the sites themselves are used to choose the nearest and not sent.
 	AnycastSites int `json:"anycast_sites,omitempty"`
 	anycastSites []anySite
+	// censusHint is a census-detected anycast range holding this address;
+	// applied only if the hop turns out to be an endpoint, since the census
+	// works in /24s and a backbone router can share one with a service.
+	censusHint *providerRange
 	// Guess is a language model's reading of the name, when that is what
 	// placed the hop; kept beside the position so the card can say so.
 	Guess *Guess `json:"guess,omitempty"`

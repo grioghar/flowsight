@@ -632,7 +632,10 @@ func (m *Module) describe(nodes []Node, h Home) {
 			// outranks the database and a measurement; an anycast range has
 			// no single place, so nothing but the timing may place it.
 			if pr := m.providerPlace(ip); pr != nil {
-				if pr.Anycast {
+				if pr.Anycast && pr.Census {
+					// Decided later, once endpoints are known.
+					n.censusHint = pr
+				} else if pr.Anycast {
 					n.Anycast = true
 					n.Provider = pr.Provider + " anycast"
 					n.anycastSites, n.AnycastSites = pr.Sites, pr.SiteTotal
@@ -863,19 +866,27 @@ func reachable(h Home, lat, lon, rtt float64) bool {
 func markOperatorAnycast(g *Graph) {
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
-		if !n.Endpoint || n.Anycast || n.Detail == nil || n.Source == "name" || n.Source == "identified" || n.Source == "provider" {
+		if !n.Endpoint || n.Anycast || n.Source == "name" || n.Source == "identified" || n.Source == "provider" {
 			continue
 		}
-		who, ok := anycastOperator(n.Detail.ASN)
-		if !ok {
+		who := ""
+		if n.censusHint != nil {
+			who = n.censusHint.Provider
+			n.anycastSites, n.AnycastSites = n.censusHint.Sites, n.censusHint.SiteTotal
+		} else if n.Detail != nil {
+			if w, ok := anycastOperator(n.Detail.ASN); ok {
+				who = w + " (anycast operator)"
+			}
+		}
+		if who == "" {
 			continue
 		}
 		n.Anycast = true
 		if n.Provider == "" {
-			n.Provider = who + " (anycast operator)"
+			n.Provider = who
 		}
 		if n.Located && (n.Source == "database" || n.Source == "measured" || n.Source == "corrected") {
-			n.SetAside = fmt.Sprintf("%s serves this address from many sites at once (anycast); the %s's position for it is meaningless, so it is placed by timing", who, sourceNoun(n.Source))
+			n.SetAside = fmt.Sprintf("%s: this address is served from many sites at once (anycast); the %s's position for it is meaningless, so it is placed by timing", who, sourceNoun(n.Source))
 			n.DBLat, n.DBLon = n.Lat, n.Lon
 			n.Lat, n.Lon, n.Located, n.Source = 0, 0, false, ""
 			n.City, n.Region, n.Country = "", "", ""

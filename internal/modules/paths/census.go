@@ -198,11 +198,17 @@ func (m *Module) fetchCensusOne(u string, out io.Writer) (int, error) {
 // of heap on a daemon with a quarter of that to spend; six sites within
 // five thousand kilometres answer the same question for a fiftieth of it.
 func nearSites(sites []anySite, home Home) []anySite {
+	// Always a fresh slice: a sub-slice of the decoded list would keep the
+	// whole thirty-element backing array alive, and sixty thousand of those
+	// were eighty megabytes of heap that looked like nothing in the code.
 	if len(sites) <= 6 || !home.OK {
-		if len(sites) > 6 {
-			return sites[:6]
+		n := len(sites)
+		if n > 6 {
+			n = 6
 		}
-		return sites
+		out := make([]anySite, n)
+		copy(out, sites[:n])
+		return out
 	}
 	type d struct {
 		km float64
@@ -259,7 +265,7 @@ func loadCensusInto(idx *providerIndex, path string, home Home) int {
 		if asn > 0 {
 			prov = fmt.Sprintf("anycast census, AS%d", asn)
 		}
-		idx.add(providerRange{Net: ipn, Provider: prov, Region: "anycast", Anycast: true, Sites: sites, SiteTotal: total})
+		idx.add(providerRange{Net: ipn, Provider: prov, Region: "anycast", Anycast: true, Sites: sites, SiteTotal: total, Census: true})
 		n++
 	}
 	return n
