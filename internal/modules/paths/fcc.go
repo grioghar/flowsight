@@ -111,6 +111,7 @@ func (m *Module) fccJob() error {
 				}
 				_ = json.Unmarshal(fb, &files)
 				st.Files = len(files.Data)
+				_ = m.ctx.Store.KVSet(fccKV+".files", files.Data) // kept for the file browser
 			} else {
 				st.Error = err.Error()
 			}
@@ -138,4 +139,24 @@ func (m *Module) apiFCCCheck(r *core.Req) (any, error) {
 	st := m.fcc
 	m.mu.Unlock()
 	return map[string]any{"ok": st.Error == "", "state": st}, nil
+}
+
+// apiFCCFiles lists what the current release offers, from the last check:
+// a way to see the catalogue without pulling anything.
+func (m *Module) apiFCCFiles(r *core.Req) (any, error) {
+	var files []json.RawMessage
+	m.ctx.Store.KVGet(fccKV+".files", &files)
+	filter := strings.ToLower(strings.TrimSpace(r.Q("filter", "")))
+	limit := r.QInt("limit", 200, 1, 20000)
+	out := make([]json.RawMessage, 0, limit)
+	for _, f := range files {
+		if filter != "" && !strings.Contains(strings.ToLower(string(f)), filter) {
+			continue
+		}
+		out = append(out, f)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return map[string]any{"total": len(files), "shown": len(out), "files": out}, nil
 }

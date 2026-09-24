@@ -12,6 +12,13 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242257
+
+**The FCC release's catalogue is kept and browsable.** After a successful
+check the file list is stored and `GET /api/paths/fcc/files?filter=` shows
+it, so the state summaries can be chosen from what the release actually
+offers rather than guessed.
+
 ## 0.9.8r202609242252
 
 **A place for FCC broadband-map credentials.** *Settings › paths › FCC

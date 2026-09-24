@@ -252,6 +252,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 	_ = m.loadRootSites()
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
+	ctx.Route("GET", "/api/paths/fcc/files", m.apiFCCFiles, core.Needs("paths.map"),
+		core.Doc("The FCC release's file catalogue from the last check"), core.Params("filter", "substring", "limit", "rows"))
 	ctx.Route("POST", "/api/paths/fcc/check", m.apiFCCCheck, core.Write(), core.Needs("paths.map"),
 		core.Doc("Test the FCC broadband map credentials and record the current release"))
 	ctx.Route("GET", "/api/paths/shodan", m.apiShodan, core.Needs("paths.map"),
