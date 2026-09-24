@@ -196,7 +196,7 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | POST | `/api/system/findings/ack` | Acknowledge a finding |  |
 | GET | `/api/system/health` | Module and job health, capabilities, store size |  |
 | GET | `/api/system/info` | Version, platform, uptime, site |  |
-| GET | `/api/system/profile` | Runtime profile for diagnosis, in pprof format | `kind`: heap (default), allocs or goroutine |
+| GET | `/api/system/profile` | Runtime profile for diagnosis, in pprof format | `kind`: heap (default), allocs, goroutine or cpu; `seconds` (cpu only, 1-30, default 10) |
 | POST | `/api/system/jobs/run` | Run a scheduled job now |  |
 | GET | `/api/system/logout` | Drop the session |  |
 | GET | `/api/system/modules` | Every module with settings and schema |  |

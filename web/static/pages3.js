@@ -360,6 +360,14 @@
       if (picked) legs.forEach(l => { if ((l.destinations || []).includes(picked)) onRoute[l.from + '>' + l.to] = true; });
       const routeHops = (route && route.hops) || [];
       const inRoute = {}; routeHops.forEach(n => { inRoute[n.id] = true; });
+      // A node on the map is one router, and several routes cross it at
+      // different steps: hop 16 of one is hop 18 of another. The labels on
+      // a chosen route use that route's numbering and that route's timings,
+      // not whichever route happened to define the node.
+      const routeIndex = {}, routeRTT = {};
+      routeHops.forEach(n => { routeIndex[n.id] = n.index; if (n.rtt_ms) routeRTT[n.id] = n.rtt_ms; });
+      const hopNo = (n) => (picked && routeIndex[n.id] != null) ? routeIndex[n.id] : n.index;
+      const hopRTT = (n) => (picked && routeRTT[n.id]) ? routeRTT[n.id] : n.rtt_ms;
 
       const xy = (n) => FS.project(n.lat, n.lon, MAPW, MAPH);
 
@@ -467,7 +475,7 @@
         // What this leg cost, written on it. The panel gives one hop's round
         // trip; the question a reader actually has is where the time went,
         // and that is the difference between one hop and the next.
-        const dms = (b.rtt_ms && a.rtt_ms) ? b.rtt_ms - a.rtt_ms : null;
+        const dms = (hopRTT(b) && hopRTT(a)) ? hopRTT(b) - hopRTT(a) : null;
         if (dms !== null && dms > 0.05) {
           const mid = (l.route || []).length > 2
             ? (() => { const p = l.route[Math.floor(l.route.length / 2)];
@@ -477,7 +485,7 @@
           // what ties the label to its step in the route below; the
           // milliseconds alone left a reader counting dots to work out which
           // leg they were reading.
-          labels += `<text class="legms" data-dsts="${esc((l.destinations || []).join(' '))}" x="${mid[0].toFixed(1)}" y="${(mid[1] - 2).toFixed(1)}">#${b.index} \u00b7 ${dms.toFixed(dms < 10 ? 1 : 0)} ms</text>`;
+          labels += `<text class="legms" data-dsts="${esc((l.destinations || []).join(' '))}" x="${mid[0].toFixed(1)}" y="${(mid[1] - 2).toFixed(1)}">#${hopNo(b)} \u00b7 ${dms.toFixed(dms < 10 ? 1 : 0)} ms</text>`;
         }
         lines += `<path class="leg ${l.shared ? 'shared' : ''}${rc}${gap}" data-dsts="${esc((l.destinations || []).join(' '))}" stroke="${legColour(l)}" d="${d}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${l.gap ? `\nthrough ${l.through} hop${l.through === 1 ? '' : 's'} with no known position` : ''}${l.via ? `\ndrawn along ${esc(l.via)} — ${num(l.via_km)} km, against ${num(l.straight_km)} km straight` : ''}${esc(cbl)}</title></path>`;
       });

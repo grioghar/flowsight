@@ -193,8 +193,8 @@ over DNS -- are asked at bounded rates and their answers cached for weeks.
 
 ## Runtime profiles
 
-`GET /api/system/profile` returns a Go runtime profile -- heap, allocations or
-goroutines -- for reading with `go tool pprof`. It sits behind the same access
+`GET /api/system/profile` returns a Go runtime profile -- heap, allocations,
+goroutines, or a few seconds of CPU sampling -- for reading with `go tool pprof`. It sits behind the same access
 as every other `/api/system` route. A profile is stack traces and byte counts;
 it does not contain the flows, names, addresses or keys the daemon holds, and
 it can be handed to support without redaction. A heap profile forces a

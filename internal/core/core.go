@@ -257,7 +257,7 @@ func (c *Core) systemRoutes() {
 	a.Add("GET", "/api/system/info", c.apiInfo, "system", Doc("Version, platform, uptime, site"))
 	a.Add("GET", "/api/system/health", c.apiHealth, "system", Doc("Module and job health, capabilities, store size"))
 	a.Add("GET", "/api/system/profile", c.apiProfile, "system", Doc("Runtime profile for diagnosis, in pprof format"),
-		Params("kind", "heap (default), allocs or goroutine"))
+		Params("kind", "heap (default), allocs, goroutine or cpu", "seconds", "for cpu: how long to sample, 1-30 (default 10)"))
 	a.Add("GET", "/api/system/panels", c.apiPanels, "system", Doc("UI panels contributed by loaded modules"))
 	a.Add("GET", "/api/system/modules", c.apiModules, "system", Doc("Every module with settings and schema"))
 	a.Add("POST", "/api/system/modules/save", c.apiModuleSave, "system", Write(), Doc("Save one module's settings"))
@@ -332,9 +332,24 @@ func (c *Core) watchMemory() error {
 func (c *Core) apiProfile(r *Req) (any, error) {
 	kind := r.Q("kind", "heap")
 	switch kind {
-	case "heap", "allocs", "goroutine":
+	case "heap", "allocs", "goroutine", "cpu":
 	default:
-		return nil, BadRequest("kind must be heap, allocs or goroutine")
+		return nil, BadRequest("kind must be heap, allocs, goroutine or cpu")
+	}
+	if kind == "cpu" {
+		// Where the time goes, sampled for a few seconds. One at a time:
+		// the runtime allows a single CPU profile, and two callers would
+		// otherwise see the second fail for no reason they could act on.
+		secs := r.QInt("seconds", 10, 1, 30)
+		c.profileMu.Lock()
+		defer c.profileMu.Unlock()
+		var buf bytes.Buffer
+		if err := pprof.StartCPUProfile(&buf); err != nil {
+			return nil, err
+		}
+		time.Sleep(time.Duration(secs) * time.Second)
+		pprof.StopCPUProfile()
+		return Raw{ContentType: "application/octet-stream", Filename: "flowsight-cpu.pprof", Body: buf.Bytes()}, nil
 	}
 	if kind == "heap" {
 		// A heap profile is of the last collection, so one is forced -- but

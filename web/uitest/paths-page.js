@@ -104,7 +104,7 @@ var ROUTE = { destination:'1.1.1.1',
     { id:'h2', index:2, ips:['172.11.154.1'], names:['172-11-154-1.lightspeed.tpkaks.sbcglobal.net'],
       located:true, city:'Topeka', country:'US', rtt_ms:3.4 },
     { id:'s3', index:3, ips:[], silent:true, located:false },
-    { id:'h4', index:4, ips:['1.1.1.1'], located:true, city:'Sydney', country:'AU', rtt_ms:18.9,
+    { id:'h4', index:9, ips:['1.1.1.1'], located:true, city:'Sydney', country:'AU', rtt_ms:18.9, // hop 9 of this route; the shared node says 4
       impossible:true, why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' } ] };
 
 FS.get = function(p){
@@ -410,6 +410,12 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     // cost; the milliseconds alone left a reader counting dots.
     var ms = t.match(/class="legms"[^>]*>#(\d+) \u00b7 ([\d.]+) ms</);
     if (!ms) throw new Error('legs of a chosen route should be labelled "#hop · N ms"');
+    // The number is this route's step, not the step of whichever route first
+    // defined the shared node: 1.1.1.1 is hop 4 on the map's node and hop 9
+    // on this route.
+    var all = t.match(/class="legms"[^>]*>#(\d+) \u00b7/g) || [];
+    if (all.some(function(x){ return /#4 /.test(x); }) || !all.some(function(x){ return /#9 /.test(x); }))
+      throw new Error('leg labels should use the chosen route\'s hop numbers: ' + all.join(' '));
     print('Map page renders the chosen route as a trail from the inside address to the endpoint');
   }).catch(fail);
 }).catch(fail);

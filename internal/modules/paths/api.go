@@ -226,8 +226,9 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	stage("sql")
 	g := buildGraph(rows)
-	stage("read")
+	stage("build")
 	h := m.home()
 	m.locate(g.Nodes, h)
 	stage("locate")

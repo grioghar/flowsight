@@ -12,6 +12,24 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242011
+
+**A CPU profile over the API.** `GET /api/system/profile?kind=cpu&seconds=10`
+samples where the daemon's time goes and returns it in pprof format, one
+sampling at a time. Twice today the gateway VM was busy while the daemon's
+heap and goroutines looked innocent; the next time, the answer is a request
+away rather than an inference.
+
+**Leg labels use the chosen route's hop numbers.** A node on the map is one
+router, and several routes cross it at different steps -- hop 16 of one
+route is hop 18 of another -- but the label on a leg took its number from
+whichever route first defined the node. On a chosen route the labels now use
+that route's numbering and that route's timings.
+
+**The slow-build log line splits reading from assembling**, since the SQL
+turned out to take milliseconds while the stage that contained it took
+seconds.
+
 ## 0.9.8r202609242000
 
 **The map takes the room it has on a wide screen.** On an ultrawide the
