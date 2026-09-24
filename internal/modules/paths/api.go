@@ -257,6 +257,13 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	// the route should run through it rather than over it. Bridge before
 	// anything measures the legs: a placed hop whose neighbours could not be
 	// placed would otherwise be drawn with nothing attached.
+	// Endpoints of known anycast operators before interpolation: an edge
+	// address of Google's or Apple's that a route ends at is served from
+	// many sites, and a registered or remotely measured position for it is
+	// the wrong kind of fact. Their backbone routers on the way are not
+	// anycast and are left to the ordinary rules.
+	markEndpoints(&g)
+	markOperatorAnycast(&g)
 	interpolateGaps(&g)
 	bridgeGaps(&g)
 	markEndpoints(&g)
@@ -665,18 +672,6 @@ func (m *Module) describe(nodes []Node, h Home) {
 					n.CorrectedBy, n.CorrectedAt = "", 0
 				}
 			}
-			// A known anycast operator's address that nothing authoritative
-			// placed is treated as anycast too: their edges are served from
-			// many sites by design, and a registered or measured position
-			// for one is the wrong kind of fact.
-			if !n.Anycast && (!n.Located || n.Source == "database" || n.Source == "measured" || n.Source == "corrected") {
-				if who, ok := anycastOperator(d.ASN); ok && n.Source != "name" {
-					n.Anycast = true
-					if n.Provider == "" {
-						n.Provider = who + " (anycast operator)"
-					}
-				}
-			}
 			// What somebody measured, if they have. This outranks the address
 			// database -- which says where a block was registered -- and is
 			// asked for whenever nothing better is known.
@@ -861,4 +856,30 @@ func reachable(h Home, lat, lon, rtt float64) bool {
 		return false
 	}
 	return rtt >= floorMS(greatCircleKM(h.Lat, h.Lon, lat, lon))
+}
+
+// markOperatorAnycast treats the endpoints of known anycast operators as
+// anycast when nothing first-hand placed them.
+func markOperatorAnycast(g *Graph) {
+	for i := range g.Nodes {
+		n := &g.Nodes[i]
+		if !n.Endpoint || n.Anycast || n.Detail == nil || n.Source == "name" || n.Source == "identified" || n.Source == "provider" {
+			continue
+		}
+		who, ok := anycastOperator(n.Detail.ASN)
+		if !ok {
+			continue
+		}
+		n.Anycast = true
+		if n.Provider == "" {
+			n.Provider = who + " (anycast operator)"
+		}
+		if n.Located && (n.Source == "database" || n.Source == "measured" || n.Source == "corrected") {
+			n.SetAside = fmt.Sprintf("%s serves this address from many sites at once (anycast); the %s's position for it is meaningless, so it is placed by timing", who, sourceNoun(n.Source))
+			n.DBLat, n.DBLon = n.Lat, n.Lon
+			n.Lat, n.Lon, n.Located, n.Source = 0, 0, false, ""
+			n.City, n.Region, n.Country = "", "", ""
+			n.Impossible, n.Tight, n.Why = false, false, ""
+		}
+	}
 }

@@ -551,11 +551,15 @@ func (m *Module) loadProviders(stats map[string]providerStats) error {
 	if geofeedRows > 0 {
 		stats["geofeeds"] = providerStats{Name: "Registry geofeeds", Prefixes: geofeedRows, FetchedAt: time.Now().Unix()}
 	}
-	if n := loadCensusInto(idx, filepath.Join(dir, censusFile)); n > 0 {
+	{
+		n := loadCensusInto(idx, filepath.Join(dir, censusFile))
 		st := providerStats{Name: "Anycast census (LACeS)", Prefixes: n}
 		if fi, err := os.Stat(filepath.Join(dir, censusFile)); err == nil {
 			st.FetchedAt = fi.ModTime().Unix()
 		}
+		m.mu.Lock()
+		st.Error = m.censusErr
+		m.mu.Unlock()
 		stats["census"] = st
 	}
 	m.mu.Lock()

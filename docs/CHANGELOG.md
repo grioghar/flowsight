@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242228
+
+**The anycast census now loads, and the operator rule is narrower.** The
+census download arrived already inflated (the server compresses on the
+wire and the client undoes it), so the reader looking for a gzip header
+found none and quietly kept nothing; it now sniffs the stream and reports
+any failure on the *Data sources* card. And the rule that treats a known
+anycast operator's address as anycast applies to endpoints only: Apple's
+and Google's backbone routers on the way to their edges are ordinary
+routers, and were briefly being set aside as if they were not.
+
 ## 0.9.8r202609242223
 
 **Anycast is known, named and explained.** Of a hundred and thirty-five hops

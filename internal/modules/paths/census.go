@@ -13,6 +13,7 @@ package paths
 // measurement made from somewhere else says anything about which.
 
 import (
+	"bufio"
 	"compress/gzip"
 	"encoding/csv"
 	"encoding/json"
@@ -122,41 +123,22 @@ func (m *Module) refreshCensus() error {
 		return err
 	}
 	total := 0
+	var problems []string
 	for _, u := range censusURLs {
-		if err := checkFetchURL(u); err != nil {
-			continue
-		}
-		req, _ := http.NewRequest("GET", u, nil)
-		req.Header.Set("User-Agent", "FlowSight/"+m.version()+" (+https://github.com/grioghar/flowsight)")
-		resp, err := safeClient(5 * time.Minute).Do(req)
+		n, err := m.fetchCensusOne(u, out)
 		if err != nil {
-			continue
+			problems = append(problems, shortHost(u)+": "+err.Error())
 		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			continue
-		}
-		gz, err := gzip.NewReader(&throttled{r: io.LimitReader(resp.Body, 64<<20), rate: 2 << 20})
-		if err != nil {
-			resp.Body.Close()
-			continue
-		}
-		n, _ := parseCensus(io.LimitReader(gz, 512<<20), func(prefix string, asn int, sites []anySite) {
-			if _, _, err := net.ParseCIDR(prefix); err != nil {
-				return
-			}
-			b, _ := json.Marshal(sites)
-			fmt.Fprintf(out, "%s\t%d\t%s\n", prefix, asn, b)
-		})
 		total += n
-		gz.Close()
-		resp.Body.Close()
 		time.Sleep(2 * time.Second)
 	}
 	out.Close()
+	m.mu.Lock()
+	m.censusErr = strings.Join(problems, "; ")
+	m.mu.Unlock()
 	if total == 0 {
 		os.Remove(tmp)
-		return fmt.Errorf("anycast census: nothing fetched")
+		return fmt.Errorf("anycast census: nothing fetched (%s)", strings.Join(problems, "; "))
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		return err
@@ -168,6 +150,45 @@ func (m *Module) refreshCensus() error {
 		stats = map[string]providerStats{}
 	}
 	return m.loadProviders(stats)
+}
+
+// fetchCensusOne pulls one list and appends its rows. The server may hand
+// the file back already inflated -- Go's client asks for gzip transfer
+// encoding and undoes it -- so the stream is sniffed rather than assumed.
+func (m *Module) fetchCensusOne(u string, out io.Writer) (int, error) {
+	if err := checkFetchURL(u); err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("User-Agent", "FlowSight/"+m.version()+" (+https://github.com/grioghar/flowsight)")
+	resp, err := safeClient(5 * time.Minute).Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("%s", resp.Status)
+	}
+	br := bufio.NewReader(&throttled{r: io.LimitReader(resp.Body, 512<<20), rate: 2 << 20})
+	var r io.Reader = br
+	if magic, err := br.Peek(2); err == nil && magic[0] == 0x1f && magic[1] == 0x8b {
+		gz, err := gzip.NewReader(br)
+		if err != nil {
+			return 0, err
+		}
+		defer gz.Close()
+		r = gz
+	}
+	return parseCensus(r, func(prefix string, asn int, sites []anySite) {
+		if _, _, err := net.ParseCIDR(prefix); err != nil {
+			return
+		}
+		b, _ := json.Marshal(sites)
+		fmt.Fprintf(out, "%s\t%d\t%s\n", prefix, asn, b)
+	})
 }
 
 // loadCensusInto adds the census rows to a provider index, all anycast.

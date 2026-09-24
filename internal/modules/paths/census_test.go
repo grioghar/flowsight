@@ -45,3 +45,30 @@ func TestAnycastHopLandsOnTheNearestCensusSite(t *testing.T) {
 		t.Fatalf("%+v", n)
 	}
 }
+
+func TestOnlyOperatorEndpointsAreTreatedAsAnycast(t *testing.T) {
+	g := Graph{Nodes: []Node{
+		{ID: "bb", Index: 8, IPs: []string{"17.0.14.53"}, RTT: 61, Located: true, Lat: 37.3, Lon: -122.0, City: "Cupertino", Source: "database", Detail: &Detail{ASN: "714"}},
+		{ID: "edge", Index: 9, IPs: []string{"17.253.207.1"}, RTT: 28, Located: true, Lat: 37.3, Lon: -122.0, City: "Cupertino", Source: "database", Detail: &Detail{ASN: "714"}},
+		{ID: "named", Index: 9, IPs: []string{"8.8.4.4"}, RTT: 20, Located: true, Lat: 32.8, Lon: -96.8, City: "Dallas", Source: "name", Detail: &Detail{ASN: "15169"}},
+	}, Legs: []Leg{{From: "bb", To: "edge", Destinations: []string{"17.253.207.1"}}, {From: "bb", To: "named", Destinations: []string{"8.8.4.4"}}}}
+	markEndpoints(&g)
+	markOperatorAnycast(&g)
+	if g.Nodes[0].Anycast || !g.Nodes[0].Located {
+		t.Fatal("a backbone router of an anycast operator is not anycast")
+	}
+	if !g.Nodes[1].Anycast || g.Nodes[1].Located || g.Nodes[1].SetAside == "" {
+		t.Fatalf("an endpoint of an anycast operator placed by the database is anycast and set aside: %+v", g.Nodes[1])
+	}
+	if g.Nodes[2].Anycast {
+		t.Fatal("a name-placed endpoint is left alone")
+	}
+}
+
+func TestCensusReaderSniffsGzip(t *testing.T) {
+	// Covered by fetchCensusOne's peek; the parser itself must accept plain text.
+	n, err := parseCensus(strings.NewReader("prefix,ASN,locations\n1.1.1.0/24,13335,\"[]\"\n"), func(string, int, []anySite) {})
+	if err != nil || n != 1 {
+		t.Fatalf("%d %v", n, err)
+	}
+}

@@ -58,6 +58,7 @@ type Module struct {
 	provider      providerState
 	abuseErr      string
 	shodanAsked   int
+	censusErr     string
 	shodanErr     string
 	assistQueue   []assistCandidate
 	assistAsked   []time.Time
