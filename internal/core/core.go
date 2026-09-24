@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/grioghar/flowsight/internal/licensing"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"sort"
 	"strings"
 	"sync"
@@ -249,6 +251,8 @@ func (c *Core) systemRoutes() {
 	a := c.API
 	a.Add("GET", "/api/system/info", c.apiInfo, "system", Doc("Version, platform, uptime, site"))
 	a.Add("GET", "/api/system/health", c.apiHealth, "system", Doc("Module and job health, capabilities, store size"))
+	a.Add("GET", "/api/system/profile", c.apiProfile, "system", Doc("Runtime profile for diagnosis, in pprof format"),
+		Params("kind", "heap (default), allocs or goroutine"))
 	a.Add("GET", "/api/system/panels", c.apiPanels, "system", Doc("UI panels contributed by loaded modules"))
 	a.Add("GET", "/api/system/modules", c.apiModules, "system", Doc("Every module with settings and schema"))
 	a.Add("POST", "/api/system/modules/save", c.apiModuleSave, "system", Write(), Doc("Save one module's settings"))
@@ -282,6 +286,27 @@ func (c *Core) apiInfo(r *Req) (any, error) {
 		"read_only": c.ReadOnly(), "goroutines": runtime.NumGoroutine(),
 		"memory": map[string]any{"heap_alloc": ms.HeapAlloc, "heap_sys": ms.HeapSys, "heap_inuse": ms.HeapInuse,
 			"heap_released": ms.HeapReleased, "sys": ms.Sys, "num_gc": ms.NumGC}}, nil
+}
+
+// apiProfile hands out a runtime profile so a daemon that is heavier than it
+// should be can be read with `go tool pprof` rather than guessed at. Heap and
+// allocation profiles are stack traces and byte counts; a goroutine profile
+// is stack traces. None carries the data the daemon holds.
+func (c *Core) apiProfile(r *Req) (any, error) {
+	kind := r.Q("kind", "heap")
+	switch kind {
+	case "heap", "allocs", "goroutine":
+	default:
+		return nil, BadRequest("kind must be heap, allocs or goroutine")
+	}
+	if kind == "heap" {
+		runtime.GC() // a heap profile is of the last collection; make it now
+	}
+	var buf bytes.Buffer
+	if err := pprof.Lookup(kind).WriteTo(&buf, 0); err != nil {
+		return nil, err
+	}
+	return Raw{ContentType: "application/octet-stream", Filename: "flowsight-" + kind + ".pprof", Body: buf.Bytes()}, nil
 }
 
 func (c *Core) apiHealth(r *Req) (any, error) {

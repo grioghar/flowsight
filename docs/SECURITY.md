@@ -190,3 +190,11 @@ used as a cache key, a name to resolve, or a path component in a request to a
 public service; an AS number must be digits before it is placed in a URL.
 The fixed public services asked -- RIPE IPmap, rdap.org, PeeringDB, Team Cymru
 over DNS -- are asked at bounded rates and their answers cached for weeks.
+
+## Runtime profiles
+
+`GET /api/system/profile` returns a Go runtime profile -- heap, allocations or
+goroutines -- for reading with `go tool pprof`. It sits behind the same access
+as every other `/api/system` route. A profile is stack traces and byte counts;
+it does not contain the flows, names, addresses or keys the daemon holds, and
+it can be handed to support without redaction.

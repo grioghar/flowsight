@@ -116,6 +116,39 @@ func (f *routeMemo) reset() {
 	f.mu.Unlock()
 }
 
+// candidateMemo does for "which cables pass near both ends" what routeMemo
+// does for the shortest crossing: the same pairs of places come up on every
+// rebuild and the scan of every run of every cable is the same each time.
+type candidateMemo struct {
+	mu sync.Mutex
+	m  map[string][]Candidate
+}
+
+func (f *candidateMemo) get(cables []Cable, aLat, aLon, bLat, bLon, nearKM float64) []Candidate {
+	var rm routeMemo
+	key := rm.key('n', aLat, aLon, bLat, bLon) + ftoa(nearKM)
+	f.mu.Lock()
+	if c, ok := f.m[key]; ok {
+		f.mu.Unlock()
+		return c
+	}
+	f.mu.Unlock()
+	c := nearCables(cables, aLat, aLon, bLat, bLon, nearKM)
+	f.mu.Lock()
+	if f.m == nil || len(f.m) >= routeMemoMax {
+		f.m = map[string][]Candidate{}
+	}
+	f.m[key] = c
+	f.mu.Unlock()
+	return c
+}
+
+func (f *candidateMemo) reset() {
+	f.mu.Lock()
+	f.m = nil
+	f.mu.Unlock()
+}
+
 // memoRoute answers through the memo, computing on a miss.
 func (f *routeMemo) memoRoute(kind byte, nets []cableNet, aLat, aLon, bLat, bLon float64) cableRoute {
 	key := f.key(kind, aLat, aLon, bLat, bLon)

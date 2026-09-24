@@ -56,8 +56,9 @@ type Module struct {
 	ipmapUntil    time.Time       // do not ask IPmap again before this
 	ipmapAnswered int             // answers kept this session, for the status page
 	graphCache    map[string]cachedGraph
-	routes        routeMemo  // cable and land-route searches, answered once per pair of places
-	graphBuild    sync.Mutex // one graph build at a time; the rest wait and reuse it
+	routes        routeMemo     // cable and land-route searches, answered once per pair of places
+	cands         candidateMemo // cables passing near both ends of a leg, likewise
+	graphBuild    sync.Mutex    // one graph build at a time; the rest wait and reuse it
 }
 
 // lookup is the part of the enrich module this needs.

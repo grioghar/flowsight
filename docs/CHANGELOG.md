@@ -12,6 +12,20 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241829
+
+**The last unremembered cable scan is remembered.** Each rebuild also asked,
+for every long leg, which cables pass near both of its ends -- a walk of every
+run of every cable -- and that was the three seconds left in the build after
+the previous revision. The geometry half of the answer depends only on the two
+places and is now kept; the timing half, which changes with every measurement,
+is a cheap filter applied per leg.
+
+**A daemon can be profiled without a debugger.** `GET /api/system/profile`
+returns a heap, allocation or goroutine profile in pprof format, behind the
+same access as the rest of `/api/system`. Stack traces and byte counts only;
+nothing the daemon holds is in it. See *API* and *Security*.
+
 ## 0.9.8r202609241821
 
 **The map's graph builds in a fraction of the time.** Every rebuild -- once

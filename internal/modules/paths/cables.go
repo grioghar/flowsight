@@ -106,6 +106,7 @@ func (m *Module) refreshCables() error {
 	m.cables, m.nets, m.cableErr = cables, nets, ""
 	m.mu.Unlock()
 	m.routes.reset() // answers were for the old networks
+	m.cands.reset()
 	return nil
 }
 
@@ -279,6 +280,14 @@ func nearestOn(pts []LatLon, lat, lon float64) (int, float64) {
 // measured round trip; when it is known, cables too long to have produced it
 // are discarded, which is the only part of this that is not inference.
 func candidates(cables []Cable, aLat, aLon, bLat, bLon, nearKM, observedMS float64) []Candidate {
+	return pickCandidates(nearCables(cables, aLat, aLon, bLat, bLon, nearKM), observedMS)
+}
+
+// nearCables is the geometry half of the question -- every cable passing
+// within nearKM of both ends, with the length along it -- which depends only
+// on the two places and is what the memo keeps. The timing half is a filter
+// applied afterwards, per leg, because it changes with every measurement.
+func nearCables(cables []Cable, aLat, aLon, bLat, bLon, nearKM float64) []Candidate {
 	var out []Candidate
 	for _, c := range cables {
 		bestKM := math.MaxFloat64
@@ -300,15 +309,24 @@ func candidates(cables []Cable, aLat, aLon, bLat, bLon, nearKM, observedMS float
 		if !found {
 			continue
 		}
-		floor := floorMS(bestKM)
-		if observedMS > 0 && observedMS < floor {
-			continue // too long to have answered that fast; it was not this one
-		}
-		out = append(out, Candidate{Name: c.Name, KM: math.Round(bestKM), FloorMS: math.Round(floor*10) / 10})
+		out = append(out, Candidate{Name: c.Name, KM: math.Round(bestKM), FloorMS: math.Round(floorMS(bestKM)*10) / 10})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].KM < out[j].KM })
-	if len(out) > 6 {
-		out = out[:6]
+	return out
+}
+
+// pickCandidates drops the cables too long to have answered as fast as the
+// leg did, and keeps the six shortest that remain.
+func pickCandidates(near []Candidate, observedMS float64) []Candidate {
+	out := make([]Candidate, 0, 6)
+	for _, c := range near {
+		if observedMS > 0 && observedMS < c.FloorMS {
+			continue // too long to have answered that fast; it was not this one
+		}
+		out = append(out, c)
+		if len(out) == 6 {
+			break
+		}
 	}
 	return out
 }
@@ -346,7 +364,7 @@ func (m *Module) annotateCables(g Graph) {
 		if b.RTT > 0 && a.RTT > 0 && b.RTT > a.RTT {
 			observed = b.RTT - a.RTT // what this leg added, not the whole path
 		}
-		l.Cables = candidates(cables, a.Lat, a.Lon, b.Lat, b.Lon, near, observed)
+		l.Cables = pickCandidates(m.cands.get(cables, a.Lat, a.Lon, b.Lat, b.Lon, near), observed)
 		l.StraightKM = math.Round(straight)
 		// The best reading of which crossing this was, and the shape of it,
 		// so the leg can be drawn along the cable rather than ruled straight
