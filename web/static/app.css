@@ -335,7 +335,11 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
    rest is dimmed rather than hidden, for the same reason picking a route
    dims rather than hides: a leg shown alone reads as exclusive. */
 .pathmap .leg.onpath { opacity: 1; stroke-width: 2.6; }
-.pathmap .leg.offpath { opacity: .1; }
+/* Taken away, not faded. On a map carrying four hundred destinations the
+   faint remainder is still most of the ink, and the route you asked about is
+   lost in it. The chip above the map is what stops this being a map quietly
+   lying about how much traffic there is. */
+.pathmap .leg.offpath, .pathmap .hop.offpath { display: none; }
 .pathmap .hop.onpath { stroke: var(--accent); stroke-width: 1.8; }
 
 /* The key belongs on the map it explains. Stranded underneath, a reader has
@@ -419,3 +423,13 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
    copies that make panning seamless are taken away and the extra width is
    empty. Blank margins are honest; the same continent at both edges is not. */
 .pathmap.whole .worldcopy { display: none; }
+
+
+/* What the map has been narrowed to, and the way back out. */
+.mapfilter { display: inline-flex; align-items: center; gap: 7px; padding: 3px 4px 3px 10px;
+  border-radius: 999px; background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--ink); font-size: 12px; white-space: nowrap; }
+.mapfilter button { border: 0; background: none; cursor: pointer; color: var(--muted);
+  font-size: 15px; line-height: 1; padding: 2px 6px; border-radius: 999px; }
+.mapfilter button:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--ink); }

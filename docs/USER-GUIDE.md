@@ -287,6 +287,13 @@ the antimeridian is drawn as the short hop it is instead of a line across the
 whole map, and a route from here to Asia runs west across the Pacific, which
 is the way the packets went. A key to the marks sits under the map.
 
+**Clicking a hop narrows the map to the routes through it.** Everything else
+is taken away rather than dimmed, and a chip above the map says how many
+routes remain and through which hop; its &times; puts everything back. The
+matching step in the route below is highlighted and scrolled into view, and
+hovering a step lights its hop on the map, so the two always agree about which
+hop you are looking at.
+
 **Click a hop to go to it, and click it again to come back.** The map opens
 showing the world pole to pole; a click travels in to the hop you picked, a
 second click on the same hop returns to the whole world, and moving the map by

@@ -202,6 +202,13 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // Choosing a filter applies it. An Apply button leaves a chosen filter
   // sitting there doing nothing while looking as though it is.
   if (h.indexOf('id="f-apply"') >= 0) throw new Error('there should be no Apply button');
+  // Clicking a hop narrows the map to the routes through it, which hides most
+  // of what was on screen -- so there has to be something saying so, and a
+  // way out of it in one click.
+  if (h.indexOf('id="mapfilter"') < 0) throw new Error('narrowing the map needs to announce itself');
+  if (h.indexOf('id="mapfilter-off"') < 0) throw new Error('the narrowing must be closable');
+  var chip = h.slice(h.indexOf('id="mapfilter"'), h.indexOf('id="mapfilter"') + 200);
+  if (chip.indexOf('hidden') < 0) throw new Error('the chip should start hidden, before anything is narrowed');
   if (h.indexOf('>Apply<') >= 0) throw new Error('there should be no Apply button');
   if (h.indexOf('MacBookPro') < 0 || h.indexOf('roku-ultra') < 0) throw new Error('devices missing from the picker');
   if (h.indexOf('2 addresses') < 0) throw new Error('a multi-address device should say so');

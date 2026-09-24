@@ -632,6 +632,12 @@
                 it did not need. Selects act on choice; the typed boxes act on
                 Enter or when they lose focus, which is what change gives. */''}
           <button class="btn small" id="f-clear">Clear</button>
+          ${/* Shown once a hop has narrowed the map. Anything that hides most
+                of what was on screen has to say so and be undoable in one
+                click, or a reader who has forgotten they clicked is looking
+                at a map that is quietly lying about how much traffic there
+                is. */''}
+          <span class="mapfilter" id="mapfilter" hidden><span id="mapfilter-text"></span><button type="button" id="mapfilter-off" aria-label="Show every route">&times;</button></span>
           <button class="btn small" id="f-reset">Reset zoom</button>
         </div>
         ${/* Map and detail side by side. The detail used to sit under the map,
@@ -836,25 +842,62 @@
       // answers "what is this"; the journey it sits on answers "why is it
       // here", which is the question somebody clicking a router actually has.
       const legEls = el.querySelectorAll('.leg');
-      const litRoute = (dsts) => {
-        el.querySelectorAll('.hop.onpath').forEach(x => x.classList.remove('onpath'));
+      const hopEls = el.querySelectorAll('.hop');
+      const bar = FS.$('#mapfilter', el), barText = FS.$('#mapfilter-text', el);
+
+      // Narrowing the map to the routes through one hop.
+      //
+      // Dimming the rest was not enough: on a map carrying four hundred
+      // destinations the faint remainder is still most of the ink, and the
+      // route you asked about is lost in it. So everything else is taken
+      // away -- and because a map that is hiding most of itself must say so,
+      // a chip appears that undoes it in one click.
+      const litRoute = (dsts, label) => {
         legEls.forEach(p => p.classList.remove('onpath', 'offpath'));
-        if (!dsts || !dsts.length) return;
+        hopEls.forEach(x => x.classList.remove('onpath', 'offpath'));
+        if (!dsts || !dsts.length) {
+          if (bar) bar.hidden = true;
+          return;
+        }
         const want = {}; dsts.forEach(d => want[d] = 1);
         const ends = {};
-        legEls.forEach(p => {
-          const on = (p.getAttribute('data-dsts') || '').split(' ').some(d => want[d]);
-          p.classList.add(on ? 'onpath' : 'offpath');
-        });
         legs.forEach(l => {
           if (!(l.destinations || []).some(d => want[d])) return;
           ends[l.from] = 1; ends[l.to] = 1;
         });
-        Object.keys(ends).forEach(id => {
-          el.querySelectorAll('.hop[data-hop="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]')
-            .forEach(x => x.classList.add('onpath'));
+        legEls.forEach(p => {
+          const on = (p.getAttribute('data-dsts') || '').split(' ').some(d => want[d]);
+          p.classList.add(on ? 'onpath' : 'offpath');
         });
+        hopEls.forEach(x => x.classList.add(ends[x.getAttribute('data-hop')] ? 'onpath' : 'offpath'));
+        if (bar && barText) {
+          barText.textContent = `${dsts.length} route${dsts.length === 1 ? '' : 's'} through ${label}`;
+          bar.hidden = false;
+        }
       };
+      const crumbEls = el.querySelectorAll('[data-crumb]');
+
+      // Picking a hop, wherever it is picked.
+      //
+      // A hop on the map and its step in the route are the same thing, so
+      // touching either has to mark both. Only half of that was true: a step
+      // lit its dot, but a dot left the step alone, and on a twenty-hop route
+      // the reader was then looking at a card without being told which of the
+      // twenty it belonged to.
+      const select = (id) => {
+        showHop(id);
+        crumbEls.forEach(x => x.classList.toggle('here', x.getAttribute('data-crumb') === id));
+        el.querySelectorAll('.hop.lit').forEach(x => x.classList.remove('lit'));
+        el.querySelectorAll('.hop[data-hop="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]')
+          .forEach(d => d.classList.add('lit'));
+        // The route scrolls sideways, so the step may well be off the end of
+        // it. Marking something the reader cannot see is not marking it.
+        const here = [...crumbEls].find(x => x.getAttribute('data-crumb') === id);
+        if (here && here.scrollIntoView) {
+          here.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+        }
+      };
+
       // Clicking a hop goes to it; clicking it again comes back.
       //
       // A dot on a world map is a few pixels wide and a reader who wants to
@@ -865,10 +908,11 @@
       const CLOSE = MAPW / 9;
       el.querySelectorAll('.hop').forEach(c => {
         const id = c.getAttribute('data-hop');
-        c.addEventListener('mouseenter', () => showHop(id));
+        c.addEventListener('mouseenter', () => select(id));
         c.addEventListener('click', () => {
-          showHop(id);
-          litRoute(routeOf(id));
+          select(id);
+          const n0 = byId[id];
+          litRoute(routeOf(id), (n0 && n0.ips ? n0.ips[0] : id));
           const pz = FS.panZoomHandle;
           const n = byId[id];
           // Decide what can happen before recording that it did. Arming the
@@ -879,6 +923,7 @@
           if (!pz || !n || !n.located) { zoomedOn = null; return; }
           if (zoomedOn === id) {
             zoomedOn = null;
+            litRoute(null);
             pz.reset();
             return;
           }
@@ -891,7 +936,6 @@
       // A step in the trail and its dot on the map are the same hop, so
       // touching either should light up both. Without that the trail reads as
       // a list beside a picture rather than a way into it.
-      const crumbEls = el.querySelectorAll('[data-crumb]');
       // The route laid out along the cylinder, each hop shifted by whole
       // worlds until it is nearest the one before it. This is what makes a
       // route from Kansas to Tokyo run west across the Pacific instead of
@@ -909,14 +953,7 @@
 
       crumbEls.forEach(li => {
         const id = li.getAttribute('data-crumb');
-        const dots2 = el.querySelectorAll('.hop[data-hop="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
-        const mark = () => {
-          crumbEls.forEach(x => x.classList.remove('here'));
-          li.classList.add('here');
-          el.querySelectorAll('.hop.lit').forEach(x => x.classList.remove('lit'));
-          dots2.forEach(d => d.classList.add('lit'));
-          showHop(id);
-        };
+        const mark = () => select(id);
         li.addEventListener('mouseenter', mark);
         li.addEventListener('click', () => {
           mark();
@@ -986,6 +1023,12 @@
         const c = FS.$(sel, el);
         if (c) c.onchange = go;
       });
+      const off = FS.$('#mapfilter-off', el);
+      if (off) off.onclick = () => {
+        litRoute(null);
+        zoomedOn = null;
+        if (FS.panZoomHandle) FS.panZoomHandle.reset();
+      };
       FS.$('#f-clear', el).onclick = () => FS.go('paths');
       FS.$('#f-reset', el).onclick = () => {
         zoomedOn = null;

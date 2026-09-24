@@ -12,6 +12,25 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241643
+
+**Clicking a hop now shows only the routes that run through it**, and says so.
+Dimming the rest was not enough: on a map carrying four hundred destinations
+the faint remainder is still most of the ink, and the route you asked about is
+lost in it. Everything else is taken away -- and because a map hiding most of
+itself must admit to it, a chip appears above the map saying how many routes
+are left and through which hop, with one click to undo it.
+
+Concretely: clicking a hop five steps out took the drawing from 1,251 visible
+legs to 21.
+
+**The route highlights the hop you clicked on the map.** Only half of that
+link existed -- a step lit its dot, but a dot left the step alone -- so on a
+twenty-hop route you were reading a card with no indication which of the
+twenty it belonged to. Both directions go through the same selection now, and
+because the route scrolls sideways, the step is scrolled into view: marking
+something the reader cannot see is not marking it.
+
 ## 0.9.8r202609241639
 
 **The map opens pole to pole.** It had been cropping top and bottom on a wide
