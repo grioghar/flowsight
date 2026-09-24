@@ -23,16 +23,17 @@ import (
 // through Register(); Core instantiates the ones the config enables, in
 // dependency order, and runs them.
 type Core struct {
-	profileMu sync.Mutex // guards lastGC
-	lastGC    time.Time  // when a heap profile last forced a collection
-	Version   string
-	Platform  *Platform
-	Config    *Config
-	Store     *Store
-	Scheduler *Scheduler
-	API       *API
-	Log       *slog.Logger
-	Started   time.Time
+	profileMu   sync.Mutex // guards lastGC
+	lastGC      time.Time  // when a heap profile last forced a collection
+	lastMemWarn time.Time  // when watchMemory last complained
+	Version     string
+	Platform    *Platform
+	Config      *Config
+	Store       *Store
+	Scheduler   *Scheduler
+	API         *API
+	Log         *slog.Logger
+	Started     time.Time
 
 	mu        sync.RWMutex
 	Modules   map[string]Module
@@ -213,6 +214,8 @@ func (c *Core) Run(stop <-chan struct{}) error {
 	c.LoadModules()
 	c.Scheduler.Add(&Job{Name: "rollup", Module: "core", Every: 5 * time.Minute,
 		Fn: c.Store.Rollup, nextRun: time.Now().Add(20 * time.Second)})
+	c.Scheduler.Add(&Job{Name: "memory", Module: "core", Every: time.Minute,
+		Fn: c.watchMemory, nextRun: time.Now().Add(90 * time.Second)})
 	c.Scheduler.Add(&Job{Name: "prune", Module: "core", Every: time.Hour,
 		Fn: func() error {
 			return c.Store.Prune(CapRetention(c.Config.Core().Retention, c.License().Limit(licensing.LimitRetentionDays)))
@@ -288,6 +291,38 @@ func (c *Core) apiInfo(r *Req) (any, error) {
 		"read_only": c.ReadOnly(), "goroutines": runtime.NumGoroutine(),
 		"memory": map[string]any{"heap_alloc": ms.HeapAlloc, "heap_sys": ms.HeapSys, "heap_inuse": ms.HeapInuse,
 			"heap_released": ms.HeapReleased, "sys": ms.Sys, "num_gc": ms.NumGC}}, nil
+}
+
+// watchMemory says so, loudly and early, when the live heap has outgrown the
+// memory limit. The limit is a soft target the collector steers towards; a
+// live heap well above it cannot be steered anywhere, and the collector's
+// answer is to run continuously, which on a four-core gateway once meant all
+// four cores and a guest that stopped answering its own management agent.
+// Nothing here can free that memory -- only whatever holds it can -- but a
+// log line pointing at /api/system/profile turns a mystery into a lookup.
+func (c *Core) watchMemory() error {
+	limit := int64(c.Config.Core().MemoryLimitMB)
+	if limit <= 0 {
+		limit = 256
+	}
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	live := int64(ms.HeapInuse) >> 20
+	if live <= 2*limit {
+		return nil
+	}
+	c.profileMu.Lock()
+	recent := time.Since(c.lastMemWarn) < 10*time.Minute
+	if !recent {
+		c.lastMemWarn = time.Now()
+	}
+	c.profileMu.Unlock()
+	if recent {
+		return nil
+	}
+	c.Log.Warn("live heap far above the memory limit; the collector will run continuously",
+		"heap_mb", live, "limit_mb", limit, "gc_per_min", ms.NumGC, "see", "/api/system/profile?kind=heap")
+	return nil
 }
 
 // apiProfile hands out a runtime profile so a daemon that is heavier than it

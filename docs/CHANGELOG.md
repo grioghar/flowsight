@@ -12,6 +12,24 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241850
+
+**A route file cannot take the gateway down.** The daemon steers its heap
+towards a soft limit (256 MB by default); a live heap far above that cannot
+be steered, and the collector's answer is to run without pause. That is what
+the land-route stitching did before it was fixed: a gigabyte held against a
+256 MB target, every core busy collecting, and the guest agent on the VM too
+starved to answer. Two guards now stand in the way. A cable or land-route
+source that stitches to more than two million edges -- forty times the whole
+submarine map -- is left on disk and reported on the *Data sources* card
+rather than held. And a core job checks the heap every minute and logs a
+warning naming the figures and the profile endpoint when the live heap is
+more than twice the limit, so the condition is a log line rather than a
+mystery.
+
+**A heap profile forces a collection at most every five seconds.** Anyone
+holding the token could otherwise repeat the request in a loop.
+
 ## 0.9.8r202609241847
 
 **The Map page stops scanning the flow table.** Four things on the page read

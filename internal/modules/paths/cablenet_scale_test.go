@@ -151,3 +151,14 @@ func TestChainRunsJoinsPiecesEitherWayRound(t *testing.T) {
 		}
 	}
 }
+
+func TestNetSizeCountsWhatIsHeld(t *testing.T) {
+	n := buildNet(Cable{Name: "t", Legs: [][]LatLon{{{Lat: 0, Lon: 0}, {Lat: 1, Lon: 1}, {Lat: 0, Lon: 2}}}}) // a bend, so thinning keeps the middle
+	pts, edges := netSize([]cableNet{n, n})
+	if pts != 6 || edges != 8 {
+		t.Fatalf("pts %d edges %d, want 6 and 8", pts, edges)
+	}
+	if maxNetEdges < 40*edges*1000 {
+		t.Fatal("the bound is meant to be far above any real map")
+	}
+}

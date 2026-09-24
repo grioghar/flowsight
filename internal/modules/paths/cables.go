@@ -102,6 +102,15 @@ func (m *Module) refreshCables() error {
 	for _, c := range cables {
 		nets = append(nets, buildNet(c))
 	}
+	if _, edges := netSize(nets); edges > maxNetEdges {
+		m.mu.Lock()
+		m.cables, m.nets = nil, nil
+		m.cableErr = fmt.Sprintf("%d edges after stitching, more than this daemon will hold; not loaded", edges)
+		m.mu.Unlock()
+		m.routes.reset()
+		m.cands.reset()
+		return nil
+	}
 	m.mu.Lock()
 	m.cables, m.nets, m.cableErr = cables, nets, ""
 	m.mu.Unlock()

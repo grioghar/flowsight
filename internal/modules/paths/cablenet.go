@@ -386,3 +386,22 @@ func (n *cableNet) shortest(from, to int) (float64, []int) {
 	}
 	return dist[to], path
 }
+
+// maxNetEdges is the most a set of networks may hold before it is refused.
+// Two million edges is forty times the whole submarine map and thirty times
+// the African land set after chaining; a file that produces more is either
+// not a route map or is one this code cannot afford, and either way the
+// answer is to leave it on disk and say so rather than hold it in memory on
+// a firewall. The operator chose the URL; the operator gets the message.
+const maxNetEdges = 2_000_000
+
+// netSize is how much a set of networks holds.
+func netSize(nets []cableNet) (pts, edges int) {
+	for i := range nets {
+		pts += len(nets[i].Pts)
+		for _, adj := range nets[i].Adj {
+			edges += len(adj)
+		}
+	}
+	return pts, edges
+}

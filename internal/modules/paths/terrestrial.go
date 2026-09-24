@@ -21,6 +21,7 @@ package paths
 // source later is a line of configuration, not a change of design.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,9 +103,15 @@ func (m *Module) refreshTerrestrial() error {
 			problems = append(problems, shortHost(url)+": "+err.Error())
 			continue
 		}
+		var these []cableNet
 		for _, r := range routes {
-			nets = append(nets, buildNet(r))
+			these = append(these, buildNet(r))
 		}
+		if _, edges := netSize(these); edges > maxNetEdges {
+			problems = append(problems, fmt.Sprintf("%s: %d edges after stitching, more than this daemon will hold; not loaded", shortHost(url), edges))
+			continue
+		}
+		nets = append(nets, these...)
 	}
 
 	m.mu.Lock()

@@ -197,7 +197,8 @@ over DNS -- are asked at bounded rates and their answers cached for weeks.
 goroutines -- for reading with `go tool pprof`. It sits behind the same access
 as every other `/api/system` route. A profile is stack traces and byte counts;
 it does not contain the flows, names, addresses or keys the daemon holds, and
-it can be handed to support without redaction.
+it can be handed to support without redaction. A heap profile forces a
+collection first, at most once every five seconds.
 
 ## Proxy configuration
 
@@ -208,3 +209,12 @@ likewise, so neither a malformed entry nor a long list can leave the proxy
 with a configuration it refuses. A rejected configuration is kept beside the
 live one as `squid.conf.rejected` for inspection, and the proxy keeps running
 on the last one it accepted.
+
+## Operator-supplied route files
+
+Cable and land-route sources are URLs the operator chooses. Each is fetched
+through the public-only client, capped at 64 MB on the wire and 256 MB after
+inflation, and stitched into networks in memory. A source that stitches to
+more than two million edges is refused -- left on disk, reported on the
+*Data sources* card, not held -- so a hostile or merely enormous file cannot
+push the daemon's heap past what the gateway can carry.
