@@ -10,6 +10,7 @@ package paths
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/grioghar/flowsight/internal/core"
 	"github.com/grioghar/flowsight/internal/modules/enrich"
@@ -28,7 +29,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	}
 	return map[string]any{
 		"active":   core.Bool(m.ctx.Settings(), "active", false),
-		"last_run": last.Unix(), "traced_this_session": traced,
+		"last_run": epoch(last), "traced_this_session": traced,
 		"destinations": dsts, "hops": hops, "error": err,
 		"note": "Routes are measured to destinations this network has already contacted. Nothing else is probed.",
 	}, nil
@@ -178,6 +179,15 @@ func filterGraph(g Graph, country string, maxLatency float64, maxHops int) Graph
 	}
 	g.Nodes, g.Legs = nodes, legs
 	return g
+}
+
+// epoch reports a zero time as zero rather than as the year 1, which is what
+// Unix() does with it and what a page then has to special-case.
+func epoch(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
 }
 
 func asInt(v any) int64 {

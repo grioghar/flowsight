@@ -12,6 +12,15 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240714
+
+**Path tracing no longer probes things that are not destinations.** The first
+live run traced a multicast group and the gateway's own global address,
+twenty timed-out probes each for a row of nothing. Multicast, broadcast and
+any address this network's identity module recognises as its own are now
+skipped. That last part matters for IPv6: the delegated prefix is globally
+routable and still ours, so no fixed list of private ranges can catch it.
+
 ## 0.9.8r202609240704
 
 **Paths: where traffic actually goes, measured.** A new page and module under

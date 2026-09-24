@@ -166,3 +166,42 @@ func TestTraceErrorOnlyWhenNothingParsed(t *testing.T) {
 		t.Fatal("test data drifted")
 	}
 }
+
+// The first live run traced a multicast group and the gateway's own address,
+// twenty timed-out probes each for a row of nothing. Nothing that lives
+// inside the network, or that is not a single host at all, is worth a probe.
+func TestMulticastAndBroadcastAreNotTraced(t *testing.T) {
+	for _, p := range []string{"239.255.255.250", "224.0.0.251", "255.255.255.255", "ff02::fb", "ff05::1:3"} {
+		if !isMulticast(p) {
+			t.Errorf("%s is a group, not a host, and should not be traced", p)
+		}
+	}
+	for _, p := range []string{"8.8.8.8", "1.1.1.1", "2606:4700::1111", "223.5.5.5", "240.0.0.1"} {
+		if isMulticast(p) {
+			t.Errorf("%s is a real destination", p)
+		}
+	}
+}
+
+// A global address can still belong to this network: the delegated IPv6
+// prefix is routable and ours, and no fixed list of private ranges covers it.
+func TestLocalGlobalAddressesAreNotTraced(t *testing.T) {
+	m := &Module{identity: fakeIdentity{local: "2600:1700:3ab0:f43f:"}}
+	if m.worthTracing("2600:1700:3ab0:f43f:be24:11ff:fe94:9732") {
+		t.Error("the gateway's own global address must not be traced")
+	}
+	if !m.worthTracing("2606:4700:4700::1111") {
+		t.Error("a genuine destination must still be traced")
+	}
+	if m.worthTracing("239.255.255.250") {
+		t.Error("multicast must not be traced even with identity present")
+	}
+}
+
+type fakeIdentity struct{ local string }
+
+func (f fakeIdentity) Name(string) string      { return "" }
+func (f fakeIdentity) MAC(string) string       { return "" }
+func (f fakeIdentity) Vendor(string) string    { return "" }
+func (f fakeIdentity) LocalNetworks() []string { return nil }
+func (f fakeIdentity) IsLocal(ip string) bool  { return strings.HasPrefix(ip, f.local) }

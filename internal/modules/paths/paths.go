@@ -36,9 +36,10 @@ func init() { core.Register(func() core.Module { return &Module{} }) }
 
 // Module implements core.Module.
 type Module struct {
-	ctx  *core.Context
-	run  tracer
-	rdns lookup
+	ctx      *core.Context
+	run      tracer
+	rdns     lookup
+	identity core.Identity
 
 	mu      sync.Mutex
 	lastRun time.Time
@@ -86,6 +87,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		m.run = runTraceroute
 	}
 	m.rdns, _ = ctx.Service("enrich").(lookup)
+	m.identity, _ = ctx.Service("identity").(core.Identity)
 	if err := m.migrate(); err != nil {
 		return err
 	}
@@ -208,8 +210,8 @@ func (m *Module) due() ([]string, error) {
 	out := make([]string, 0, per)
 	for _, r := range rows {
 		ip, _ := r["ip"].(string)
-		if ip == "" || isPrivate(ip) {
-			continue // the inside of the network has no route worth drawing
+		if !m.worthTracing(ip) {
+			continue
 		}
 		out = append(out, ip)
 		if len(out) >= per {
@@ -255,6 +257,40 @@ func (m *Module) save(t Trace) error {
 	return m.ctx.Store.Exec(
 		`INSERT OR REPLACE INTO path_runs(dst,ts,hops,complete,err) VALUES(?,?,?,?,?)`,
 		t.Dst, now, len(t.Hops), complete, t.Err)
+}
+
+// worthTracing keeps the probes pointed outwards.
+//
+// Three kinds of address have no route worth measuring and every one of them
+// turned up in the first live run: an address inside this network, a
+// multicast group, and the gateway's own global address. Tracing those costs
+// twenty timed-out probes each and produces a row of nothing.
+func (m *Module) worthTracing(ip string) bool {
+	if ip == "" || isMulticast(ip) || isPrivate(ip) {
+		return false
+	}
+	// The identity module knows this network's own prefixes, including the
+	// delegated IPv6 one, which no fixed list of private ranges can cover.
+	if m.identity != nil && m.identity.IsLocal(ip) {
+		return false
+	}
+	return true
+}
+
+// isMulticast covers IPv4 224.0.0.0/4 and the IPv6 ff00::/8 groups, plus the
+// broadcast address. Discovery traffic is full of these.
+func isMulticast(ip string) bool {
+	if ip == "255.255.255.255" {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(ip), "ff") && strings.Contains(ip, ":") {
+		return true
+	}
+	var first int
+	if _, err := fmt.Sscanf(ip, "%d.", &first); err == nil {
+		return first >= 224 && first <= 239
+	}
+	return false
 }
 
 func isPrivate(ip string) bool {
