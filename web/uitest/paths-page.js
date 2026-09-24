@@ -367,6 +367,10 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     if (t.indexOf('onroute') < 0) throw new Error('the chosen route should be lifted out on the map');
     if (t.indexOf('offroute') < 0) throw new Error('other routes should be dimmed, not removed');
     if (t.indexOf('Show every route') < 0) throw new Error('there must be a way back to all routes');
+    // Each leg of the chosen route says which hop it arrives at and what it
+    // cost; the milliseconds alone left a reader counting dots.
+    var ms = t.match(/class="legms"[^>]*>#(\d+) \u00b7 ([\d.]+) ms</);
+    if (!ms) throw new Error('legs of a chosen route should be labelled "#hop · N ms"');
     print('Map page renders the chosen route as a trail from the inside address to the endpoint');
   }).catch(fail);
 }).catch(fail);

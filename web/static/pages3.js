@@ -471,7 +471,11 @@
             ? (() => { const p = l.route[Math.floor(l.route.length / 2)];
                        const [mx, my] = FS.project(p.lat, p.lon, MAPW, MAPH); return [near(mx, x1), my]; })()
             : [(x1 + x2) / 2, (y1 + y2) / 2];
-          labels += `<text class="legms" data-dsts="${esc((l.destinations || []).join(' '))}" x="${mid[0].toFixed(1)}" y="${(mid[1] - 2).toFixed(1)}">${dms.toFixed(dms < 10 ? 1 : 0)} ms</text>`;
+          // The hop the leg arrives at, beside what it cost. The number is
+          // what ties the label to its step in the route below; the
+          // milliseconds alone left a reader counting dots to work out which
+          // leg they were reading.
+          labels += `<text class="legms" data-dsts="${esc((l.destinations || []).join(' '))}" x="${mid[0].toFixed(1)}" y="${(mid[1] - 2).toFixed(1)}">#${b.index} \u00b7 ${dms.toFixed(dms < 10 ? 1 : 0)} ms</text>`;
         }
         lines += `<path class="leg ${l.shared ? 'shared' : ''}${rc}${gap}" data-dsts="${esc((l.destinations || []).join(' '))}" stroke="${legColour(l)}" d="${d}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${l.gap ? `\nthrough ${l.through} hop${l.through === 1 ? '' : 's'} with no known position` : ''}${l.via ? `\ndrawn along ${esc(l.via)} — ${num(l.via_km)} km, against ${num(l.straight_km)} km straight` : ''}${esc(cbl)}</title></path>`;
       });

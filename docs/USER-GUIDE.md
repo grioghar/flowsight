@@ -295,7 +295,9 @@ click again to bring it back; the choice is remembered. *Operator known* and
 *the route you picked* switch the emphasis rather than hiding anything.
 
 **A selected route shows what each leg cost** -- the difference in round trip
-between one hop and the next -- written along the leg.
+between one hop and the next -- written along the leg with the hop it arrives
+at, as `#4 · 13 ms`, so a label on the map and a step in the route below name
+the same thing.
 
 **Your view survives the page's own refresh.** Where you are on the map, what
 you have narrowed to and which hop is selected all persist; changing route,

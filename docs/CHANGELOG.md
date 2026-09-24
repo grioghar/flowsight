@@ -12,6 +12,13 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241734
+
+**Each leg of a chosen route is labelled with the hop it arrives at as well as
+what it cost** -- `#4 · 13 ms` rather than `13 ms`. The number is what ties a
+label on the map to its step in the route below; the milliseconds alone left a
+reader counting dots to work out which leg they were reading.
+
 ## 0.9.8r202609241731
 
 **No more empty space around the map, and nothing on the map below the fold.**
