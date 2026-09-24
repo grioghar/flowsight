@@ -34,6 +34,9 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	// here, or the status call deadlocks and takes every graph build with it.
 	gf, ai, idn, sh := m.geofeedStatus(), m.assistStatus(), m.identifyStatus(), m.shodanStatus()
 	m.mu.Lock()
+	fccSt := m.fcc
+	m.mu.Unlock()
+	m.mu.Lock()
 	sources := map[string]any{
 		"cables":       map[string]any{"on": core.Bool(m.ctx.Settings(), "cables", false), "loaded": len(m.cables), "error": m.cableErr},
 		"land_routes":  map[string]any{"on": core.Bool(m.ctx.Settings(), "terrestrial", false), "loaded": m.landRoutes, "error": m.landErr},
@@ -43,6 +46,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		"assistant":    ai,
 		"identify":     idn,
 		"shodan":       sh,
+		"fcc":          fccSt,
 		"reputation":   map[string]any{"on": m.abuseKey() != "", "asked_this_session": m.abuseAsked, "known": m.ctx.Store.KVCount(abuseKV), "error": m.abuseErr},
 		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},

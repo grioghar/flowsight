@@ -58,6 +58,7 @@ type Module struct {
 	provider      providerState
 	abuseErr      string
 	shodanAsked   int
+	fcc           fccState
 	censusErr     string
 	shodanErr     string
 	assistQueue   []assistCandidate
@@ -119,6 +120,8 @@ func (m *Module) Info() core.ModuleInfo {
 			"anycast_census":         true,
 			"shodan_key":             "",
 			"shodan_mode":            "click",
+			"fcc_username":           "",
+			"fcc_token":              "",
 			"identify":               true,
 			"geofeeds":               true,
 			"abuseipdb_key":          "",
@@ -167,6 +170,10 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Sent only to the endpoint above. Not needed for Ollama."},
 			{Section: "AI lookup", Key: "ai_per_hour", Label: "Questions per hour", Type: "int",
 				Help: "Each hop is asked about once a month at most; this caps how many new ones per hour. Twenty is a few cents a day on the small models."},
+			{Section: "FCC broadband map", Key: "fcc_username", Label: "FCC broadband map username", Type: "string",
+				Help: "The National Broadband Map's data API needs an account. Create one free at broadbandmap.fcc.gov (Login › Create account), then under your account find the API token. Enter the account's username here and the token below; FlowSight then checks in monthly for the current release and its files, and keeps the state-level provider summaries. Without both fields nothing is asked."},
+			{Section: "FCC broadband map", Key: "fcc_token", Label: "FCC API token", Type: "secret",
+				Help: "Sent only in the hash_value header of requests to broadbandmap.fcc.gov. Press Check FCC access on the Map page’s Data sources card after entering it."},
 			{Section: "Shodan", Key: "shodan_key", Label: "Shodan API key", Type: "secret",
 				Help: "Optional. Without a key FlowSight uses Shodan's free InternetDB (open ports, hostnames, product fingerprints, known vulnerabilities) and asks nothing else. With a key the full host record is added -- organisation, ISP, operating system, Shodan's own location, last seen -- at one query credit per address. To get a key: sign in at account.shodan.io and copy the API key shown at the top; the free tier includes 100 query credits a month, so the keyed record is fetched on click unless you choose it for every hop below. The key is sent only to api.shodan.io."},
 			{Section: "Shodan", Key: "shodan_mode", Label: "Look hops up on Shodan", Type: "choice", Choices: []string{"off", "click", "all"},
@@ -241,9 +248,12 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("rootsites", 24*time.Hour, m.refreshRootSites, core.Delayed())
 	ctx.Every("census", 24*time.Hour, m.refreshCensus, core.Delayed())
 	ctx.Every("shodan", 5*time.Minute, m.shodanJob, core.Delayed())
+	ctx.Every("fcc", 24*time.Hour, m.fccJob, core.Delayed())
 	_ = m.loadRootSites()
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
+	ctx.Route("POST", "/api/paths/fcc/check", m.apiFCCCheck, core.Write(), core.Needs("paths.map"),
+		core.Doc("Test the FCC broadband map credentials and record the current release"))
 	ctx.Route("GET", "/api/paths/shodan", m.apiShodan, core.Needs("paths.map"),
 		core.Doc("Shodan record for a hop: InternetDB always, the keyed host record when a key is set; fetched now with now=1"),
 		core.Params("ip", "the address", "now", "1 to fetch if not cached"))

@@ -1017,7 +1017,7 @@
         const S = st.sources || {};
         const row = (name, on, detail, err) => `<tr><td>${esc(name)}</td><td>${on ? pill('on', 'ok') : pill('off', '')}</td><td class="small">${detail}</td><td class="small sev-high">${esc(err || '')}</td></tr>`;
         const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {}, fx = S.corrections || {}, osm = S.osm_telecom || {}, pv = S.providers || {};
-        const rep = S.reputation || {}, gf = S.geofeeds || {}, ai = S.assistant || {}, idn = S.identify || {}, shd = S.shodan || {};
+        const rep = S.reputation || {}, gf = S.geofeeds || {}, ai = S.assistant || {}, idn = S.identify || {}, shd = S.shodan || {}, fcc = S.fcc || {};
         const pvFeeds = Object.values(pv.feeds || {});
         const pvText = pvFeeds.length ? pvFeeds.map(f => `${f.name} ${num(f.prefixes || 0)}${f.error ? ' (failed)' : ''}`).join(' \u00b7 ') : 'nothing fetched yet';
         const pvErr = pvFeeds.filter(f => f.error).map(f => `${f.name}: ${f.error}`).join('; ');
@@ -1029,6 +1029,7 @@
           ${row('Routing table &amp; registry', reg.on, `${num(reg.queued || 0)} addresses waiting for their operator`)}
           ${row('Submarine cables', cab.on, cab.on ? `${num(cab.loaded || 0)} cables loaded` : 'not loaded', cab.error)}
           ${row('Land routes', land.on, land.on ? `${num(land.loaded || 0)} routes loaded` : 'not loaded', land.error)}
+          ${row('FCC broadband map', fcc.on, fcc.on ? (fcc.as_of ? `release ${esc(fcc.as_of)}, ${num(fcc.files || 0)} files listed; checked ${FS.when(fcc.checked_at)}` : 'credentials entered, not yet checked') + ` <button type="button" class="btn small" id="fcc-check">Check FCC access</button>` : 'no account \u2014 enter the username and API token under Settings \u203a paths \u203a FCC broadband map', fcc.error)}
           ${row('Shodan', shd.mode && shd.mode !== 'off', shd.mode === 'off' ? 'off' : `${shd.mode === 'all' ? 'every hop' : 'on click'}, ${shd.keyed ? 'with a key (full records)' : 'no key (InternetDB only)'}: ${num(shd.known || 0)} addresses on record`, shd.error)}
           ${row('Servers identifying themselves', idn.on, idn.on ? `${num(idn.known || 0)} anycast servers asked, ${num(idn.placed_this_session || 0)} placed this session, ${num(idn.queued || 0)} waiting; ${num(idn.root_sites || 0)} root-server sites on file` : 'off')}
           ${row('AI lookup', ai.on, ai.on ? `${esc(ai.provider)} / ${esc(ai.model)}: ${num(ai.known || 0)} hops answered, ${num(ai.queued || 0)} waiting, ${num(ai.per_hour || 0)} an hour` : 'off \u2014 choose a provider under Settings \u203a paths \u203a AI lookup', ai.error)}
@@ -1214,6 +1215,13 @@
         } catch (e) { b.textContent = 'Shodan did not answer'; }
       });
 
+      const fccBtn = FS.$('#fcc-check', el);
+      if (fccBtn) fccBtn.onclick = async () => {
+        fccBtn.disabled = true; fccBtn.textContent = 'Checking\u2026';
+        const r = await FS.post('/api/paths/fcc/check', {});
+        FS.toast(r.ok ? `FCC access works: release ${(r.state || {}).as_of || '?'}` : (r.error || (r.state || {}).error || 'FCC check failed'), !r.ok);
+        FS.render();
+      };
       const rbx = FS.$('#routebox', el), rbb = FS.$('#rbtoggle', el);
       if (rbx && rbb) {
         const set = (open) => {

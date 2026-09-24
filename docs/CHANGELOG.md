@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242252
+
+**A place for FCC broadband-map credentials.** *Settings › paths › FCC
+broadband map* takes the National Broadband Map account's username and API
+token (free at broadbandmap.fcc.gov; the field's help says where). With
+them, FlowSight checks in monthly for the current release and its file list,
+shows both on the *Data sources* card with a *Check FCC access* button, and
+is ready for the state-level provider summaries once the account is
+confirmed. The per-location files are tens of gigabytes and will not be
+pulled onto a gateway.
+
 ## 0.9.8r202609242244
 
 **A private Overpass on this network is allowed, explicitly.** Every URL
