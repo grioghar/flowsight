@@ -12,6 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240739
+
+**The device list no longer contains devices that do not exist.** DHCPv6
+log lines use the same names as DHCPv4 ones (a request, for instance) but
+carry a client identifier where the address would be, and the first six
+octets of that identifier were being read as an address. Each IPv6 client
+produced a phantom device with no name or vendor, listed as unidentified.
+Those lines are now ignored, and phantom entries already recorded are
+removed at startup unless you pinned one to a zone.
+
+**Devices are recognised from DHCP acknowledgements again.** The same
+parser expected the address before the IP on a DHCPv4 acknowledgement,
+which is the other way round from what dnsmasq writes, so acknowledgements
+were never read and a device's IP and name arrived late or not at all.
+
 ## 0.9.8r202609240733
 
 **Device zones follow the classification rules until you choose one.** A

@@ -421,6 +421,12 @@ func (m *Module) loadRegistry() {
 		if mac == "" {
 			continue
 		}
+		// Not a device: a DHCPv6 client ID an earlier build mistook for an
+		// address. Drop it rather than list it as unidentified forever.
+		if isPseudoMAC(mac) && getInt(row, "pinned") == 0 {
+			_ = m.ctx.Store.Exec(`DELETE FROM devices WHERE mac = ?`, mac)
+			continue
+		}
 		d := &Device{
 			MAC:         mac,
 			IP:          getStr(row, "ip"),
@@ -832,8 +838,12 @@ var (
 	// RFC5424 syslog prefix with dnsmasq-dhcp and optional transaction ID
 	dnsmasqPrefixRe = regexp.MustCompile(`.*dnsmasq-dhcp.*\[.*\]\s+(?:(\d+)\s+)?(.+)$`)
 
-	// DHCP operation lines with MAC
-	dhcpOpRe = regexp.MustCompile(`^(DHCPDISCOVER|DHCPREQUEST|DHCPACK|DHCPNAK)\([^\)]+\)\s+([0-9a-fA-F:]{17})(?:\s+(\S+))?`)
+	// DHCPv4 operation lines: "DHCPDISCOVER(if) mac", "DHCPACK(if) ip mac
+	// name". The address is exactly six octets followed by a space or the end
+	// of the line: DHCPv6 lines use the same operation names with a client
+	// DUID in its place, and reading a DUID's first six octets as a MAC
+	// invented devices that do not exist.
+	dhcpOpRe = regexp.MustCompile(`^(DHCPDISCOVER|DHCPREQUEST|DHCPACK|DHCPNAK)\([^)]+\)\s+(?:(\d{1,3}(?:\.\d{1,3}){3})\s+)?([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})(?:\s|$)`)
 
 	// Client provides name
 	clientNameRe = regexp.MustCompile(`^(\d+)\s+client provides name:\s+(.+)$`)
@@ -879,12 +889,12 @@ func (m *Module) parseDnsmasqLogLine(line string) {
 
 	// Parse DHCP operation lines (contain MAC and IP)
 	if dhcpMatch := dhcpOpRe.FindStringSubmatch(text); dhcpMatch != nil {
-		mac := strings.ToUpper(dhcpMatch[2])
+		mac := strings.ToUpper(dhcpMatch[3])
 		if !isPseudoMAC(mac) {
 			txn.mac = strings.ToLower(mac)
 		}
-		if dhcpMatch[3] != "" {
-			txn.ip = dhcpMatch[3]
+		if dhcpMatch[2] != "" {
+			txn.ip = dhcpMatch[2]
 		}
 		// When we get a DHCPACK with complete info, emit device
 		if strings.HasPrefix(text, "DHCPACK") && txn.mac != "" {
@@ -1620,6 +1630,12 @@ func isPseudoMAC(mac string) bool {
 		return true
 	}
 	if strings.HasPrefix(mac, "01:00:5E") || strings.HasPrefix(mac, "33:33") {
+		return true
+	}
+	// The first six octets of a DHCPv6 client DUID for an Ethernet client:
+	// type 1 (link-layer plus time) or type 3 (link-layer), hardware type 1.
+	// Earlier builds read these from DHCPv6 log lines as addresses.
+	if strings.HasPrefix(mac, "00:01:00:01:") || strings.HasPrefix(mac, "00:03:00:01:") {
 		return true
 	}
 	// Check if multicast bit (bit 0 of first octet) is set

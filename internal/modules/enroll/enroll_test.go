@@ -356,6 +356,9 @@ func TestPseudoMAC(t *testing.T) {
 		{"33:33:00:00:00:01", true},  // IPv6 multicast
 		{"00:AA:BB:CC:DD:EE", false}, // unicast
 		{"aa:bb:cc:dd:ee:ff", false}, // unicast lowercase
+		{"00:01:00:01:c7:93", true},  // DHCPv6 DUID-LLT prefix
+		{"00:03:00:01:fa:29", true},  // DHCPv6 DUID-LL prefix
+		{"00:01:00:02:c7:93", false}, // an ordinary address in the same OUI
 	}
 
 	for _, tt := range tests {
@@ -651,5 +654,69 @@ func TestAssignPinsAndUnpins(t *testing.T) {
 	assign("")
 	if d := m.devices[mac]; d.Zone != "iot" || d.Pinned != 0 {
 		t.Errorf("after clearing: zone %q pinned %d, want iot and unpinned", d.Zone, d.Pinned)
+	}
+}
+
+// DHCPv4 lines give a device's address; DHCPv6 lines use the same operation
+// names with a client DUID where the address would be, and must not produce
+// a device. These are the shapes dnsmasq writes on the live gateway.
+func TestDnsmasqLineAddresses(t *testing.T) {
+	const pre = `<30>1 2026-09-24T07:40:00+00:00 OPNsense.internal dnsmasq-dhcp 39072 - [meta sequenceId="8"] `
+	tests := []struct {
+		name, text, mac, ip string
+	}{
+		{"v4 discover", "3935910021 DHCPDISCOVER(vtnet0) bc:24:11:cc:52:5d", "bc:24:11:cc:52:5d", ""},
+		{"v4 request", "3935910021 DHCPREQUEST(vtnet0) 192.168.1.71 EC:71:DB:8C:B1:67", "ec:71:db:8c:b1:67", "192.168.1.71"},
+		{"v4 ack", "3935910021 DHCPACK(vtnet0) 192.168.1.71 ec:71:db:8c:b1:67 reolink-hub", "ec:71:db:8c:b1:67", "192.168.1.71"},
+		{"v6 request", "9917758 DHCPREQUEST(vtnet0) 00:01:00:01:c7:93:6a:64:70:09:71:2d:f7:9b", "", ""},
+		{"v6 solicit", "7537509 DHCPSOLICIT(vtnet0) 00:03:00:01:ec:71:db:8c:b1:67", "", ""},
+		{"v6 reply", "9917758 DHCPREPLY(vtnet0) 2600:1700:3ab0:f43f::143f 00:01:00:01:c7:93:6a:64:70:09:71:2d:f7:9b", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := reconcileModule(t, "monitor")
+			m.txnState = map[string]*txnData{}
+			m.parseDnsmasqLogLine(pre + tt.text)
+			var mac, ip string
+			for _, txn := range m.txnState {
+				mac, ip = txn.mac, txn.ip
+			}
+			if mac != tt.mac || ip != tt.ip {
+				t.Errorf("got mac %q ip %q, want mac %q ip %q", mac, ip, tt.mac, tt.ip)
+			}
+			if tt.mac == "" && len(m.gatherSignals()) != 0 {
+				t.Error("a DHCPv6 line produced a device")
+			}
+		})
+	}
+}
+
+// Client IDs stored by earlier builds are dropped when the registry loads,
+// from memory and from the store, unless someone pinned one.
+func TestLoadRegistryDropsClientIDs(t *testing.T) {
+	m := reconcileModule(t, "monitor")
+	for _, d := range []*Device{
+		{MAC: "00:01:00:01:c7:93"},
+		{MAC: "00:03:00:01:fa:29", Pinned: 1},
+		{MAC: "ec:71:db:8c:b1:67", Vendor: "Reolink Innovation Limited"},
+	} {
+		if err := m.saveDevice(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.loadRegistry()
+	if _, ok := m.devices["00:01:00:01:c7:93"]; ok {
+		t.Error("client ID still listed as a device")
+	}
+	if _, ok := m.devices["00:03:00:01:fa:29"]; !ok {
+		t.Error("a pinned entry was dropped")
+	}
+	if _, ok := m.devices["ec:71:db:8c:b1:67"]; !ok {
+		t.Error("a real device was dropped")
+	}
+	m.devices = map[string]*Device{}
+	m.loadRegistry()
+	if _, ok := m.devices["00:01:00:01:c7:93"]; ok {
+		t.Error("client ID came back from the store")
 	}
 }
