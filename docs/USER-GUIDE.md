@@ -464,6 +464,19 @@ adding one later is a line of configuration. Road-traced files are thinned to
 the points that change a route's shape by more than a kilometre before use,
 so a large one costs a second or two to load rather than a core for a day.
 
+**What the database gets wrong is remembered.** The address database places
+a block where it was registered, and for a carrier that is a head office. When
+a router's own name or a RIPE measurement puts a hop more than 500 km from
+there, the map learns two things: that the hop's announced prefix is where the
+evidence says -- other addresses of the prefix follow it, drawn as *corrected*
+with the router and date on their card -- and, once two routers of one network
+have been shown away from the same database coordinate, that the coordinate is
+the registrant's and not to be believed. A hop the database would put there is
+left for the timing to place, with the reason on its card, rather than drawn
+at a head office on the wrong continent. The *Data sources* card counts both;
+`/api/paths/corrections` lists them and lets any be forgotten. *Remember what
+the database gets wrong*, under *Where things are*, turns it off.
+
 **Placements the physics rules out.** This one is geometry rather than a guess
 about routing: no path between two points is shorter than the straight line
 over the earth's surface, and nothing in fibre beats about 200,000 km per

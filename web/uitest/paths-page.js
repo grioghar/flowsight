@@ -35,6 +35,12 @@ if (tl[0] !== 0 || tl[1] !== 0) throw new Error('north-west corner wrong: ' + tl
 print('FS.project OK');
 
 var GRAPH = { nodes: [
+  { id:'h9', index:9, ips:['104.119.40.200'], rtt_ms:183, located:true, lat:37.5665, lon:126.978, city:'Seoul', country:'KR',
+    location_source:'corrected', database_said:'Cambridge, Massachusetts, US', moved_km:11000, db_lat:42.3649, db_lon:-71.0888,
+    corrected_by:'ae10.r02.rio01.icn.netarch.akamai.com', corrected_at:1790000000, detail:{ asn:'20940', prefix:'104.119.40.0/21' } },
+  { id:'h11', index:11, ips:['23.56.140.9'], rtt_ms:205, located:false,
+    database_set_aside:"the database put it at Cambridge, Massachusetts, US, the registrant's address for AS20940; 2 of that network's routers there have been shown to be elsewhere, so the database is not believed about it",
+    detail:{ asn:'20940' } },
   { id:'h1', index:1, ips:['192.168.1.254'], located:false, silent:false },
   // Answered, unplaceable, put between its neighbours by timing.
   { id:'h25', index:25, ips:['203.0.113.9'], located:true, lat:40.0, lon:-60.0, rtt_ms:58.0,
@@ -88,7 +94,7 @@ var CAB = { cables: [
   { name:'Pacific Light', km:12800, runs:[[[170.0,20.0],[179.0,21.0],[-179.0,21.5],[-150.0,22.0]]] } ],
   attribution:"Submarine cable routes from TeleGeography's public cable map." };
 var STATUS = { active:true, last_run:1790200000, destinations:2, hops:11, error:'',
-  sources:{ router_names:{on:true,codes:210}, ipmap:{on:true,answered:21,queued:300,per_minute:20,backing_off_until:0},
+  sources:{ corrections:{ on:true, prefixes:3, set_aside:1 }, router_names:{on:true,codes:210}, ipmap:{on:true,answered:21,queued:300,per_minute:20,backing_off_until:0},
             registry:{on:true,queued:12}, cables:{on:true,loaded:709,error:''}, land_routes:{on:true,loaded:133,error:''} } };
 
 var ROUTE = { destination:'1.1.1.1',
@@ -130,7 +136,7 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('1 hop never answered') < 0) throw new Error('the count should come from the server, which no longer sends silent nodes');
   // What feeds the map, and how each source is doing.
   if (h.indexOf('Data sources') < 0) throw new Error('the page should say what the map is fed by');
-  if (h.indexOf('RIPE IPmap') < 0 || h.indexOf('21 positions measured') < 0) throw new Error('IPmap progress should be shown');
+  if (h.indexOf('RIPE IPmap') < 0 || h.indexOf('21 positions known') < 0) throw new Error('IPmap progress should be shown');
   if (h.indexOf('709 cables loaded') < 0) throw new Error('cable count should be shown');
   // Traffic per endpoint, and a way to read the map by it.
   if (h.indexOf('data-rt="') < 0) throw new Error('endpoints need a traffic-scaled radius');
@@ -409,3 +415,15 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
 }).catch(fail);
 if (typeof drainMicrotasks === 'function') drainMicrotasks();
 if (FAILURE) throw FAILURE;
+
+// A learned correction is shown as such, and a set-aside database placement
+// says why the hop is not drawn.
+(function(){
+  var el3 = mkEl();
+  FS.pages.paths.render(el3, { params: {} });
+  var h = el3.innerHTML;
+  ['a learned correction', 'Learned from', 'ae10.r02.rio01.icn', 'every address of the prefix now follows it',
+   'registrant&#39;s address for AS20940', 'not believed', '3 prefixes placed by their own routers', '1 registrant addresses set aside'
+  ].forEach(function(t){ if (h.indexOf(t) < 0 && h.indexOf(t.replace('&#39;', "'")) < 0) throw new Error('corrections: missing ' + t); });
+  print('learned corrections shown OK');
+})();

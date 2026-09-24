@@ -88,6 +88,13 @@ type Node struct {
 	MovedKM      float64 `json:"moved_km,omitempty"`
 	DBLat        float64 `json:"db_lat,omitempty"`
 	DBLon        float64 `json:"db_lon,omitempty"`
+	// CorrectedBy names the router (or measurement) whose evidence placed
+	// this hop's prefix, when the database alone would have put it elsewhere
+	// and a learned correction was applied instead. SetAside says why a
+	// database placement was not used at all.
+	CorrectedBy string `json:"corrected_by,omitempty"`
+	CorrectedAt int64  `json:"corrected_at,omitempty"`
+	SetAside    string `json:"database_set_aside,omitempty"`
 	// Detail is who runs this hop and, where it can be told, which building.
 	// Kept as a pointer so a hop nothing is known about costs nothing in the
 	// payload rather than carrying a page of empty fields.

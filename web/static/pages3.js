@@ -541,7 +541,11 @@
           h += grp('Site, read from the router name') + r('Code in the name', d.pop_code) + r('Site', d.pop_city);
           if (d.pop_score) h += r('Confidence', `${Math.round(d.pop_score * 100)}%${d.pop_how ? ' — matched as a ' + d.pop_how : ''}`, d.pop_score < 0.55 ? 'soft' : '');
           if (d.pop_why) h += r('How it was settled', d.pop_why, 'soft');
-          if (n.database_said) h += r('The database said', `${n.database_said} — ${num(Math.round(n.moved_km))} km away; the name is first-hand, so it wins`, 'warn');
+          if (n.database_said && n.location_source !== 'corrected') h += r('The database said', `${n.database_said} — ${num(Math.round(n.moved_km))} km away; the name is first-hand, so it wins`, 'warn');
+        }
+        if (n.location_source === 'corrected') {
+          h += grp('Corrected') + r('The database said', `${n.database_said} — ${num(Math.round(n.moved_km))} km away`, 'warn')
+             + r('Learned from', `${n.corrected_by}${n.corrected_at ? ', ' + FS.when(n.corrected_at) : ''} — a router in the same announced prefix, shown to be here; every address of the prefix now follows it`);
         }
         if (d.asn) {
           h += grp('Who runs it') + r('Network', 'AS' + d.asn + (d.as_name ? '  ' + d.as_name : ''))
@@ -564,11 +568,14 @@
             + r('By', n.between_how, 'soft')
             + r('Source', 'inferred from timing; it is not drawn as a located hop', 'soft');
         } else if (!n.located) {
-          h += `<div class="muted small">It answered, but nothing places it: no site in its name, and the address database has no coordinates for the block. It is listed under <em>Not on the map</em> rather than drawn somewhere invented.</div>`;
+          h += n.database_set_aside
+            ? `<div class="muted small">It answered. The address database has coordinates for its block, but they are not believed: ${esc(n.database_set_aside)}. It is listed under <em>Not on the map</em> rather than drawn at a head office.</div>`
+            : `<div class="muted small">It answered, but nothing places it: no site in its name, and the address database has no coordinates for the block. It is listed under <em>Not on the map</em> rather than drawn somewhere invented.</div>`;
         } else {
           h += r('Shown at', [n.city, n.region, n.country].filter(Boolean).join(', '))
             + r('Source', { name: 'the router\u2019s own name',
                              measured: 'RIPE IPmap \u2014 measured from thousands of probes, not registered',
+                             corrected: 'a learned correction \u2014 the address database, overruled for this prefix',
                              between: 'inferred from timing' }[n.location_source] || 'address database');
         }
         if (n.distance_km) h += r('Distance used', `${num(n.distance_km)} km${n.via ? ' along ' + n.via : ' (straight line)'}`);
@@ -859,15 +866,16 @@
         // Settings say what is switched on; this says what it has produced.
         const S = st.sources || {};
         const row = (name, on, detail, err) => `<tr><td>${esc(name)}</td><td>${on ? pill('on', 'ok') : pill('off', '')}</td><td class="small">${detail}</td><td class="small sev-high">${esc(err || '')}</td></tr>`;
-        const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {};
+        const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {}, fx = S.corrections || {};
         const backoff = ipm.backing_off_until && ipm.backing_off_until * 1000 > Date.now() ? ` — backing off until ${FS.when(ipm.backing_off_until)}` : '';
         return `<div style="margin-top:14px">${card('Data sources', `<table>
           <tr><th>Source</th><th></th><th>State</th><th></th></tr>
           ${row('Router names', nm.on, `${num(nm.codes || 0)} site codes known, plus spelled-out and shortened forms`)}
-          ${row('RIPE IPmap', ipm.on, `${num(ipm.answered || 0)} positions measured this session, ${num(ipm.queued || 0)} waiting, ${num(ipm.per_minute || 0)} a minute${backoff}`)}
+          ${row('RIPE IPmap', ipm.on, `${num(ipm.answered || 0)} positions known (${num(ipm.this_session || 0)} this session), ${num(ipm.queued || 0)} waiting, ${num(ipm.per_minute || 0)} a minute${backoff}`)}
           ${row('Routing table &amp; registry', reg.on, `${num(reg.queued || 0)} addresses waiting for their operator`)}
           ${row('Submarine cables', cab.on, cab.on ? `${num(cab.loaded || 0)} cables loaded` : 'not loaded', cab.error)}
           ${row('Land routes', land.on, land.on ? `${num(land.loaded || 0)} routes loaded` : 'not loaded', land.error)}
+          ${row('Learned corrections', fx.on, `${num(fx.prefixes || 0)} prefixes placed by their own routers, ${num(fx.set_aside || 0)} registrant addresses set aside`)}
         </table>`, `each is a setting under <a href="#modules/paths">Settings › paths</a>, grouped under <em>Where things are</em>`)}</div>`;
       })()}
 

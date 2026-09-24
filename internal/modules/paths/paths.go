@@ -59,6 +59,7 @@ type Module struct {
 	routes        routeMemo     // cable and land-route searches, answered once per pair of places
 	cands         candidateMemo // cables passing near both ends of a leg, likewise
 	graphBuild    sync.Mutex    // one graph build at a time; the rest wait and reuse it
+	fixes         fixes         // what the database gets wrong, learned from names and measurements
 }
 
 // lookup is the part of the enrich module this needs.
@@ -74,25 +75,26 @@ func (m *Module) Info() core.ModuleInfo {
 		Description: "The route to the places this network talks to: every hop with its name, carrier and location, collapsed where paths share a leg.",
 		After:       []string{"enrich", "visibility", "web"},
 		Defaults: map[string]any{
-			"enabled":          true,
-			"active":           false,
-			"per_run":          6,
-			"retrace_hours":    24,
-			"max_destinations": 300,
-			"trace_ipv6":       true,
-			"home":             "",
-			"cables":           false,
-			"cables_url":       "",
-			"cable_near_km":    400,
-			"registry":         true,
-			"ipmap":            true,
-			"ipmap_per_minute": 20,
-			"land_detour_pct":  35,
-			"origin_slack_km":  100,
-			"hop_delay_us":     200,
-			"terrestrial":      false,
-			"terrestrial_urls": "",
-			"facilities":       true,
+			"enabled":           true,
+			"active":            false,
+			"per_run":           6,
+			"retrace_hours":     24,
+			"max_destinations":  300,
+			"trace_ipv6":        true,
+			"home":              "",
+			"cables":            false,
+			"cables_url":        "",
+			"cable_near_km":     400,
+			"registry":          true,
+			"ipmap":             true,
+			"ipmap_per_minute":  20,
+			"land_detour_pct":   35,
+			"origin_slack_km":   100,
+			"hop_delay_us":      200,
+			"terrestrial":       false,
+			"learn_corrections": true,
+			"terrestrial_urls":  "",
+			"facilities":        true,
 		},
 		Schema: []core.SettingField{
 			{Section: "Tracing", Key: "active", Label: "Trace paths", Type: "bool",
@@ -118,6 +120,8 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Downloads open maps of long-haul fibre on land and measures along them where they reach, instead of estimating the detour. These never raise the impossible threshold: over water a cable is the only way across, so its length is a real bound, but on land a straight line is merely something nobody built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons licence and is the one substantial open set; the comprehensive maps of North America, Europe and Asia are sold commercially. Refreshed monthly."},
 			{Section: "Where things are", Key: "terrestrial_urls", Label: "Land-route sources", Type: "text",
 				Help: "One GeoJSON URL per line, replacing the defaults. Lines starting with # or // are ignored, so a source can be kept and turned off."},
+			{Section: "Where things are", Key: "learn_corrections", Label: "Remember what the database gets wrong", Type: "bool",
+				Help: "When a router's own name or a RIPE measurement places a hop far from where the address database put it, the hop's announced prefix is remembered as being where the evidence says, and other addresses in that prefix follow it. A registrant address the database uses for a whole network -- a carrier's head office stamped on every block -- is set aside once two of its addresses are shown to be elsewhere; hops the database would put there are placed by timing instead. Listed at /api/paths/corrections; any item can be forgotten."},
 			{Section: "Where things are", Key: "ipmap", Label: "Ask RIPE where each router is", Type: "bool",
 				Help: "RIPE's IPmap publishes where addresses are, worked out by measuring them from thousands of probes and narrowing by latency \u2014 the same argument FlowSight makes about impossibility, run at scale. It is the one source here that is measurement rather than paperwork, and it outranks the address database. Asked slowly and remembered for a month; a refusal backs off for half an hour."},
 			{Section: "Where things are", Key: "ipmap_per_minute", Label: "Addresses asked about per minute", Type: "int",
@@ -136,6 +140,8 @@ func (m *Module) Info() core.ModuleInfo {
 
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
+	m.fixes.load(ctx.Store)
+	m.fixes.on = core.Bool(ctx.Settings(), "learn_corrections", true)
 	if m.run == nil {
 		m.run = runTraceroute
 	}
@@ -153,6 +159,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("terrestrial", 12*time.Hour, m.refreshTerrestrial)
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
+	ctx.Route("GET", "/api/paths/corrections", m.apiCorrections, core.Needs("paths.map"),
+		core.Doc("What the address database has been shown to get wrong: corrected prefixes and distrusted registrant coordinates"))
+	ctx.Route("POST", "/api/paths/corrections/forget", m.apiForgetFix, core.Write(), core.Needs("paths.map"),
+		core.Doc("Forget one learned correction (prefix) or distrusted coordinate (key)"))
 	ctx.Route("GET", "/api/paths/status", m.apiStatus, core.Needs("paths.map"),
 		core.Doc("Whether tracing is on, how many destinations have a route, and when"))
 	ctx.Route("GET", "/api/paths/destinations", m.apiDestinations, core.Needs("paths.map"),

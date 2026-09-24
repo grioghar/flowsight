@@ -12,6 +12,32 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241955
+
+**The map remembers what the address database gets wrong.** The database
+places a block where it was registered, which for a carrier is a head
+office: every Akamai address on earth arrives at a building in Cambridge,
+Massachusetts, while the router named `rio01.icn` is in Seoul. The name
+already won on the map, but the win was made afresh on every rebuild and
+taught the database nothing, so the next address in the same block, with no
+site in its name, went straight back to Cambridge. Two things are now learned
+and kept. When a router's name or a RIPE measurement places a hop more than
+500 km from where the database put it, the hop's announced prefix is recorded
+as being where the evidence says, and any other address of that prefix the
+database alone would place follows it -- drawn as *corrected*, with the
+router it was learned from and the date. And when two routers of one network
+are shown to be away from one database coordinate, that coordinate is the
+registrant's address and is set aside: hops the database would put there are
+left for the timing to place between their neighbours, with the reason on
+their card. Both lists are at `GET /api/paths/corrections`, any item can be
+forgotten with `POST /api/paths/corrections/forget`, the *Data sources* card
+counts them, and *Settings › paths › Remember what the database gets wrong*
+turns the whole thing off.
+
+**The IPmap line on the *Data sources* card reads "positions known"**, with
+the session's share in brackets, which is what the number has meant since
+1816.
+
 ## 0.9.8r202609241945
 
 **The Map page failed to load in revisions 1805 through 1850.** The key's

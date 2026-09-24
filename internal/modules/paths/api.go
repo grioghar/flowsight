@@ -8,6 +8,7 @@ package paths
 // probe went out.
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -38,6 +39,8 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		"facilities":   map[string]any{"on": m.facilitiesOK()},
 		"router_names": map[string]any{"on": true, "codes": len(pops)},
 	}
+	cfix, xfix := m.fixCounts()
+	sources["corrections"] = map[string]any{"on": m.fixes.on, "prefixes": cfix, "set_aside": xfix}
 	m.mu.Unlock()
 	return map[string]any{
 		"active":   core.Bool(m.ctx.Settings(), "active", false),
@@ -574,6 +577,26 @@ func (m *Module) describe(nodes []Node, h Home) {
 			if d.Name != "" && !contains(n.Names, d.Name) {
 				n.Names = append(n.Names, d.Name)
 			}
+			// What has been learned before about this block or this
+			// coordinate. A correction moves the hop to where a router of
+			// the same prefix was shown to be; a distrusted coordinate is
+			// the registrant's address and is not used at all.
+			if n.Located && n.Source == "database" {
+				if c := m.correctionFor(ip); c != nil && greatCircleKM(n.Lat, n.Lon, c.Lat, c.Lon) > 250 {
+					n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
+					n.MovedKM = greatCircleKM(n.Lat, n.Lon, c.Lat, c.Lon)
+					n.DBLat, n.DBLon = n.Lat, n.Lon
+					n.Lat, n.Lon, n.Source = c.Lat, c.Lon, "corrected"
+					n.City, n.Region, n.Country = c.City, c.Region, c.Country
+					n.CorrectedBy, n.CorrectedAt = c.By, c.At.Unix()
+				} else if x := m.distrusted(detailASN(&d), n.Lat, n.Lon); x != nil {
+					n.SetAside = fmt.Sprintf("the database put it at %s, the registrant's address for AS%d; %d of that network's routers there have been shown to be elsewhere, so the database is not believed about it",
+						firstNonEmptyStr(x.Place, strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")), x.ASN, x.Count)
+					n.DBLat, n.DBLon = n.Lat, n.Lon
+					n.Lat, n.Lon, n.Located, n.Source = 0, 0, false, ""
+					n.City, n.Region, n.Country = "", "", ""
+				}
+			}
 			// What somebody measured, if they have. This outranks the address
 			// database -- which says where a block was registered -- and is
 			// asked for whenever nothing better is known.
@@ -584,6 +607,9 @@ func (m *Module) describe(nodes []Node, h Home) {
 							n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
 							n.MovedKM = km
 							n.DBLat, n.DBLon = n.Lat, n.Lon
+							if km > learnKM {
+								m.learn(ip, &d, "RIPE IPmap", n.DBLat, n.DBLon, n.DatabaseSaid, plat, plon, p.City, p.Region, p.Country, km)
+							}
 						}
 					}
 					n.Lat, n.Lon, n.Located, n.Source = plat, plon, true, "measured"
@@ -621,6 +647,10 @@ func (m *Module) describe(nodes []Node, h Home) {
 					n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
 					n.MovedKM = km
 					n.DBLat, n.DBLon = n.Lat, n.Lon
+					if km > learnKM {
+						city, region, country := splitPlace(match.Pop.City)
+						m.learn(ip, &d, d.Name, n.DBLat, n.DBLon, n.DatabaseSaid, match.Pop.Lat, match.Pop.Lon, city, region, country, km)
+					}
 				}
 			}
 			n.Lat, n.Lon, n.Located, n.Source = match.Pop.Lat, match.Pop.Lon, true, "name"
