@@ -313,10 +313,11 @@
       if (ctx.params.country) q.push('country=' + encodeURIComponent(ctx.params.country));
       if (ctx.params.max_latency) q.push('max_latency=' + encodeURIComponent(ctx.params.max_latency));
       if (ctx.params.max_hops) q.push('max_hops=' + encodeURIComponent(ctx.params.max_hops));
-      const [st, g, dests] = await Promise.all([
+      const [st, g, dests, devs] = await Promise.all([
         get('/api/paths/status'),
         get('/api/paths/graph' + (q.length ? '?' + q.join('&') : '')),
-        get('/api/paths/destinations?limit=400')]);
+        get('/api/paths/destinations?limit=400'),
+        get('/api/paths/devices')]);
       if (st.error && !g.nodes) { el.innerHTML = FS.err(st.error); return; }
 
       const nodes = g.nodes || [], legs = g.legs || [];
@@ -366,7 +367,12 @@
             <select id="f-country"><option value="">any</option>${Object.keys(countries).sort().map(c => `<option value="${esc(c)}" ${ctx.params.country === c ? 'selected' : ''}>${esc(c)} (${countries[c]})</option>`).join('')}</select></label>
           <label class="small">Slower than (ms) <input id="f-lat" type="number" min="0" style="width:80px" value="${esc(ctx.params.max_latency || '')}" placeholder="any"></label>
           <label class="small">Within hops <input id="f-hops" type="number" min="1" max="64" style="width:70px" value="${esc(ctx.params.max_hops || '')}" placeholder="any"></label>
-          <label class="small">Device <input id="f-dev" style="width:130px" value="${esc(ctx.params.device || '')}" placeholder="any address"></label>
+          <label class="small">Device
+            <select id="f-dev"><option value="">every device</option>${(devs.devices || []).map(d => {
+              const sel = (d.addresses || []).includes(ctx.params.device) ? 'selected' : '';
+              const n = (d.addresses || []).length;
+              return `<option value="${esc(d.key)}" ${sel}>${esc(d.name || d.key)} &middot; ${d.destinations} dest${n > 1 ? ` (${n} addresses)` : ''}</option>`;
+            }).join('')}</select></label>
           <button class="btn small" id="f-apply">Apply</button>
           <button class="btn small" id="f-clear">Clear</button>
           <button class="btn small" id="f-reset">Reset zoom</button>
@@ -398,7 +404,7 @@
       const go = () => {
         const p = [];
         const c = FS.$('#f-country', el).value, la = FS.$('#f-lat', el).value,
-              ho = FS.$('#f-hops', el).value, dv = FS.$('#f-dev', el).value.trim();
+              ho = FS.$('#f-hops', el).value, dv = FS.$('#f-dev', el).value;
         if (c) p.push('country=' + encodeURIComponent(c));
         if (la) p.push('max_latency=' + encodeURIComponent(la));
         if (ho) p.push('max_hops=' + encodeURIComponent(ho));

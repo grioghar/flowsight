@@ -80,9 +80,20 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	where, args := "", []any{}
 	// A device filter is a join: the device's flows name destinations, and
 	// those destinations have routes. No device is ever traced.
+	//
+	// The filter takes every address the device holds, not the one that was
+	// clicked. A laptop answers to an IPv4 lease and a fistful of rotating
+	// IPv6 privacy addresses, and filtering on one of them would show a
+	// fraction of where that laptop has actually been.
 	if dev := strings.TrimSpace(r.Q("device", "")); dev != "" {
-		where = `WHERE dst IN (SELECT DISTINCT dst_ip FROM flows WHERE src_ip = ? AND dst_ip <> '')`
-		args = append(args, dev)
+		addrs := m.addressesOf(dev)
+		ph := make([]string, len(addrs))
+		for i, a := range addrs {
+			ph[i] = "?"
+			args = append(args, a)
+		}
+		where = `WHERE dst IN (SELECT DISTINCT dst_ip FROM flows WHERE dst_ip <> '' AND src_ip IN (` +
+			strings.Join(ph, ",") + `))`
 	}
 	rows, err := m.hops(where, args...)
 	if err != nil {
@@ -92,6 +103,79 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	m.locate(g.Nodes)
 	g = filterGraph(g, r.Q("country", ""), float64(r.QInt("max_latency", 0, 0, 100000)), r.QInt("max_hops", 0, 0, 64))
 	return g, nil
+}
+
+// addressesOf expands one address into every address the same device holds,
+// found through its hardware address. An address with no device behind it,
+// or one FlowSight has never seen, stands for itself.
+func (m *Module) addressesOf(addr string) []string {
+	rows, err := m.ctx.Store.Rows(
+		`SELECT ip FROM hosts WHERE mac <> '' AND mac = (SELECT mac FROM hosts WHERE ip = ? LIMIT 1)`, addr)
+	if err != nil || len(rows) == 0 {
+		return []string{addr}
+	}
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if ip, _ := r["ip"].(string); ip != "" {
+			out = append(out, ip)
+		}
+	}
+	if len(out) == 0 {
+		return []string{addr}
+	}
+	return out
+}
+
+// apiDevices lists the devices whose traffic has a measured route, one entry
+// per device rather than one per address: a laptop with an IPv4 lease and six
+// rotating IPv6 addresses is one thing to filter by, not seven.
+func (m *Module) apiDevices(r *core.Req) (any, error) {
+	rows, err := m.ctx.Store.Rows(`
+		SELECT f.src_ip AS ip, COUNT(DISTINCT f.dst_ip) AS destinations
+		FROM flows f JOIN path_runs p ON p.dst = f.dst_ip
+		WHERE f.src_ip <> '' GROUP BY f.src_ip`)
+	if err != nil {
+		return nil, err
+	}
+	type dev struct {
+		Key          string   `json:"key"`
+		Name         string   `json:"name,omitempty"`
+		Addresses    []string `json:"addresses"`
+		Destinations int      `json:"destinations"`
+	}
+	byKey := map[string]*dev{}
+	for _, row := range rows {
+		ip, _ := row["ip"].(string)
+		if ip == "" {
+			continue
+		}
+		key, name := ip, ""
+		if m.identity != nil {
+			if mac := m.identity.MAC(ip); mac != "" {
+				key = mac
+			}
+			name = m.identity.Name(ip)
+		}
+		d := byKey[key]
+		if d == nil {
+			d = &dev{Key: ip, Name: name} // the key the filter uses is an address
+			byKey[key] = d
+		}
+		if d.Name == "" {
+			d.Name = name
+		}
+		d.Addresses = append(d.Addresses, ip)
+		d.Destinations += int(asInt(row["destinations"]))
+	}
+	out := make([]dev, 0, len(byKey))
+	for _, k := range sortedKeys(byKey) {
+		d := byKey[k]
+		sort.Strings(d.Addresses)
+		out = append(out, *d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Destinations > out[j].Destinations })
+	return map[string]any{"devices": out,
+		"note": "One entry per device. Filtering by one covers every address it holds, which for anything speaking IPv6 is several."}, nil
 }
 
 // hops reads stored hops, optionally narrowed.

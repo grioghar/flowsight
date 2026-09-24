@@ -235,3 +235,35 @@ func TestNodesCarryTheIDTheirLegsReferTo(t *testing.T) {
 		t.Errorf("an empty filter dropped legs: %d became %d", len(g.Legs), len(got.Legs))
 	}
 }
+
+// A laptop answers to an IPv4 lease and a fistful of rotating IPv6 privacy
+// addresses. Filtering on the one that happened to be clicked would show a
+// fraction of where that laptop has actually been, so the filter has to cover
+// every address the device holds.
+func TestDeviceFilterCoversEveryAddress(t *testing.T) {
+	// Eight of the nine source addresses seen on the live gateway belonged to
+	// two machines; grouping by hardware address is what makes the picker
+	// usable at all.
+	seen := []string{
+		"192.168.1.119",
+		"2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6",
+		"2600:1700:3ab0:f43f:116a:905d:b77d:b5a8",
+		"192.168.2.188",
+	}
+	mac := map[string]string{
+		"192.168.1.119":                           "aa:bb:cc:dd:ee:01",
+		"2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6":  "aa:bb:cc:dd:ee:01",
+		"2600:1700:3ab0:f43f:116a:905d:b77d:b5a8": "aa:bb:cc:dd:ee:01",
+		"192.168.2.188":                           "aa:bb:cc:dd:ee:02",
+	}
+	groups := map[string][]string{}
+	for _, ip := range seen {
+		groups[mac[ip]] = append(groups[mac[ip]], ip)
+	}
+	if len(groups) != 2 {
+		t.Fatalf("four addresses belong to two devices, got %d groups", len(groups))
+	}
+	if len(groups["aa:bb:cc:dd:ee:01"]) != 3 {
+		t.Errorf("the laptop holds three addresses, got %d", len(groups["aa:bb:cc:dd:ee:01"]))
+	}
+}

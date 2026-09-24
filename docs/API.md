@@ -129,6 +129,7 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | GET | `/api/paths/status` | Whether tracing is on, how many destinations have a route, and when |  |
 | GET | `/api/paths/destinations` | Destinations with a measured route | limit (rows) |
 | GET | `/api/paths/path` | Every hop to one destination, with names and locations | dst (destination) |
+| GET | `/api/paths/devices` | Devices whose traffic has a measured route, one entry per device |  |
 | GET | `/api/paths/graph` | The whole picture as nodes and legs, with shared legs collapsed | device (source address), country (filter), max_latency (ms), max_hops |
 
 ### policy

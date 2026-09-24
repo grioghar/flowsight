@@ -98,6 +98,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Destinations with a measured route"), core.Params("limit", "rows"))
 	ctx.Route("GET", "/api/paths/path", m.apiPath, core.Needs("paths.map"),
 		core.Doc("Every hop to one destination, with names and locations"), core.Params("dst", "destination"))
+	ctx.Route("GET", "/api/paths/devices", m.apiDevices, core.Needs("paths.map"),
+		core.Doc("Devices whose traffic has a measured route, one entry per device"))
 	ctx.Route("GET", "/api/paths/graph", m.apiGraph, core.Needs("paths.map"),
 		core.Doc("The whole picture as nodes and legs, with shared legs collapsed"),
 		core.Params("device", "source address", "country", "filter", "max_latency", "ms"))

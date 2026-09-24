@@ -32,12 +32,16 @@ var GRAPH = { nodes: [
     { from:'h2', to:'h3', destinations:['1.1.1.1','8.8.8.8'], shared:true },
     { from:'h3', to:'h4', destinations:['1.1.1.1'], shared:false } ] };
 var DESTS = { destinations: [ { dst:'1.1.1.1', name:'one.one.one.one', country:'AU', city:'Sydney', hops:6, answered:5, complete:1, ts:1790200000 } ] };
+var DEVS = { devices: [
+  { key:'192.168.1.119', name:'MacBookPro', addresses:['192.168.1.119','2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6'], destinations:9 },
+  { key:'192.168.2.188', name:'roku-ultra', addresses:['192.168.2.188'], destinations:2 } ] };
 var STATUS = { active:true, last_run:1790200000, destinations:2, hops:11, error:'' };
 
 FS.get = function(p){
   if (p.indexOf('/api/paths/status') === 0) return Promise.resolve(STATUS);
   if (p.indexOf('/api/paths/graph') === 0) return Promise.resolve(GRAPH);
   if (p.indexOf('/api/paths/destinations') === 0) return Promise.resolve(DESTS);
+  if (p.indexOf('/api/paths/devices') === 0) return Promise.resolve(DEVS);
   return Promise.resolve({});
 };
 load('web/static/pages3.js');
@@ -59,7 +63,13 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // Two addresses at one hop is one circle, not two.
   var circles = (h.match(/class="hop"/g) || []).length;
   if (circles !== 3) throw new Error('want 3 plotted hops (one per located node), got ' + circles);
-  print('Paths page renders the map, shared legs, unplaced hops and the destination list');
+  // The device filter must be a picker of devices, not a box for typing an
+  // address, and one entry per device however many addresses it holds.
+  if (h.indexOf('<select id="f-dev"') < 0) throw new Error('the device filter should be a picker');
+  if (h.indexOf('MacBookPro') < 0 || h.indexOf('roku-ultra') < 0) throw new Error('devices missing from the picker');
+  if (h.indexOf('2 addresses') < 0) throw new Error('a multi-address device should say so');
+  if (h.indexOf('every device') < 0) throw new Error('there must be a way back to everything');
+  print('Paths page renders the map, shared legs, unplaced hops, the destination list and a device picker');
 }).catch(fail);
 if (typeof drainMicrotasks === 'function') drainMicrotasks();
 if (FAILURE) throw FAILURE;

@@ -23,6 +23,20 @@ again. Saved rules are now read exactly as the file is at startup. Nothing
 to do: if you saved rules and then restarted to make them work, they were
 already correct on disk.
 
+## 0.9.8r202609240728
+
+**The path map filters by device, and a device means the whole device.** The
+filter was a box for typing an address. It is now a list of devices with
+their names, one entry each however many addresses they hold, and choosing
+one covers all of them.
+
+That distinction is the point rather than a nicety. On the gateway, eight of
+the nine source addresses with measured routes belonged to two machines: a
+laptop answers to an IPv4 lease and a handful of rotating IPv6 privacy
+addresses. A picker keyed on addresses would have listed the same laptop
+eight times, and filtering on whichever one was handy would have shown a
+fraction of where it had actually been.
+
 ## 0.9.8r202609240721
 
 **The map had nodes and no lines between them.** Legs refer to nodes by an

@@ -248,6 +248,13 @@ several points.
 **Filters** on country, latency, distance in hops and device. Wheel to zoom,
 drag to pan.
 
+The device filter is a list of devices, not a box for typing an address, and
+it has one entry per device however many addresses that device holds.
+Choosing one covers all of them: a laptop with an IPv4 lease and half a dozen
+rotating IPv6 privacy addresses is one thing to filter by, and filtering on
+whichever address happened to be handy would show a fraction of where it has
+actually been.
+
 **What the map does not claim.** The background is a longitude and latitude
 grid, not a drawing of land, because the coordinates come from an address
 database and that database is dependable for end-user addresses and rough for
