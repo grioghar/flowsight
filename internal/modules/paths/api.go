@@ -361,7 +361,9 @@ func (m *Module) describe(nodes []Node) {
 		}
 		pairs = trimmed
 	}
-	detail := m.detailAll(pairs)
+	// A reader waits for this, so it gets a budget rather than a promise.
+	detail, cold := m.describeFast(pairs, 6*time.Second)
+	m.note(cold)
 	for i := range nodes {
 		n := &nodes[i]
 		for _, ip := range n.IPs {
@@ -372,6 +374,9 @@ func (m *Module) describe(nodes []Node) {
 			if n.Detail == nil {
 				c := d
 				n.Detail = &c
+			}
+			if d.Name != "" && !contains(n.Names, d.Name) {
+				n.Names = append(n.Names, d.Name)
 			}
 			if d.PoPLat == 0 && d.PoPLon == 0 {
 				continue

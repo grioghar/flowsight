@@ -40,6 +40,9 @@ import (
 
 // Detail is everything known about a hop beyond the measurement itself.
 type Detail struct {
+	// Name is the reverse-DNS name, resolved here rather than inherited.
+	Name string `json:"name,omitempty"`
+
 	// From the router's name.
 	PoPCode string  `json:"pop_code,omitempty"`
 	PoPCity string  `json:"pop_city,omitempty"`
@@ -124,6 +127,16 @@ func decodePoP(host string) (code string, p pop, ok bool) {
 		}
 	}
 	return "", pop{}, false
+}
+
+// reverseName asks what a router calls itself. Most do not answer: a hop with
+// no name is the common case, not a fault, and the caller must carry on.
+func reverseName(ip string) string {
+	names, err := net.LookupAddr(ip)
+	if err != nil || len(names) == 0 {
+		return ""
+	}
+	return strings.TrimSuffix(names[0], ".")
 }
 
 // ---- routing table, via DNS ----
@@ -413,20 +426,48 @@ const detailKV = "paths.detail."
 // spend someone else's rate limit to learn nothing.
 const detailTTL = 30 * 24 * time.Hour
 
+// detailSchema is bumped whenever what gets gathered changes. Without it a
+// month-long cache quietly serves answers collected by an older, thinner
+// version of this code, and the new fields read as "nothing known" rather
+// than "not asked yet".
+const detailSchema = 2
+
 type cachedDetail struct {
 	At time.Time `json:"at"`
+	V  int       `json:"v"`
 	D  Detail    `json:"d"`
 }
 
-// detailFor gathers everything known about one address, from cache when it
-// can. The name is passed in rather than looked up again because the caller
-// already resolved it.
-func (m *Module) detailFor(ip, host string) Detail {
+// cached returns what is already known about an address, if anything.
+func (m *Module) cached(ip string) (Detail, bool) {
 	var c cachedDetail
-	if m.ctx.Store.KVGet(detailKV+ip, &c) && time.Since(c.At) < detailTTL {
-		return c.D
+	if m.ctx.Store.KVGet(detailKV+ip, &c) && c.V == detailSchema && time.Since(c.At) < detailTTL {
+		return c.D, true
+	}
+	return Detail{}, false
+}
+
+// detailFor gathers everything known about one address.
+//
+// This is the slow path and it is not for a waiting reader: a registry and
+// PeeringDB are two round trips across the internet each, and a graph with
+// four hundred hops in it once took long enough that the page gave up before
+// the answer arrived. It runs on a timer instead, filling the cache a few
+// addresses at a time, and the page shows what has been gathered so far.
+func (m *Module) detailFor(ip, host string) Detail {
+	if d, ok := m.cached(ip); ok {
+		return d
 	}
 	var d Detail
+	// Resolve the name here rather than take whatever the enrichment module
+	// happened to have. Everything below hangs off this one string, and
+	// depending on another module's optional setting for it means the whole
+	// inference goes quiet without anything looking broken -- which is
+	// precisely what it did: seven hundred hops, not one name, no sites read.
+	if host == "" {
+		host = reverseName(ip)
+	}
+	d.Name = host
 	if code, p, ok := decodePoP(host); ok {
 		d.PoPCode, d.PoPCity, d.PoPLat, d.PoPLon = code, p.City, p.Lat, p.Lon
 	}
@@ -440,32 +481,112 @@ func (m *Module) detailFor(ip, host string) Detail {
 			d.Facilities, d.Scoped = facilitiesFor(client, d.ASN, d.PoPCity)
 		}
 	}
-	_ = m.ctx.Store.KVSet(detailKV+ip, cachedDetail{At: time.Now(), D: d})
+	_ = m.ctx.Store.KVSet(detailKV+ip, cachedDetail{At: time.Now(), V: detailSchema, D: d})
 	return d
 }
 
-// detailAll fills in detail for a set of addresses.
-//
-// Concurrency is deliberately small. These are other people's services, two of
-// them free and rate limited, and a burst of two hundred requests from one
-// gateway is how a source stops answering for everybody.
-func (m *Module) detailAll(pairs map[string]string) map[string]Detail {
+// describeFast is what a waiting reader gets: whatever is already cached, plus
+// a reverse lookup for anything that is not, under a deadline. A name alone is
+// enough to place a router, which is the part that changes the map; the rest
+// arrives on the next load once the warmer has fetched it.
+func (m *Module) describeFast(pairs map[string]string, budget time.Duration) (map[string]Detail, []string) {
 	out := make(map[string]Detail, len(pairs))
+	var cold []string
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 4)
+	sem := make(chan struct{}, 8)
+	deadline := time.Now().Add(budget)
+
 	for ip, host := range pairs {
+		if d, ok := m.cached(ip); ok {
+			out[ip] = d
+			continue
+		}
+		mu.Lock()
+		cold = append(cold, ip)
+		mu.Unlock()
 		wg.Add(1)
 		go func(ip, host string) {
 			defer wg.Done()
+			if time.Now().After(deadline) {
+				return
+			}
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			d := m.detailFor(ip, host)
+			if time.Now().After(deadline) {
+				return
+			}
+			if host == "" {
+				host = reverseName(ip)
+			}
+			if host == "" {
+				return
+			}
+			var d Detail
+			d.Name = host
+			if code, p, ok := decodePoP(host); ok {
+				d.PoPCode, d.PoPCity, d.PoPLat, d.PoPLon = code, p.City, p.Lat, p.Lon
+			}
+			// Deliberately not cached: this is a partial answer, and writing
+			// it under the same key the warmer uses would make "not asked
+			// yet" indistinguishable from "asked, and there is nothing".
 			mu.Lock()
 			out[ip] = d
 			mu.Unlock()
 		}(ip, host)
 	}
 	wg.Wait()
-	return out
+	return out, cold
+}
+
+// note remembers addresses that still need the slow lookup.
+func (m *Module) note(ips []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pending == nil {
+		m.pending = map[string]bool{}
+	}
+	for _, ip := range ips {
+		if len(m.pending) >= 2000 {
+			return
+		}
+		m.pending[ip] = true
+	}
+}
+
+// warm fills the cache for a few addresses at a time.
+//
+// Small, and on a timer. Two of these sources are free services run by other
+// people, and a gateway that empties its whole backlog at them in one burst is
+// how a source stops answering for everybody.
+func (m *Module) warm() error {
+	if !m.registryOK() {
+		return nil
+	}
+	m.mu.Lock()
+	var batch []string
+	for ip := range m.pending {
+		batch = append(batch, ip)
+		delete(m.pending, ip)
+		if len(batch) >= 12 {
+			break
+		}
+	}
+	m.mu.Unlock()
+	if len(batch) == 0 {
+		return nil
+	}
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 3)
+	for _, ip := range batch {
+		wg.Add(1)
+		go func(ip string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			m.detailFor(ip, "")
+		}(ip)
+	}
+	wg.Wait()
+	return nil
 }

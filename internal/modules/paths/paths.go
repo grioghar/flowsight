@@ -47,6 +47,7 @@ type Module struct {
 	lastErr  string
 	cables   []Cable
 	cableErr string
+	pending  map[string]bool // addresses still needing the slow registry lookup
 }
 
 // lookup is the part of the enrich module this needs.
@@ -113,6 +114,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 	ctx.Every("trace", 5*time.Minute, m.sweep)
 	ctx.Every("cables", 12*time.Hour, m.refreshCables)
+	// Detail is gathered away from anyone waiting for a page. See warm().
+	ctx.Every("detail", 45*time.Second, m.warm)
 	ctx.Route("GET", "/api/paths/status", m.apiStatus, core.Needs("paths.map"),
 		core.Doc("Whether tracing is on, how many destinations have a route, and when"))
 	ctx.Route("GET", "/api/paths/destinations", m.apiDestinations, core.Needs("paths.map"),

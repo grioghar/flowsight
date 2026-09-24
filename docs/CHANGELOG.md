@@ -61,6 +61,14 @@ Looking anything up over the network is optional, under *Settings > paths*.
 Reading a site out of a hostname is free and always on. Results are kept for a
 month.
 
+None of it is gathered while you wait. A registry and PeeringDB are two round
+trips across the internet each, and on a route table with four hundred hops in
+it that took long enough that the page gave up before the answer arrived. The
+map now returns immediately with whatever has been gathered, resolves names
+under a short budget because a name alone is what moves a point, and fills in
+the rest on a timer -- a dozen addresses a minute, so a free service run by
+someone else is not emptied at in one burst.
+
 ## 0.9.8r202609240747
 
 **Submarine cables, fetched at runtime and used to rule things out.** With
