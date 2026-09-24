@@ -12,6 +12,26 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241508
+
+**The origin shows its public address next to its coordinates.** *Your
+location* now gives the gateway's own addresses on the public internet, IPv4
+and IPv6, beside the latitude and longitude the map is drawn from, and says
+which of them produced those coordinates. It is shown whether or not the
+coordinates came from an address at all: a reader checking where the map
+thinks they are wants the address in front of them either way.
+
+**A dual-stack gateway could previously locate itself from either family,
+depending on the order its interfaces happened to enumerate in.** The walk has
+no defined order, so the same gateway could take its IPv4 address one run and
+its IPv6 the next, and the two geolocate to different places. That is not
+cosmetic: the origin is the reference for deciding whether a hop could be
+where the database claims, so an origin that moves between restarts quietly
+moves the line between a placement that gets ruled out and one that stands.
+IPv4 is now preferred and the list is sorted, so the answer is the same every
+time it is asked. IPv4 is also the better choice on its merits, v6 blocks
+being newer and more coarsely registered.
+
 ## 0.9.8r202609241505
 
 **The map takes touch.** One finger pans, two pinch to zoom, and because the

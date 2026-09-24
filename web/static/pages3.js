@@ -450,7 +450,21 @@
         <div class="small">${home.ok
           ? `Drawing from <b>${home.lat.toFixed(4)}, ${home.lon.toFixed(4)}</b> <span class="muted">(${esc(home.source)})</span>`
           : `<span class="sev-high">Not known yet.</span> Without it the map has no origin and nothing can be checked against the speed of light.`}</div>
-        ${home.detected && (home.detected.lat || home.detected.lon) ? `<div class="muted small" style="margin-top:4px">Your public address ${esc(home.public_address || '')} places you near ${esc([home.detected.city, home.detected.region, home.detected.country].filter(Boolean).join(', '))}.</div>` : ''}
+        ${(() => {
+          // The address the world sees this network as, beside the coordinates
+          // the map is drawn from. Shown whether or not the coordinates came
+          // from it: a reader checking where the map thinks they are wants the
+          // address in front of them either way.
+          const v4 = home.public_v4 || [], v6 = home.public_v6 || [];
+          if (!v4.length && !v6.length) {
+            return `<div class="muted small" style="margin-top:4px">No public address found on this gateway&rsquo;s own interfaces.</div>`;
+          }
+          const one = (ip) => `<span class="mono">${esc(ip)}</span>${ip === home.public_address && (v4.length + v6.length) > 1 ? ' <span class="muted">(used for the origin)</span>' : ''}`;
+          const line = (label, ips) => ips.length
+            ? `<div class="small" style="margin-top:3px"><span class="muted" style="display:inline-block;min-width:46px">${label}</span>${ips.map(one).join(', ')}</div>` : '';
+          return line('IPv4', v4) + line('IPv6', v6);
+        })()}
+        ${home.detected && (home.detected.lat || home.detected.lon) ? `<div class="muted small" style="margin-top:4px">That address is registered near ${esc([home.detected.city, home.detected.region, home.detected.country].filter(Boolean).join(', '))} &mdash; usually the right town, occasionally the wrong state.</div>` : ''}
         <div class="actions" style="margin-top:8px">
           <input id="h-lat" style="width:110px" placeholder="latitude" value="${home.ok ? home.lat.toFixed(4) : ''}">
           <input id="h-lon" style="width:110px" placeholder="longitude" value="${home.ok ? home.lon.toFixed(4) : ''}">

@@ -324,6 +324,12 @@ from your browser, which knows precisely and asks your permission first, or
 from the public address, or you can type it. It is also *Settings › paths ›
 Your location*.
 
+The card shows the gateway's own public addresses, IPv4 and IPv6, beside those
+coordinates, and marks which one the coordinates were worked out from. On a
+dual-stack line that is always the IPv4 address: the two families geolocate to
+different places, and an origin that changed between restarts would quietly
+move the line between a placement being ruled out and one standing.
+
 **Placements the physics rules out.** Light in fibre covers about 200,000 km
 per second, so a round trip cannot beat twice the straight-line distance
 divided by that, before any routing detour or equipment delay. A hop that

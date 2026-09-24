@@ -160,7 +160,13 @@ func (m *Module) apiGetHome(r *core.Req) (any, error) {
 		"ok":         h.OK, "lat": h.Lat, "lon": h.Lon, "source": h.Source,
 		"note": "Declaring this matters more than it looks: it is the reference for deciding whether a hop could be where the database claims. An origin that is out by a few hundred kilometres turns correct placements into impossible ones and back again.",
 	}
-	// What the public address would give, offered as a starting point.
+	// The gateway's own addresses on the public internet. Both families are
+	// reported, not just the one the origin was worked out from: a reader
+	// checking where the map thinks they are wants to see the address that
+	// produced the answer, and on a dual-stack line the other one is the
+	// first thing they will ask about.
+	v4, v6 := m.publicAddresses()
+	out["public_v4"], out["public_v6"] = v4, v6
 	if ip := m.publicAddress(); ip != "" {
 		out["public_address"] = ip
 		if m.rdns != nil {

@@ -51,6 +51,7 @@ var DEVS = { devices: [
   { key:'192.168.2.188', name:'roku-ultra', addresses:['192.168.2.188'], destinations:2 } ] };
 var HOME = { ok:true, lat:39.1836, lon:-96.5717, source:'public address', configured:'',
   public_address:'162.202.41.52',
+  public_v4:['162.202.41.52'], public_v6:['2600:1700:3ab0:f43f::1'],
   detected:{ lat:39.1836, lon:-96.5717, city:'Manhattan', region:'Kansas', country:'US' },
   note:'Declaring this matters more than it looks.' };
 var CAB = { cables: [
@@ -133,6 +134,12 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf("Use this browser's location") < 0) throw new Error('browser auto-detect missing');
   if (h.indexOf('Use the public address') < 0) throw new Error('address auto-detect missing');
   if (h.indexOf('Manhattan') < 0) throw new Error('what the public address suggests should be shown');
+  // The origin's own public address belongs beside the coordinates: it is how
+  // a reader checks the point the whole map is drawn from.
+  if (h.indexOf('162.202.41.52') < 0) throw new Error('the public IPv4 address should be shown');
+  if (h.indexOf('2600:1700:3ab0:f43f::1') < 0) throw new Error('the public IPv6 address should be shown');
+  if (h.indexOf('used for the origin') < 0)
+    throw new Error('with more than one address, say which one produced the coordinates');
   // A placement the latency rules out is circled on the map and explained.
   if (h.indexOf('class="ruledout"') < 0) throw new Error('an impossible placement must be marked on the map');
   if (h.indexOf('RULED OUT') < 0) throw new Error('the reason should be in the hover text');

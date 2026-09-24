@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -54,17 +55,18 @@ func (m *Module) home() Home {
 	return Home{}
 }
 
-// publicAddress is this gateway's own address on the public internet, read
-// from its interfaces rather than asked of anyone outside.
+// publicAddresses are this gateway's own addresses on the public internet,
+// read from its interfaces rather than asked of anyone outside. IPv4 first,
+// then IPv6, each sorted, so the answer is the same every time it is asked.
 //
-// "Not private" is not enough to find it. A delegated IPv6 prefix is globally
-// routable and still belongs to this network, so the LAN address matches
-// every test for a public one and is picked first. Identity knows which
-// prefixes are ours, and that is the only thing that can tell them apart.
-func (m *Module) publicAddress() string {
+// "Not private" is not enough to find them. A delegated IPv6 prefix is
+// globally routable and still belongs to this network, so the LAN address
+// matches every test for a public one. Identity knows which prefixes are
+// ours, and that is the only thing that can tell them apart.
+func (m *Module) publicAddresses() (v4, v6 []string) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return ""
+		return nil, nil
 	}
 	for _, i := range ifaces {
 		if i.Flags&net.FlagUp == 0 || i.Flags&net.FlagLoopback != 0 {
@@ -86,8 +88,36 @@ func (m *Module) publicAddress() string {
 			if m.identity != nil && m.identity.IsLocal(s) {
 				continue // routable, but on this side of the firewall
 			}
-			return s
+			if ip.To4() != nil {
+				if !contains(v4, s) {
+					v4 = append(v4, s)
+				}
+			} else if !contains(v6, s) {
+				v6 = append(v6, s)
+			}
 		}
+	}
+	sort.Strings(v4)
+	sort.Strings(v6)
+	return v4, v6
+}
+
+// publicAddress is the one address the origin is worked out from.
+//
+// IPv4 by preference, and not as a matter of taste: the interface walk has no
+// defined order, so taking whichever address turned up first meant a
+// dual-stack gateway could locate itself from v6 on one run and v4 on the
+// next. The origin is what decides whether a hop could be where the database
+// claims, so an origin that moves between restarts quietly moves the line
+// between a placement that is ruled out and one that stands. IPv4 also
+// geolocates better, v6 blocks being newer and more coarsely registered.
+func (m *Module) publicAddress() string {
+	v4, v6 := m.publicAddresses()
+	if len(v4) > 0 {
+		return v4[0]
+	}
+	if len(v6) > 0 {
+		return v6[0]
 	}
 	return ""
 }

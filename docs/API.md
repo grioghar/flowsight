@@ -131,7 +131,7 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | GET | `/api/paths/path` | Every hop to one destination, with names and locations | dst (destination) |
 | GET | `/api/paths/devices` | Devices whose traffic has a measured route, one entry per device |  |
 | GET | `/api/paths/cables` | The submarine cable map, simplified for drawing | detail (points per cable) |
-| GET | `/api/paths/home` | The origin the map is drawn from, and what could be detected for it |  |
+| GET | `/api/paths/home` | The origin the map is drawn from, this gateway's own public addresses (`public_v4`, `public_v6`, and `public_address` for the one the origin was worked out from), and what could be detected for it |  |
 | POST | `/api/paths/home` | Declare your location ({lat, lon}), or {clear:true} to go back to detecting it |  |
 | GET | `/api/paths/graph` | The whole picture as nodes and legs, with shared legs collapsed | device (source address), country (filter), max_latency (ms), max_hops |
 
