@@ -156,7 +156,11 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (!(split < svgAt && svgAt < panelAt)) throw new Error('the panel should follow the map inside the split');
   if (h.indexOf('class="hpbody"') < 0) throw new Error('the panel needs its own scrolling body');
   // None of the map's marks are self-evident, so there has to be a key.
-  if (h.indexOf('class="legend"') < 0) throw new Error('the map needs a legend');
+  // The key sits on the map it explains, not stranded underneath it.
+  if (h.indexOf('class="legend onmap"') < 0) throw new Error('the map needs a legend, on the map');
+  var frame = h.indexOf('class="mapframe"'), lgd = h.indexOf('class="legend onmap"'), svgEnd = h.indexOf('</svg>');
+  if (!(frame >= 0 && frame < svgEnd && svgEnd < lgd))
+    throw new Error('the legend should be inside the map frame, over the map');
   ['a leg several destinations share', 'a leg used by one destination', 'submarine cable',
    'the latency rules this placement out'].forEach(function (k) {
     if (h.indexOf(k) < 0) throw new Error('the legend should explain: ' + k);

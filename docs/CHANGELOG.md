@@ -12,6 +12,37 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241600
+
+**Pacific crossings resolve.** They never could, and the reason was not the
+tuning it looked like.
+
+A cable is published as a set of separate runs, because that is what a cable
+is: a trunk with branching units, spurs to extra landing points, and segments
+recorded apart from one another. Trans-Pacific systems come as five or seven
+runs; Atlantic ones often as a single one. The search looked *inside* one run,
+so it worked across the Atlantic and could not work across the Pacific at all
+-- the nearest point to Kansas was on one run, the nearest to Seoul on
+another, and no path existed between them. Every Pacific crossing fell back to
+the straight line, or worse, to whatever unrelated cable produced a shorter
+nonsense: the first honest-looking answers for Seoul and Tokyo wanted five and
+a half thousand kilometres of imaginary overland at the Asian end.
+
+Cables are now stitched back into the systems they came from -- points joined
+along each run, runs joined to each other where their ends meet -- and the
+distance along one is a shortest path across that network. Runs that do not
+meet are still not joined, so two unrelated pieces of the same cable name are
+not spliced across open water.
+
+The cap on how far inland an end may be is raised to 3,200 km, which clears
+the most landlocked places anyone actually sits. It was never the real
+constraint; the share test is what stops an overland run standing in for a
+crossing.
+
+**The legend is on the map.** Stranded underneath, it made a reader look away
+from the thing they were reading to find out what a colour meant, and back
+again to use it.
+
 ## 0.9.8r202609241549
 
 **Sea crossings are drawn along their cable.** A leg that crosses an ocean no

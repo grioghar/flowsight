@@ -95,7 +95,13 @@ func (m *Module) refreshCables() error {
 		return nil
 	}
 	m.mu.Lock()
-	m.cables, m.cableErr = cables, ""
+	// Stitched once, here, rather than on every request: a cable is a set of
+	// runs and the search needs it as one connected thing.
+	nets := make([]cableNet, 0, len(cables))
+	for _, c := range cables {
+		nets = append(nets, buildNet(c))
+	}
+	m.cables, m.nets, m.cableErr = cables, nets, ""
 	m.mu.Unlock()
 	return nil
 }

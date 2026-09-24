@@ -119,7 +119,7 @@ func TestCableRouteMeasuresTheWholeJourney(t *testing.T) {
 		{Lat: 50.0, Lon: -20.0},
 		{Lat: 51.5, Lon: -5.0}, // Cornwall
 	}}}}
-	r := cableRouteKM(cables, 40.7, -74.0, 51.5, -5.0, 500)
+	r := cableRouteKM(netsOf(cables), 40.7, -74.0, 51.5, -5.0, 3200)
 	if !r.OK {
 		t.Fatal("a cable joining both ends was not found")
 	}
@@ -132,7 +132,7 @@ func TestCableRouteMeasuresTheWholeJourney(t *testing.T) {
 	}
 	// The distance ashore at each end must be counted, or a cable landing a
 	// hundred kilometres away looks free.
-	inland := cableRouteKM(cables, 41.5, -74.5, 51.5, -5.0, 500)
+	inland := cableRouteKM(netsOf(cables), 41.5, -74.5, 51.5, -5.0, 3200)
 	if !inland.OK || inland.KM <= r.KM {
 		t.Errorf("moving an endpoint inland should lengthen the route: %.0f vs %.0f", inland.KM, r.KM)
 	}
@@ -142,9 +142,9 @@ func TestCableRouteMeasuresTheWholeJourney(t *testing.T) {
 // is plainly overland, or a coastal cable would accuse perfectly good
 // placements of being impossible.
 func TestShortTripsIgnoreTheCables(t *testing.T) {
-	m := &Module{cables: []Cable{{Name: "Coastal", Legs: [][]LatLon{{
+	m := withCables([]Cable{{Name: "Coastal", Legs: [][]LatLon{{
 		{Lat: 34.0, Lon: -118.2}, {Lat: 30.0, Lon: -125.0}, {Lat: 37.8, Lon: -122.4},
-	}}}}}
+	}}}})
 	// Los Angeles to San Francisco: about 560 km, and the cable goes out to
 	// sea and back.
 	km, via := m.pathKM(34.0, -118.2, 37.8, -122.4)
@@ -160,12 +160,12 @@ func TestShortTripsIgnoreTheCables(t *testing.T) {
 // A cable that wanders far enough is describing a different journey, not a
 // longer version of this one, and must not set the bound.
 func TestAbsurdlyLongCableRoutesAreRejected(t *testing.T) {
-	m := &Module{cables: []Cable{{Name: "The Long Way", Legs: [][]LatLon{{
+	m := withCables([]Cable{{Name: "The Long Way", Legs: [][]LatLon{{
 		{Lat: 51.5, Lon: -0.1},  // London
 		{Lat: -34.0, Lon: 18.4}, // ... via Cape Town
 		{Lat: -33.9, Lon: 151.2},
 		{Lat: 40.7, Lon: -74.0}, // ... to New York
-	}}}}}
+	}}}})
 	straight := greatCircleKM(51.5, -0.1, 40.7, -74.0)
 	km, via := m.pathKM(51.5, -0.1, 40.7, -74.0)
 	if via != "" {
@@ -178,9 +178,9 @@ func TestAbsurdlyLongCableRoutesAreRejected(t *testing.T) {
 
 // The bound must never drop below the straight line, whatever the cables say.
 func TestTheFloorIsNeverLowered(t *testing.T) {
-	m := &Module{cables: []Cable{{Name: "Impossible Shortcut", Legs: [][]LatLon{{
+	m := withCables([]Cable{{Name: "Impossible Shortcut", Legs: [][]LatLon{{
 		{Lat: 51.5, Lon: -0.1}, {Lat: 40.7, Lon: -74.0},
-	}}}}}
+	}}}})
 	straight := greatCircleKM(51.5, -0.1, 40.7, -74.0)
 	km, _ := m.pathKM(51.5, -0.1, 40.7, -74.0)
 	if km < straight-0.001 {
@@ -199,7 +199,7 @@ func TestAnInlandOriginStillReachesTheCables(t *testing.T) {
 		{Lat: 50.5, Lon: -10.0},
 		{Lat: 50.1, Lon: -5.5}, // Cornwall
 	}}}}
-	m := &Module{cables: atlantic}
+	m := withCables(atlantic)
 	// Manhattan, Kansas to London.
 	km, via := m.pathKM(39.1836, -96.5717, 51.5072, -0.1276)
 	if via == "" {
@@ -229,14 +229,77 @@ func TestAShortLocalCableCannotStandInForACrossing(t *testing.T) {
 		{Lat: 50.5, Lon: -10.0}, {Lat: 50.1, Lon: -5.5},
 	}}}
 	// The decoy alone must not be accepted for a Kansas-to-London trip.
-	m := &Module{cables: []Cable{decoy}}
+	m := withCables([]Cable{decoy})
 	if km, via := m.pathKM(39.1836, -96.5717, 51.5072, -0.1276); via != "" {
 		t.Errorf("a short Arctic cable stood in for an Atlantic crossing: %q at %.0f km", via, km)
 	}
 	// With a real trunk present, that is the one chosen.
-	m = &Module{cables: []Cable{decoy, real}}
+	m = withCables([]Cable{decoy, real})
 	km, via := m.pathKM(39.1836, -96.5717, 51.5072, -0.1276)
 	if via != "Real Atlantic" {
 		t.Errorf("expected the trunk, got %q at %.0f km", via, km)
+	}
+}
+
+// netsOf and withCables mirror what the module does when cables load: a cable
+// is stitched into one connected system before anything searches it.
+func netsOf(cables []Cable) []cableNet {
+	out := make([]cableNet, 0, len(cables))
+	for _, c := range cables {
+		out = append(out, buildNet(c))
+	}
+	return out
+}
+
+func withCables(cables []Cable) *Module {
+	return &Module{cables: cables, nets: netsOf(cables)}
+}
+
+// The bug this was written for. A cable is published as a set of runs --
+// trans-Pacific systems come as five or seven -- and searching inside a
+// single run could never get from the American landing to the Asian one. The
+// Atlantic worked, because those cables are often a single run, so the fault
+// looked like a tuning problem for months of ocean.
+func TestACableSplitIntoRunsIsStillOneCable(t *testing.T) {
+	// The same crossing, given as three runs that meet end to end.
+	split := Cable{Name: "Split Pacific", Legs: [][]LatLon{
+		{{Lat: 34.0, Lon: -118.2}, {Lat: 30.0, Lon: -140.0}},
+		{{Lat: 30.0, Lon: -140.0}, {Lat: 25.0, Lon: 170.0}},
+		{{Lat: 25.0, Lon: 170.0}, {Lat: 35.6, Lon: 139.6}},
+	}}
+	net := buildNet(split)
+	ia, _ := net.nearestPoint(34.0, -118.2)
+	ib, _ := net.nearestPoint(35.6, 139.6)
+	km, path := net.shortest(ia, ib)
+	if path == nil {
+		t.Fatal("no path across a cable whose runs meet end to end")
+	}
+	if km < 9000 {
+		t.Errorf("the crossing should span the Pacific, got %.0f km", km)
+	}
+	if len(path) < 4 {
+		t.Errorf("the path should pass through every run, got %d points", len(path))
+	}
+
+	// And end to end, an inland origin reaches Tokyo along it.
+	m := withCables([]Cable{split})
+	total, via := m.pathKM(39.1836, -96.5717, 35.6762, 139.6503)
+	if via != "Split Pacific" {
+		t.Fatalf("an inland origin found no Pacific crossing, got %q at %.0f km", via, total)
+	}
+}
+
+// Runs that do not meet are not one system, and must not be joined across
+// open water as though they were.
+func TestUnconnectedRunsAreNotJoined(t *testing.T) {
+	apart := Cable{Name: "Two Unrelated Pieces", Legs: [][]LatLon{
+		{{Lat: 34.0, Lon: -118.2}, {Lat: 33.0, Lon: -120.0}},
+		{{Lat: 35.6, Lon: 139.6}, {Lat: 34.0, Lon: 138.0}},
+	}}
+	net := buildNet(apart)
+	ia, _ := net.nearestPoint(34.0, -118.2)
+	ib, _ := net.nearestPoint(35.6, 139.6)
+	if _, path := net.shortest(ia, ib); path != nil {
+		t.Error("two pieces thousands of kilometres apart were treated as one cable")
 	}
 }

@@ -84,7 +84,7 @@ func ftoa(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
 // from salt water and no cable comes near it; with a proximity gate, every
 // transatlantic route it takes was rejected and nothing was measured along a
 // cable at all.
-const maxAshoreKM = 2500
+const maxAshoreKM = 3200
 
 const minCableShare = 0.55
 
@@ -108,43 +108,33 @@ const minCableShare = 0.55
 // The minimum does the work a proximity gate used to: a cable landing near
 // both ends beats one that needs a thousand kilometres of driving, without
 // having to rule the second out in advance.
-func cableRouteKM(cables []Cable, aLat, aLon, bLat, bLon, nearKM float64) cableRoute {
+func cableRouteKM(nets []cableNet, aLat, aLon, bLat, bLon, ashoreKM float64) cableRoute {
 	best := cableRoute{KM: math.MaxFloat64}
-	for _, c := range cables {
-		for _, run := range c.Legs {
-			ia, da := nearestOn(run, aLat, aLon)
-			ib, db := nearestOn(run, bLat, bLon)
-			if ia < 0 || ib < 0 || da > nearKM || db > nearKM || ia == ib {
-				continue
+	for i := range nets {
+		n := &nets[i]
+		ia, da := n.nearestPoint(aLat, aLon)
+		ib, db := n.nearestPoint(bLat, bLon)
+		if ia < 0 || ib < 0 || ia == ib || da > ashoreKM || db > ashoreKM {
+			continue
+		}
+		along, path := n.shortest(ia, ib)
+		if path == nil {
+			continue // these runs are not joined; no way across this system
+		}
+		total := along + da + db
+		if total <= 0 || along/total < minCableShare {
+			continue // mostly imaginary overland; not this crossing
+		}
+		if total < best.KM {
+			// The shape as well as the length: where the packet started, out
+			// to the cable, along every point of the path, and ashore again.
+			pts := make([]LatLon, 0, len(path)+2)
+			pts = append(pts, LatLon{Lat: aLat, Lon: aLon})
+			for _, ix := range path {
+				pts = append(pts, n.Pts[ix])
 			}
-			lo, hi := ia, ib
-			if lo > hi {
-				lo, hi = hi, lo
-			}
-			// The whole journey: the run ashore at each end counts, or a
-			// cable that lands a hundred kilometres away looks free.
-			along := runLengthKM(run[lo : hi+1])
-			total := along + da + db
-			if total <= 0 || along/total < minCableShare {
-				continue // mostly imaginary overland; not this crossing
-			}
-			if total < best.KM {
-				// The shape as well as the length: from where the packet
-				// started, out to the cable, along every point of it in the
-				// right direction, and ashore at the far end.
-				pts := make([]LatLon, 0, hi-lo+3)
-				pts = append(pts, LatLon{Lat: aLat, Lon: aLon})
-				seg := run[lo : hi+1]
-				if ia > ib {
-					for i := len(seg) - 1; i >= 0; i-- {
-						pts = append(pts, seg[i])
-					}
-				} else {
-					pts = append(pts, seg...)
-				}
-				pts = append(pts, LatLon{Lat: bLat, Lon: bLon})
-				best = cableRoute{KM: total, Name: c.Name, Route: pts, OK: true}
-			}
+			pts = append(pts, LatLon{Lat: bLat, Lon: bLon})
+			best = cableRoute{KM: total, Name: n.Name, Route: pts, OK: true}
 		}
 	}
 	if !best.OK {
@@ -166,9 +156,9 @@ func (m *Module) pathKM(aLat, aLon, bLat, bLon float64) (km float64, via string)
 		return km, ""
 	}
 	m.mu.Lock()
-	cables := m.cables
+	nets := m.nets
 	m.mu.Unlock()
-	if len(cables) == 0 {
+	if len(nets) == 0 {
 		return km, ""
 	}
 	if m.floors == nil {
@@ -182,7 +172,7 @@ func (m *Module) pathKM(aLat, aLon, bLat, bLon float64) (km float64, via string)
 		// Not cable_near_km: that setting answers "did this cable carry the
 		// leg", where being close matters. Here the overland run is part of
 		// the distance, and the shortest total decides.
-		r = cableRouteKM(cables, aLat, aLon, bLat, bLon, maxAshoreKM)
+		r = cableRouteKM(nets, aLat, aLon, bLat, bLon, maxAshoreKM)
 		m.floors.mu.Lock()
 		m.floors.m[key] = r
 		m.floors.mu.Unlock()
@@ -201,12 +191,12 @@ func (m *Module) drawRoute(aLat, aLon, bLat, bLon float64) cableRoute {
 		return cableRoute{}
 	}
 	m.mu.Lock()
-	cables := m.cables
+	nets := m.nets
 	m.mu.Unlock()
-	if len(cables) == 0 {
+	if len(nets) == 0 {
 		return cableRoute{}
 	}
-	r := cableRouteKM(cables, aLat, aLon, bLat, bLon, maxAshoreKM)
+	r := cableRouteKM(nets, aLat, aLon, bLat, bLon, maxAshoreKM)
 	straight := greatCircleKM(aLat, aLon, bLat, bLon)
 	if !r.OK || r.KM <= straight || r.KM > straight*cableFloorMaxRatio {
 		return cableRoute{}

@@ -322,3 +322,17 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .pathmap .leg.onpath { opacity: 1; stroke-width: 2.6; }
 .pathmap .leg.offpath { opacity: .1; }
 .pathmap .hop.onpath { stroke: var(--accent); stroke-width: 1.8; }
+
+/* The key belongs on the map it explains. Stranded underneath, a reader has
+   to look away from the thing they are trying to read to find out what a
+   colour means, and back again to use it. */
+.mapframe { position: relative; }
+.legend.onmap { position: absolute; left: 10px; bottom: 10px; right: 10px;
+  margin: 0; gap: 4px 14px; padding: 7px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border: 1px solid var(--line); backdrop-filter: blur(3px);
+  font-size: 11px; pointer-events: none; }
+@media (max-width: 980px) {
+  /* Too little map left to cover: put it back underneath. */
+  .legend.onmap { position: static; background: none; border: 0; backdrop-filter: none; padding: 6px 0; }
+}

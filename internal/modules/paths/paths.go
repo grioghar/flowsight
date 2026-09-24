@@ -46,6 +46,7 @@ type Module struct {
 	traced   int
 	lastErr  string
 	cables   []Cable
+	nets     []cableNet // the same cables stitched back into connected systems
 	cableErr string
 	pending  map[string]bool // addresses still needing the slow registry lookup
 	floors   *floorMemo      // cable-route distances, worked out once per place

@@ -638,6 +638,7 @@
               hop you had clicked was off screen. */''}
         <div class="mapsplit">
         <div class="mapcol">
+        <div class="mapframe">
         <svg class="pathmap" id="pathmap" viewBox="0 0 ${MAPW} ${MAPH}" preserveAspectRatio="xMidYMid meet">
           ${/* Land and cables are the heavy part -- one long outline and up to a
                 couple of thousand cable runs -- so the copies either side
@@ -670,7 +671,7 @@
           const sw = (cls, style) => `<svg class="lg" viewBox="0 0 22 10" aria-hidden="true"><line class="${cls}" style="${style || ''}" x1="1" y1="5" x2="21" y2="5"/></svg>`;
           const dot = (fill, cls) => `<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="${cls || ''}" cx="6" cy="6" r="3.4" fill="${fill || 'none'}"/></svg>`;
           const it = (mark, text) => `<span class="lgi">${mark}${esc(text)}</span>`;
-          return `<div class="legend">
+          return `<div class="legend onmap">
             ${it(sw('leg shared', 'stroke:var(--muted)'), 'a leg several destinations share')}
             ${it(sw('leg', 'stroke:' + FS.palette[0]), 'a leg used by one destination')}
             ${(cab.cables || []).length ? it(sw('cable'), 'submarine cable') : ''}
@@ -684,6 +685,7 @@
             ${picked ? it(sw('leg onroute', 'stroke:' + FS.palette[0]), 'the route you picked; the rest is dimmed') : ''}
           </div>`;
         })()}
+        </div>
         </div>
         <aside class="hoppanel" id="hoppanel">
           <div class="hphead">Hop detail</div>
