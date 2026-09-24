@@ -12,6 +12,34 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241731
+
+**No more empty space around the map, and nothing on the map below the fold.**
+
+The map is two to one and its box was whatever shape the layout gave it, so
+one side or the other was always padding. The box now takes the map's shape:
+the frame is two to one and its height follows from its width, which leaves
+nothing above or below. Its width is capped so the whole card still fits the
+screen. Measured at both a laptop and an ultrawide, the frame and the map are
+now the same rectangle to the pixel.
+
+The key is bounded to the map it sits on and scrolls its own contents, so it
+is never something you have to scroll the page to reach.
+
+**Two faults on the way, both from asking the layout for a size it could not
+give.**
+
+A flex item whose height comes from its width has no width to start from, and
+the map collapsed to under half the space it had -- 482 pixels in a
+1,012-pixel column. A grid column is a definite width, so the map is laid out
+in a grid now and two-to-one resolves.
+
+Then the page columns asked for the map side's max-content width. The route
+trail is a single unwrapped line that scrolls sideways, so its max-content is
+however long the route happens to be: the column came out at 4,087 pixels on a
+2,560-pixel screen and pushed the detail panel and every table clean off the
+side. It is sized by what the map can actually use instead.
+
 ## 0.9.8r202609241726
 
 **Every entry in the key is a switch.** A key that only names the marks leaves

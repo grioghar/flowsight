@@ -218,9 +218,19 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
    bottom corner, cannot be scrolled off. Clamped rather than pure vh so a
    short window still gets a usable map and a tall one does not get an
    unreadable letterbox. */
-.mapsplit { display: flex; gap: 14px; align-items: stretch;
-  height: clamp(520px, calc(100vh - 140px), 1100px); }
-.mapsplit .mapcol { flex: 1 1 auto; min-width: 0; min-height: 0;
+/* The map decides the height, not the window.
+   A two-to-one map in a box of some other shape leaves a gap on one side or
+   the other. So the box takes the map's shape: the frame is two to one and
+   its height follows from its width, which leaves nothing above or below it.
+   The width is capped so the card still fits the screen -- whichever of the
+   two limits binds, the map fills what it is given. */
+/* A grid, not a flex row, because the map's height is derived from its width
+   and a flex item sized from its own content has no width to derive from --
+   as a flex row it collapsed the map to under half the space it had. A grid
+   column is a definite width, so two-to-one resolves. */
+.mapsplit { display: grid; grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 14px; align-items: stretch; }
+.mapsplit .mapcol { min-width: 0; min-height: 0;
   display: flex; flex-direction: column; }
 /* The map takes what the route trail leaves, and is shaped like the world.
    Two to one is the world's own proportion, so at full zoom-out pole to pole
@@ -230,13 +240,15 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
    degrees of latitude, a fifth of it empty sky above the pole. The largest
    two-to-one box that fits is centred, and any space left over belongs to the
    card rather than to the map. */
-.mapsplit .mapframe { flex: 1 1 auto; min-height: 0; display: flex; }
-.mapsplit .pathmap { aspect-ratio: 2 / 1; width: auto; height: auto;
-  max-width: 100%; max-height: 100%; margin: auto; }
+.mapsplit .mapframe { flex: none; width: 100%; aspect-ratio: 2 / 1;
+  max-width: calc((100vh - 330px) * 2); }
+.mapsplit .pathmap { width: 100%; height: 100%; display: block; }
+/* The panel is as tall as the map and its route, and scrolls inside that. */
+.mapsplit .hoppanel { flex: none; min-height: 0; }
 /* Embedded in the host GUI there is no viewport to measure -- the frame is
    sized from its own content, so asking for a share of it is circular. */
-.embedded .mapsplit { height: 760px; }
-.hoppanel { flex: 0 0 360px; display: flex; flex-direction: column; min-height: 0;
+.embedded .mapsplit .mapframe { max-width: 1400px; }
+.hoppanel { display: flex; flex-direction: column; min-height: 0;
   padding: 0; background: var(--panel-2, rgba(127,127,127,.06));
   border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .hoppanel .hphead { padding: 9px 14px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
@@ -247,9 +259,9 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 @media (max-width: 980px) {
   /* Too narrow for two columns: stack, and give each a height of its own so
      neither pushes the other off the screen. */
-  .mapsplit { flex-direction: column; height: auto; }
-  .mapsplit .mapframe { flex: none; height: 46vh; min-height: 260px; }
-  .hoppanel { flex: none; max-height: 40vh; }
+  .mapsplit { grid-template-columns: minmax(0, 1fr); }
+  .mapsplit .mapframe { width: 100%; max-width: none; }
+  .hoppanel { max-height: 40vh; }
 }
 .hoppanel h4 { margin: 0 0 8px; font-size: 13.5px; }
 .hoppanel .hg { margin: 11px 0 4px; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
@@ -361,6 +373,7 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
    on the map, and the bottom-left corner of an equirectangular world is empty
    ocean. */
 .legend.onmap { position: absolute; left: 12px; bottom: 12px; right: auto;
+  max-height: calc(100% - 24px); overflow: auto;
   display: flex; flex-direction: column; gap: 3px; width: 268px; max-width: calc(100% - 24px);
   margin: 0; padding: 9px 11px; border-radius: 8px;
   background: var(--panel); border: 1px solid var(--line);
@@ -481,9 +494,17 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
      true of the half that was measured. The card's own furniture -- title,
      filters, the folded notes -- is the difference between this and the
      figure above. */
-  /* And a tall screen should give the map the height, not cap it at what a
-     laptop has. */
-  .pagewide .mapside .mapsplit { height: clamp(380px, calc(100vh - 230px), 1200px); }
+  /* The map side takes exactly the width its map needs; the tables take what
+     is left, rather than a share of the screen they had no use for.
+     fit-content, not max-content: the route trail is a single unwrapped line
+     that scrolls sideways, so its max-content width is however long the route
+     happens to be. Asked for that, the column came out at 4,087 pixels on a
+     2,560 pixel screen and pushed the detail panel and every table off the
+     side. The figure below is what the map can actually use -- its height cap
+     doubled, plus the panel. */
+  .pagewide { grid-template-columns:
+    fit-content(calc((100vh - 380px) * 2 + 374px)) minmax(380px, 1fr); }
+  .pagewide .mapside .mapframe { max-width: calc((100vh - 380px) * 2); }
 }
 
 /* Every entry in the key is a switch for the thing it names. A key that only
