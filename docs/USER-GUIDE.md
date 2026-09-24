@@ -246,7 +246,9 @@ parallel links, that is one point carrying several addresses rather than
 several points.
 
 **Filters** on country, latency, distance in hops and device. Wheel to zoom,
-drag to pan, and *Reset zoom* to go back.
+drag to pan, and *Reset zoom* to go back. On a touchscreen or with a pen, one
+finger pans and two pinch to zoom; a two-finger drag does both at once. A tap
+still opens the hop under your finger rather than being swallowed by the map.
 
 Zooming scales the map, not the marks on it. Coastlines and routes grow, while
 line thickness, hop markers and the grid's labels hold their size on screen, so

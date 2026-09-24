@@ -12,6 +12,25 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241505
+
+**The map takes touch.** One finger pans, two pinch to zoom, and because the
+midpoint is tracked as well as the spread, a two-finger drag pans while it
+zooms -- which is the motion people actually make, rather than pinching and
+dragging as separate steps. Pen works the same way. Mouse and trackpad are
+unchanged.
+
+A gesture re-bases whenever a finger lands or lifts. Without that, lifting one
+finger of a pinch leaves the other anchored to a position it no longer has,
+and the map jumps at the moment you were trying to settle it.
+
+The map does not claim a touch until it is clearly a drag: a few pixels of
+movement have to happen first. A captured pointer makes the browser retarget
+the tap that follows to whatever holds the capture, so grabbing every touch on
+the way down would have sent every tap to the map rather than to the hop under
+the finger -- and on a touchscreen there is no hover to fall back on, so hop
+cards would have stopped opening at all.
+
 ## 0.9.8r202609241502
 
 **Zooming the map now shows more, rather than more ink.**

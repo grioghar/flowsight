@@ -305,26 +305,127 @@ FS.panZoom = (svg, w, h, onZoom) => {
     svg.style.setProperty('--z', z);
     if (onZoom) onZoom(z);
   };
-  svg.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const k = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+  const clampW = (x) => Math.min(w * 4, Math.max(w / 40, x));
+  // Where a point on screen falls in the drawing, as a fraction of each side.
+  const frac = (cx, cy) => {
     const r = svg.getBoundingClientRect();
-    const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
-    const nw = Math.min(w * 4, Math.max(w / 40, view.w * k));
+    return [(cx - r.left) / r.width, (cy - r.top) / r.height];
+  };
+  // Zoom about a point, leaving whatever is under it where it is.
+  const zoomAt = (nw, fx, fy) => {
+    nw = clampW(nw);
     const nh = nw * (h / w);
     view.x += (view.w - nw) * fx; view.y += (view.h - nh) * fy;
     view.w = nw; view.h = nh; apply();
+  };
+
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const [fx, fy] = frac(e.clientX, e.clientY);
+    zoomAt(view.w * (e.deltaY > 0 ? 1.15 : 1 / 1.15), fx, fy);
   }, { passive: false });
-  let drag = null;
-  svg.addEventListener('mousedown', (e) => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y }; });
-  window.addEventListener('mouseup', () => { drag = null; });
-  svg.addEventListener('mousemove', (e) => {
-    if (!drag) return;
-    const r = svg.getBoundingClientRect();
-    view.x = drag.vx - (e.clientX - drag.x) * (view.w / r.width);
-    view.y = drag.vy - (e.clientY - drag.y) * (view.h / r.height);
-    apply();
-  });
+
+  // Touch and pen go through pointer events, which carry mouse too, so there
+  // is one path rather than two that have to agree. One finger pans; two
+  // pinch, and because the midpoint is tracked as well as the spread, a
+  // two-finger drag pans at the same time -- which is what people do, rather
+  // than pinching and dragging as separate motions.
+  //
+  // The gesture is re-based every time a finger lands or lifts. Without that,
+  // lifting one finger of a pinch leaves the remaining one anchored to a
+  // position it no longer has, and the map jumps.
+  if (typeof window !== 'undefined' && window.PointerEvent) {
+    const pts = new Map();
+    let g = null;
+    const spread = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    const rebase = () => {
+      const ps = [...pts.values()];
+      if (ps.length === 1) {
+        g = { mode: 'pan', x: ps[0].x, y: ps[0].y, vx: view.x, vy: view.y };
+      } else if (ps.length > 1) {
+        const [a, b] = ps;
+        const [fx, fy] = frac((a.x + b.x) / 2, (a.y + b.y) / 2);
+        g = {
+          mode: 'pinch', d: spread(a, b),
+          // The content under the midpoint when the pinch began. It has to
+          // stay under the midpoint however the fingers move.
+          cx: view.x + fx * view.w, cy: view.y + fy * view.h,
+          w: view.w
+        };
+      } else {
+        g = null;
+      }
+    };
+    // Capture is taken only once a gesture is clearly a drag, never on the
+    // way down. A captured pointer makes the browser retarget the click that
+    // follows to the element holding the capture, so capturing every touch
+    // would send every tap to the map instead of to the hop under the finger
+    // -- and on a touchscreen there is no hover to fall back on, so the hop
+    // cards would simply stop opening.
+    const SLOP = 4;
+    const grab = (id) => {
+      if (svg.setPointerCapture && !(svg.hasPointerCapture && svg.hasPointerCapture(id))) {
+        svg.setPointerCapture(id);
+      }
+    };
+    svg.addEventListener('pointerdown', (e) => {
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      rebase();
+      if (pts.size > 1) {
+        // Two fingers is never a tap, so there is nothing to protect.
+        pts.forEach((_, id) => grab(id));
+        svg.style.cursor = 'grabbing';
+      }
+    });
+    const release = (e) => {
+      pts.delete(e.pointerId);
+      if (svg.releasePointerCapture && svg.hasPointerCapture && svg.hasPointerCapture(e.pointerId)) {
+        svg.releasePointerCapture(e.pointerId);
+      }
+      rebase();
+      if (!pts.size) svg.style.cursor = 'grab';
+    };
+    svg.addEventListener('pointerup', release);
+    svg.addEventListener('pointercancel', release);
+    svg.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!g) return;
+      if (g.mode === 'pan') {
+        // Below the slop this is a tap that wobbled, and moving the map under
+        // it would both jitter the view and cost the reader their tap.
+        if (!g.dragging && Math.hypot(e.clientX - g.x, e.clientY - g.y) < SLOP) return;
+        if (!g.dragging) { g.dragging = true; grab(e.pointerId); svg.style.cursor = 'grabbing'; }
+        const r = svg.getBoundingClientRect();
+        view.x = g.vx - (e.clientX - g.x) * (view.w / r.width);
+        view.y = g.vy - (e.clientY - g.y) * (view.h / r.height);
+        apply();
+        return;
+      }
+      const ps = [...pts.values()];
+      if (ps.length < 2) return;
+      const [a, b] = ps;
+      const nw = clampW(g.w * (g.d / spread(a, b)));
+      const nh = nw * (h / w);
+      const [fx, fy] = frac((a.x + b.x) / 2, (a.y + b.y) / 2);
+      view.w = nw; view.h = nh;
+      view.x = g.cx - fx * nw; view.y = g.cy - fy * nh;
+      apply();
+    });
+  } else {
+    // No pointer events: mouse only, as before.
+    let drag = null;
+    svg.addEventListener('mousedown', (e) => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y }; });
+    window.addEventListener('mouseup', () => { drag = null; });
+    svg.addEventListener('mousemove', (e) => {
+      if (!drag) return;
+      const r = svg.getBoundingClientRect();
+      view.x = drag.vx - (e.clientX - drag.x) * (view.w / r.width);
+      view.y = drag.vy - (e.clientY - drag.y) * (view.h / r.height);
+      apply();
+    });
+  }
+
   svg.style.cursor = 'grab';
   apply();
   return { reset: () => { view.x = 0; view.y = 0; view.w = w; view.h = h; apply(); } };
