@@ -149,7 +149,7 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // backdrop is referenced rather than repeated; the markers are real, because
   // a <use> copy cannot be clicked.
   var circles = (h.match(/class="hop /g) || []).length;
-  if (circles !== 18) throw new Error('want 6 located nodes across 3 copies of the world, got ' + circles);
+  if (circles !== 21) throw new Error('want 7 located nodes across 3 copies of the world, got ' + circles);
   if ((h.match(/href="#fs-world"/g) || []).length !== 3)
     throw new Error('the backdrop should be referenced three times, not redrawn');
   // The copies either side are marked so they can be taken away when the view
