@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 
@@ -175,8 +176,16 @@ func (p squidParams) render() (string, map[string]string) {
 	w("acl step1 at_step SslBump1")
 	w("acl step2 at_step SslBump2")
 	w("acl step3 at_step SslBump3")
-	if len(p.Exclusions) > 0 {
-		w("acl fs_excluded src %s", strings.Join(p.Exclusions, " "))
+	// Address lists live in files, one entry per line. squid reads its
+	// configuration a line at a time with a fixed limit of 2048 characters,
+	// and an exclusion list that widens to every address a device holds --
+	// a laptop cycles through dozens of IPv6 privacy addresses -- passed that
+	// on one line and was cut mid-address, at which point squid rejected the
+	// whole configuration and interception stopped. A file has no such limit.
+	// Every entry is checked first: one malformed address would do the same.
+	if excl := addressList(p.Exclusions); excl != "" {
+		files["excluded-hosts.acl"] = excl
+		w("acl fs_excluded src \"%s/excluded-hosts.acl\"", p.Dir)
 	}
 	if len(p.ExclDomains) > 0 {
 		files["excluded-domains.acl"] = domainList(p.ExclDomains)
@@ -185,8 +194,19 @@ func (p squidParams) render() (string, map[string]string) {
 	}
 	w("")
 	// Per-policy ACLs.
+	// A policy whose members leave nothing valid is dropped here and from
+	// every later section, since a rule naming an undefined ACL is as much
+	// a rejected configuration as a malformed address.
+	kept := p.Policies[:0:0]
 	for _, pol := range p.Policies {
-		w("acl fs_src_%s src %s", pol.ID, strings.Join(pol.Members, " "))
+		if addressList(pol.Members) != "" {
+			kept = append(kept, pol)
+		}
+	}
+	p.Policies = kept
+	for _, pol := range p.Policies {
+		files["src-"+pol.ID+".acl"] = addressList(pol.Members)
+		w("acl fs_src_%s src \"%s/src-%s.acl\"", pol.ID, p.Dir, pol.ID)
 		if len(pol.Domains) > 0 {
 			files["deny-"+pol.ID+".acl"] = domainList(pol.Domains)
 			w("acl fs_deny_sni_%s ssl::server_name \"%s/deny-%s.acl\"", pol.ID, p.Dir, pol.ID)
@@ -205,7 +225,7 @@ func (p squidParams) render() (string, map[string]string) {
 	w("")
 	w("# TLS handling. First match per step wins.")
 	w("ssl_bump peek step1")
-	if len(p.Exclusions) > 0 {
+	if files["excluded-hosts.acl"] != "" {
 		w("ssl_bump splice fs_excluded")
 	}
 	if len(p.ExclDomains) > 0 {
@@ -243,7 +263,7 @@ func (p squidParams) render() (string, map[string]string) {
 	w("# HTTP access. Denied requests get the block page; everything local is allowed.")
 	w("http_access deny !Safe_ports")
 	w("http_access deny CONNECT !SSL_ports")
-	if len(p.Exclusions) > 0 {
+	if files["excluded-hosts.acl"] != "" {
 		w("http_access allow fs_excluded")
 	}
 	if len(p.ExclDomains) > 0 {
@@ -280,6 +300,31 @@ func nonEmpty(xs []string, def string) []string {
 // matches the name and every subdomain. Squid refuses a list in which one
 // entry is a subdomain of another, so entries covered by a parent are
 // dropped; the parent already matches them.
+// addressList renders client addresses for a src ACL file: one per line,
+// only those that parse as an address or a CIDR, deduplicated, sorted so the
+// file is stable between renders. Anything else is left out rather than
+// handed to squid, which would reject the entire configuration over it.
+func addressList(addrs []string) string {
+	seen := map[string]bool{}
+	var keep []string
+	for _, a := range addrs {
+		a = strings.TrimSpace(a)
+		if a == "" || seen[a] {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(a); err != nil && net.ParseIP(a) == nil {
+			continue
+		}
+		seen[a] = true
+		keep = append(keep, a)
+	}
+	if len(keep) == 0 {
+		return ""
+	}
+	sort.Strings(keep)
+	return strings.Join(keep, "\n") + "\n"
+}
+
 func domainList(domains []string) string {
 	set := map[string]bool{}
 	for _, d := range domains {

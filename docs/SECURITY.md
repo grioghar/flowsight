@@ -198,3 +198,13 @@ goroutines -- for reading with `go tool pprof`. It sits behind the same access
 as every other `/api/system` route. A profile is stack traces and byte counts;
 it does not contain the flows, names, addresses or keys the daemon holds, and
 it can be handed to support without redaction.
+
+## Proxy configuration
+
+Everything FlowSight hands to squid is generated; nothing operator-typed
+reaches the configuration unchecked. Client-address lists are validated as
+addresses or CIDRs and written to files one entry a line, domain lists
+likewise, so neither a malformed entry nor a long list can leave the proxy
+with a configuration it refuses. A rejected configuration is kept beside the
+live one as `squid.conf.rejected` for inspection, and the proxy keeps running
+on the last one it accepted.

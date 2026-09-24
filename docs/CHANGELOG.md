@@ -12,6 +12,23 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241844
+
+**Interception no longer stops because an exclusion list got long.** squid
+reads its configuration a line at a time, 2,048 characters to a line, and the
+excluded-clients ACL was rendered as one line holding every address every
+excluded device had ever held. IPv6 privacy addresses rotate daily, so that
+line grew until it was cut mid-address; squid then rejected the whole
+configuration (`Bad host/IP: '2600:17'`) and the *policy/reconcile* job
+failed on every run, leaving the proxy on its last good configuration.
+Client-address lists -- the exclusions and each policy's members -- are now
+written to files, one address a line, which squid reads without limit. Each
+entry is checked to be an address or a CIDR before it is written, so a
+malformed one is left out rather than taking the proxy down, and a policy
+whose members leave nothing valid is dropped from the configuration rather
+than referenced undefined. Widening an exclusion to a device's other
+addresses now takes only addresses seen in the last week.
+
 ## 0.9.8r202609241834
 
 **The land routes cost a gigabyte of memory; they now cost nothing to

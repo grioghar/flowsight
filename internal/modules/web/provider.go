@@ -379,7 +379,12 @@ func (m *Module) alsoOtherFamily(excluded []string) []string {
 	if len(nets) == 0 {
 		return excluded
 	}
-	rows, err := m.ctx.Store.Rows(`SELECT ip, mac FROM hosts WHERE mac IS NOT NULL AND mac <> ''`)
+	// Only addresses seen this week. A device keeps every address it has
+	// ever held in the table, and IPv6 privacy addresses rotate daily, so
+	// without a cutoff the list grows without bound and nearly all of it is
+	// addresses nothing answers to any more.
+	rows, err := m.ctx.Store.Rows(`SELECT ip, mac FROM hosts WHERE mac IS NOT NULL AND mac <> '' AND last_seen > ?`,
+		time.Now().Add(-7*24*time.Hour).Unix())
 	if err != nil {
 		return excluded
 	}
