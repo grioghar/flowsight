@@ -591,6 +591,9 @@
           }
           if (picked && (n.reaches || []).includes(picked) && route && route.talkers) h += talkersHTML(route.talkers, true);
         }
+        if (n.anycast) {
+          h += `<div class="endnote"><b>Anycast.</b> This address is announced from many datacentres at once${n.anycast_sites ? ` (the census has seen it served from ${num(n.anycast_sites)} sites)` : ''}${n.provider ? ` \u2014 ${esc(n.provider)}` : ''}. From here you are reaching a <b>local or regional instance</b>${n.location_source === 'identified' ? ', and it identified itself' : (n.location_source === 'anycast' || n.location_source === 'near') ? ', placed beside the hop before it' : ''}. A registered or remotely measured position for it says nothing about which instance that is.</div>`;
+        }
         h += grp('Measured') + r('Round trip', n.rtt_ms ? n.rtt_ms + ' ms' : '');
         if (n.names && n.names.length) h += grp('Resolved') + r('Router name', n.names.join(', '));
         if (!d.pop_city && d.pop_why) h += r('Name suggests', d.pop_why, 'warn');
@@ -617,6 +620,25 @@
              + (q.reason ? r('Its reasoning', q.reason, 'soft') : '')
              + r('Model', `${q.model}, ${FS.when(q.at)}`, 'soft')
              + r('Standing', 'a hypothesis: drawn as an inference, checked against the round trip, overruled by any source that knows', 'soft');
+        }
+        if (n.ips && n.ips.length && !n.silent) {
+          const sd = d.shodan;
+          h += grp('Shodan');
+          if (sd && !sd.empty) {
+            h += (sd.ports && sd.ports.length ? r('Open ports', sd.ports.join(', ')) : r('Open ports', 'none seen', 'soft'))
+               + (sd.hostnames && sd.hostnames.length ? r('Seen as', sd.hostnames.slice(0, 6).join(', ')) : '')
+               + (sd.org ? r('Organisation', sd.org + (sd.isp && sd.isp !== sd.org ? ' \u00b7 ' + sd.isp : '')) : '')
+               + (sd.os ? r('Operating system', sd.os) : '')
+               + (sd.city || sd.country ? r('Shodan\u2019s location', [sd.city, sd.country].filter(Boolean).join(', ') + ' (its record, not this map\u2019s placement)', 'soft') : '')
+               + (sd.cpes && sd.cpes.length ? r('Products', sd.cpes.slice(0, 5).join(', '), 'soft') : '')
+               + (sd.vulns && sd.vulns.length ? r('Known vulnerabilities', `${num(sd.vulns.length)}: ${sd.vulns.slice(0, 5).join(', ')}${sd.vulns.length > 5 ? ' \u2026' : ''}`, 'warn') : '')
+               + (sd.tags && sd.tags.length ? r('Tags', sd.tags.join(', '), 'soft') : '')
+               + r('Record', `${sd.keyed ? 'full host record' : 'InternetDB (free)'}, ${FS.when(sd.at)} \u00b7 <a href="https://www.shodan.io/host/${encodeURIComponent(n.ips[0])}" target="_blank" rel="noopener">open on shodan.io</a>`, 'soft');
+          } else if (sd && sd.empty) {
+            h += r('Shodan', `nothing on record for ${esc(n.ips[0])} \u00b7 <a href="https://www.shodan.io/host/${encodeURIComponent(n.ips[0])}" target="_blank" rel="noopener">shodan.io</a>`, 'soft');
+          } else {
+            h += `<div class="hr"><span></span><b><button type="button" class="btn small shodan-go" data-ip="${esc(n.ips[0])}">Look up on Shodan</button> <span class="muted small">ports, names, fingerprints, vulnerabilities; free without a key</span></b></div>`;
+          }
         }
         if (d.abuse) {
           const a = d.abuse;
@@ -657,6 +679,7 @@
                              provider: 'the provider\u2019s own published range list' + (n.provider ? ' \u2014 ' + n.provider : ''),
                              near: 'beside the last placed hop \u2014 the timing says the same metro',
                              identified: 'the server identified itself' + (n.identity ? ' as ' + n.identity.id + (n.identity.by ? ' \u2014 ' + n.identity.by : '') : ''),
+                             anycast: 'anycast \u2014 the census site nearest the hop before it; a local or regional instance',
                              assistant: 'a language model\u2019s reading of the name \u2014 a hypothesis the clock did not rule out',
                              between: 'inferred from timing' }[n.location_source] || 'address database');
         }
@@ -994,7 +1017,7 @@
         const S = st.sources || {};
         const row = (name, on, detail, err) => `<tr><td>${esc(name)}</td><td>${on ? pill('on', 'ok') : pill('off', '')}</td><td class="small">${detail}</td><td class="small sev-high">${esc(err || '')}</td></tr>`;
         const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {}, fx = S.corrections || {}, osm = S.osm_telecom || {}, pv = S.providers || {};
-        const rep = S.reputation || {}, gf = S.geofeeds || {}, ai = S.assistant || {}, idn = S.identify || {};
+        const rep = S.reputation || {}, gf = S.geofeeds || {}, ai = S.assistant || {}, idn = S.identify || {}, shd = S.shodan || {};
         const pvFeeds = Object.values(pv.feeds || {});
         const pvText = pvFeeds.length ? pvFeeds.map(f => `${f.name} ${num(f.prefixes || 0)}${f.error ? ' (failed)' : ''}`).join(' \u00b7 ') : 'nothing fetched yet';
         const pvErr = pvFeeds.filter(f => f.error).map(f => `${f.name}: ${f.error}`).join('; ');
@@ -1006,6 +1029,7 @@
           ${row('Routing table &amp; registry', reg.on, `${num(reg.queued || 0)} addresses waiting for their operator`)}
           ${row('Submarine cables', cab.on, cab.on ? `${num(cab.loaded || 0)} cables loaded` : 'not loaded', cab.error)}
           ${row('Land routes', land.on, land.on ? `${num(land.loaded || 0)} routes loaded` : 'not loaded', land.error)}
+          ${row('Shodan', shd.mode && shd.mode !== 'off', shd.mode === 'off' ? 'off' : `${shd.mode === 'all' ? 'every hop' : 'on click'}, ${shd.keyed ? 'with a key (full records)' : 'no key (InternetDB only)'}: ${num(shd.known || 0)} addresses on record`, shd.error)}
           ${row('Servers identifying themselves', idn.on, idn.on ? `${num(idn.known || 0)} anycast servers asked, ${num(idn.placed_this_session || 0)} placed this session, ${num(idn.queued || 0)} waiting; ${num(idn.root_sites || 0)} root-server sites on file` : 'off')}
           ${row('AI lookup', ai.on, ai.on ? `${esc(ai.provider)} / ${esc(ai.model)}: ${num(ai.known || 0)} hops answered, ${num(ai.queued || 0)} waiting, ${num(ai.per_hour || 0)} an hour` : 'off \u2014 choose a provider under Settings \u203a paths \u203a AI lookup', ai.error)}
           ${row('AbuseIPDB reputation', rep.on, rep.on ? `${num(rep.known || 0)} addresses known (${num(rep.asked_this_session || 0)} asked this session)` : 'no key \u2014 set one under Settings \u203a paths \u203a Reputation', rep.error)}
@@ -1174,6 +1198,21 @@
         set(open);
         lgb.onclick = () => set(lgd.classList.contains('folded'));
       }
+
+      // Look up on Shodan: fetch now, then redraw the card's block in place.
+      el.addEventListener('click', async (ev) => {
+        const b = ev.target && ev.target.closest ? ev.target.closest('.shodan-go') : null;
+        if (!b) return;
+        const ip = b.getAttribute('data-ip');
+        b.disabled = true; b.textContent = 'Asking Shodan\u2026';
+        try {
+          const rec = await FS.get('/api/paths/shodan?ip=' + encodeURIComponent(ip) + '&now=1');
+          const card = b.closest('.hopcard');
+          const node = nodes.find(x => x.ips && x.ips[0] === ip);
+          if (node) { node.detail = node.detail || {}; node.detail.shodan = rec && rec.ip ? rec : { ip, empty: true, at: Date.now() / 1000 }; }
+          if (card && node) card.innerHTML = hopCard(node);
+        } catch (e) { b.textContent = 'Shodan did not answer'; }
+      });
 
       const rbx = FS.$('#routebox', el), rbb = FS.$('#rbtoggle', el);
       if (rbx && rbb) {

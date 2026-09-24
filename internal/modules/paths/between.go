@@ -117,13 +117,32 @@ func placeNear(a *Node, run []*Node) {
 		if extra < -0.5 || extra > nearMS+a.RTT*0.1 {
 			continue // genuinely further on; nothing honest can be said
 		}
+		// An anycast prefix the census has sites for: the site nearest the
+		// anchor is where the instance is, and it is named.
+		if n.Anycast && len(n.anycastSites) > 0 {
+			best, bestKM := -1, 1e9
+			for si, st := range n.anycastSites {
+				if km := greatCircleKM(a.Lat, a.Lon, st.Lat, st.Lon); km < bestKM {
+					best, bestKM = si, km
+				}
+			}
+			if best >= 0 && bestKM < 1500 {
+				st := n.anycastSites[best]
+				n.Lat, n.Lon = st.Lat, st.Lon
+				n.Located, n.Source, n.Inferred = true, "anycast", true
+				n.Between = []string{firstIP(a)}
+				n.City, n.Country = st.City, st.CC
+				n.BetweenHow = fmt.Sprintf("anycast: served from %d sites worldwide; the one nearest %s (%s, %.0f km from it) is the local or regional instance you reach, %.1f ms after that hop", len(n.anycastSites), firstIP(a), st.City, bestKM, extra)
+				continue
+			}
+		}
 		// A hair to one side, so several such hops do not stack on the anchor.
 		n.Lat, n.Lon = a.Lat+0.15*float64(i%3-1), a.Lon+0.35*float64(i/3+1)
 		n.Located, n.Source, n.Inferred = true, "near", true
 		n.Between = []string{firstIP(a)}
 		what := "the last hop the route reached"
 		if n.Anycast {
-			what = "an anycast address: the instance reached is the one beside " + firstIP(a)
+			what = "an anycast address, announced from many datacentres at once: from here you reach a local or regional instance, the one beside " + firstIP(a)
 		}
 		n.BetweenHow = fmt.Sprintf("%s; answers %.1f ms after %s, which is the same metro, not a journey", what, extra, firstIP(a))
 		n.City, n.Region, n.Country = a.City, a.Region, a.Country

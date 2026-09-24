@@ -12,6 +12,33 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242223
+
+**Anycast is known, named and explained.** Of a hundred and thirty-five hops
+the latency rules had flagged on a live gateway, nearly all were anycast:
+Google, Cloudflare, Apple, Amazon, Vercara, NS1, Meta, measured or registered
+somewhere on another continent and actually answering from a Dallas or
+Kansas City instance. The map now has the lookup that says so. The LACeS
+anycast census (University of Twente and CAIDA) -- forty thousand IPv4 and
+eighteen thousand IPv6 prefixes detected as anycast, each with the sites it
+is served from -- is fetched weekly; a hop in one of those prefixes is
+placed at the census site nearest the hop before it, and its card opens
+with *Anycast: announced from many datacentres at once; from here you are
+reaching a local or regional instance*, with the site count and the
+distance. Addresses of known anycast operators are treated the same when
+nothing authoritative places them. *Know which addresses are anycast* under
+*Where things are* turns it off.
+
+**Shodan on every hop.** *Settings › paths › Shodan* takes an optional API
+key (account.shodan.io; instructions in the field's help) and a mode: off,
+on click, or every hop. Without a key the free InternetDB gives open ports,
+names the address has been seen under, product fingerprints and known
+vulnerabilities; with a key the full host record adds organisation, ISP,
+operating system, Shodan's own location and last seen, at a query credit
+each. Every hop's card has *Look up on Shodan*; in *every hop* mode twenty
+addresses are fetched every five minutes. Records are kept a week and link
+to shodan.io. `GET /api/paths/shodan?ip=` serves them.
+
 ## 0.9.8r202609242141
 
 **Instance names are read with their dressing removed.** On the live

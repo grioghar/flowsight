@@ -57,6 +57,8 @@ type Module struct {
 	providers     *providerIndex // the clouds' published ranges
 	provider      providerState
 	abuseErr      string
+	shodanAsked   int
+	shodanErr     string
 	assistQueue   []assistCandidate
 	assistAsked   []time.Time
 	assistTotal   int
@@ -113,6 +115,9 @@ func (m *Module) Info() core.ModuleInfo {
 			"terrestrial_urls":       "",
 			"osm_telecom":            true,
 			"provider_feeds":         true,
+			"anycast_census":         true,
+			"shodan_key":             "",
+			"shodan_mode":            "click",
 			"identify":               true,
 			"geofeeds":               true,
 			"abuseipdb_key":          "",
@@ -160,10 +165,16 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Sent only to the endpoint above. Not needed for Ollama."},
 			{Section: "AI lookup", Key: "ai_per_hour", Label: "Questions per hour", Type: "int",
 				Help: "Each hop is asked about once a month at most; this caps how many new ones per hour. Twenty is a few cents a day on the small models."},
+			{Section: "Shodan", Key: "shodan_key", Label: "Shodan API key", Type: "secret",
+				Help: "Optional. Without a key FlowSight uses Shodan's free InternetDB (open ports, hostnames, product fingerprints, known vulnerabilities) and asks nothing else. With a key the full host record is added -- organisation, ISP, operating system, Shodan's own location, last seen -- at one query credit per address. To get a key: sign in at account.shodan.io and copy the API key shown at the top; the free tier includes 100 query credits a month, so the keyed record is fetched on click unless you choose it for every hop below. The key is sent only to api.shodan.io."},
+			{Section: "Shodan", Key: "shodan_mode", Label: "Look hops up on Shodan", Type: "choice", Choices: []string{"off", "click", "all"},
+				Help: "off: never. click: when you press Look up on Shodan on a hop's card (the InternetDB part is free; the keyed part costs a credit). all: every hop on a route, twenty every five minutes -- InternetDB always, and the keyed record too if a key is set, which will spend credits."},
 			{Section: "Reputation", Key: "abuseipdb_key", Label: "AbuseIPDB API key", Type: "secret",
 				Help: "With a key, every hop on a route is checked against AbuseIPDB -- abuse confidence, reports, ISP, usage type -- and the answer shown on its card and kept a week. Twenty addresses are asked about every few minutes, well inside the free allowance of a thousand a day. To get a key: create a free account at abuseipdb.com, open Account \u203a API, click Create Key, and paste it here. Leave empty to disable."},
 			{Section: "Where things are", Key: "geofeeds", Label: "Follow geofeeds named in the registry", Type: "bool",
 				Help: "Some operators publish where their prefixes are (RFC 8805, prefix, country, region, city) and name the file in their registry object. FlowSight already asks the registry about every hop; with this on it keeps any geofeed it is pointed to, fetches each once a week, and uses its rows like a provider's own range list. Listed at /api/paths/geofeeds."},
+			{Section: "Where things are", Key: "anycast_census", Label: "Know which addresses are anycast", Type: "bool",
+				Help: "The LACeS anycast census (University of Twente and CAIDA) publishes daily the prefixes it detects as anycast -- forty thousand IPv4, eighteen thousand IPv6 -- with the sites each is served from. Fetched weekly. For a hop in one of them the map says so: announced from many datacentres at once, and from here you are reaching a local or regional instance, the site nearest the hop before it. A registered or measured position for such an address is set aside. Addresses of known anycast operators (Google, Cloudflare, Akamai, Apple, Amazon, Microsoft, Meta, the DNS providers) are treated the same when nothing authoritative places them."},
 			{Section: "Where things are", Key: "identify", Label: "Ask anycast servers to identify themselves", Type: "bool",
 				Help: "Root servers and large resolvers answer a CHAOS TXT query for id.server with the name of the instance that answered -- DFW.cf.f.root-servers.org, c01.MCI.eroot. The root operators publish their site lists with those identifiers, fetched weekly, so an answer is looked up rather than guessed; elsewhere the airport code in it is read like a router name. The clock still rules. One small packet per server, twenty per run, remembered a week."},
 			{Section: "Where things are", Key: "provider_feeds", Label: "Use the clouds' published address ranges", Type: "bool",
@@ -220,9 +231,14 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("assistant", 5*time.Minute, m.assistantJob, core.Delayed())
 	ctx.Every("identify", 5*time.Minute, m.identifyJob, core.Delayed())
 	ctx.Every("rootsites", 24*time.Hour, m.refreshRootSites, core.Delayed())
+	ctx.Every("census", 24*time.Hour, m.refreshCensus, core.Delayed())
+	ctx.Every("shodan", 5*time.Minute, m.shodanJob, core.Delayed())
 	_ = m.loadRootSites()
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
+	ctx.Route("GET", "/api/paths/shodan", m.apiShodan, core.Needs("paths.map"),
+		core.Doc("Shodan record for a hop: InternetDB always, the keyed host record when a key is set; fetched now with now=1"),
+		core.Params("ip", "the address", "now", "1 to fetch if not cached"))
 	ctx.Route("GET", "/api/paths/geofeeds", m.apiGeofeeds, core.Needs("paths.map"),
 		core.Doc("RFC 8805 geofeeds discovered in registry objects, with fetch state"))
 	ctx.Route("GET", "/api/paths/talkers", m.apiTalkers, core.Needs("paths.map"),

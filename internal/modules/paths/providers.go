@@ -71,6 +71,7 @@ type providerRange struct {
 	Lat, Lon float64
 	City     string
 	Anycast  bool
+	Sites    []anySite // where an anycast prefix has been seen served from
 }
 
 // providerIndex answers "whose range, and where" for an address. Buckets by
@@ -549,6 +550,13 @@ func (m *Module) loadProviders(stats map[string]providerStats) error {
 	}
 	if geofeedRows > 0 {
 		stats["geofeeds"] = providerStats{Name: "Registry geofeeds", Prefixes: geofeedRows, FetchedAt: time.Now().Unix()}
+	}
+	if n := loadCensusInto(idx, filepath.Join(dir, censusFile)); n > 0 {
+		st := providerStats{Name: "Anycast census (LACeS)", Prefixes: n}
+		if fi, err := os.Stat(filepath.Join(dir, censusFile)); err == nil {
+			st.FetchedAt = fi.ModTime().Unix()
+		}
+		stats["census"] = st
 	}
 	m.mu.Lock()
 	m.providers = idx

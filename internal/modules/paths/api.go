@@ -32,7 +32,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	}
 	// These take the module lock themselves; gathered before it is held
 	// here, or the status call deadlocks and takes every graph build with it.
-	gf, ai, idn := m.geofeedStatus(), m.assistStatus(), m.identifyStatus()
+	gf, ai, idn, sh := m.geofeedStatus(), m.assistStatus(), m.identifyStatus(), m.shodanStatus()
 	m.mu.Lock()
 	sources := map[string]any{
 		"cables":       map[string]any{"on": core.Bool(m.ctx.Settings(), "cables", false), "loaded": len(m.cables), "error": m.cableErr},
@@ -42,6 +42,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		"geofeeds":     gf,
 		"assistant":    ai,
 		"identify":     idn,
+		"shodan":       sh,
 		"reputation":   map[string]any{"on": m.abuseKey() != "", "asked_this_session": m.abuseAsked, "known": m.ctx.Store.KVCount(abuseKV), "error": m.abuseErr},
 		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
@@ -627,6 +628,7 @@ func (m *Module) describe(nodes []Node, h Home) {
 				if pr.Anycast {
 					n.Anycast = true
 					n.Provider = pr.Provider + " anycast"
+					n.anycastSites, n.AnycastSites = pr.Sites, len(pr.Sites)
 					if n.Located && n.Source != "name" {
 						n.SetAside = fmt.Sprintf("%s announces this range from many places at once (anycast); the %s's position for it is meaningless, so it is placed by timing", pr.Provider, sourceNoun(n.Source))
 						n.DBLat, n.DBLon = n.Lat, n.Lon
@@ -661,6 +663,18 @@ func (m *Module) describe(nodes []Node, h Home) {
 					n.Provider = pr.Provider + " " + pr.Region
 					n.Inferred = false
 					n.CorrectedBy, n.CorrectedAt = "", 0
+				}
+			}
+			// A known anycast operator's address that nothing authoritative
+			// placed is treated as anycast too: their edges are served from
+			// many sites by design, and a registered or measured position
+			// for one is the wrong kind of fact.
+			if !n.Anycast && (!n.Located || n.Source == "database" || n.Source == "measured" || n.Source == "corrected") {
+				if who, ok := anycastOperator(d.ASN); ok && n.Source != "name" {
+					n.Anycast = true
+					if n.Provider == "" {
+						n.Provider = who + " (anycast operator)"
+					}
 				}
 			}
 			// What somebody measured, if they have. This outranks the address

@@ -97,6 +97,10 @@ type Node struct {
 	// announced everywhere at once and has no single place.
 	Provider string `json:"provider,omitempty"`
 	Anycast  bool   `json:"anycast,omitempty"`
+	// AnycastSites is how many places the census has seen this prefix served
+	// from; the sites themselves are used to choose the nearest and not sent.
+	AnycastSites int `json:"anycast_sites,omitempty"`
+	anycastSites []anySite
 	// Guess is a language model's reading of the name, when that is what
 	// placed the hop; kept beside the position so the card can say so.
 	Guess *Guess `json:"guess,omitempty"`

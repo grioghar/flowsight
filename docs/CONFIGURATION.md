@@ -176,8 +176,11 @@ Traces the route to destinations this network already contacts, and keeps what i
 | `ai_model` | Model | string | *(provider default)* | claude-haiku-4-5, gpt-4o-mini, gemini-2.0-flash, llama3.1 by default. |
 | `ai_key` | API key | secret | *(empty)* | Sent only to the endpoint. |
 | `ai_per_hour` | Questions per hour | int | `20` | Each hop at most once a month; this caps new questions. |
+| `shodan_key` | Shodan API key | secret | *(empty)* | Optional; without it InternetDB (free) is used. Sent only to api.shodan.io. |
+| `shodan_mode` | Look hops up on Shodan | choice | `click` | off, click (the card's button), all (every hop, twenty per five-minute run; spends credits when a key is set). |
 | `abuseipdb_key` | AbuseIPDB API key | secret | *(empty)* | Enables reputation lookups for route hops: abuse confidence, reports, ISP, usage type. Twenty addresses per five-minute run, answers kept a week. Free key: abuseipdb.com › Account › API › Create Key. |
 | `geofeeds` | Follow geofeeds named in the registry | bool | `true` | RFC 8805 files named in registry objects of hops on routes are fetched weekly and used like provider range lists. |
+| `anycast_census` | Know which addresses are anycast | bool | `true` | LACeS census prefixes and sites, fetched weekly; anycast hops are placed at the site nearest the hop before them and labelled as regional instances. |
 | `identify` | Ask anycast servers to identify themselves | bool | `true` | CHAOS TXT `id.server` / `hostname.bind` to anycast hops, twenty per five-minute run, kept a week; root-servers.org site lists fetched weekly to look the answers up. |
 | `provider_feeds` | Use the clouds' published address ranges | bool | `true` | AWS, Google Cloud, Azure, Oracle, DigitalOcean, Linode regional ranges and Cloudflare/Fastly anycast ranges, one feed per half-hour run until all are under a week old, throttled to 2 MB/s; the operator's own statement outranks the database and a measurement; anycast positions are set aside. |
 | `azure_service_tags_url` | Azure service tags file | string | *(discovered weekly)* | Only if the link cannot be found on Microsoft's download page. |

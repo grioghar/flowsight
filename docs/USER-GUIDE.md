@@ -493,6 +493,20 @@ round trip -- and each row marks its hop on the map, travels to it on click,
 and frames the whole route from the endpoint. Both the key and the table fold
 to their titles.
 
+**Anycast.** Some addresses -- the big resolvers, CDNs, root servers -- are
+announced from dozens of datacentres at once, and the one you reach is local
+or regional. The map knows which addresses these are (the LACeS anycast
+census, weekly) and places such a hop at the census site nearest the hop
+before it; its card says so in the first line, with the number of sites and
+the distance. A registered or remotely measured position for an anycast
+address is set aside as meaningless.
+
+**Shodan.** Every hop's card offers *Look up on Shodan*: open ports, names the
+address has been seen under, product fingerprints and known vulnerabilities,
+free without a key; with a key (*Settings › paths › Shodan*) the full record
+adds organisation, ISP, operating system and last seen. The mode setting can
+fetch it for every hop instead.
+
 **Servers that say where they are.** Root servers and most large resolvers
 answer `id.server` with the name of the instance you reached; FlowSight asks
 each anycast hop once a week and, using the root operators' published site

@@ -60,6 +60,9 @@ type Detail struct {
 	// From the abuse databases, when a key is configured.
 	Abuse *Reputation `json:"abuse,omitempty"`
 
+	// From Shodan, when looked up.
+	Shodan *ShodanRecord `json:"shodan,omitempty"`
+
 	// From the routing table.
 	ASN    string `json:"asn,omitempty"`
 	ASName string `json:"as_name,omitempty"`
