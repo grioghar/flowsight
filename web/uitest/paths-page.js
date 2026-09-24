@@ -98,8 +98,18 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // Silent hops are counted, never drawn.
   if (h.indexOf('never answered') < 0) throw new Error('silent hops should be counted');
   // Two addresses at one hop is one circle, not two.
+  // The world repeats east and west so a route crossing the antimeridian can
+  // be shown whole, so every located node is plotted three times. The heavy
+  // backdrop is referenced rather than repeated; the markers are real, because
+  // a <use> copy cannot be clicked.
   var circles = (h.match(/class="hop /g) || []).length;
-  if (circles !== 4) throw new Error('want 4 plotted hops (one per located node), got ' + circles);
+  if (circles !== 12) throw new Error('want 4 located nodes across 3 copies of the world, got ' + circles);
+  if ((h.match(/<use href="#fs-world"/g) || []).length !== 3)
+    throw new Error('the backdrop should be referenced three times, not redrawn');
+  if ((h.match(/<path class="land"/g) || []).length !== 1)
+    throw new Error('the land outline must be drawn once and referenced, not tripled');
+  if (h.indexOf('transform="translate(-720,0)"') < 0 || h.indexOf('transform="translate(720,0)"') < 0)
+    throw new Error('routes and markers need a copy a world either side');
 
   // A hop must carry its operator, not just a dot. Measured, resolved,
   // inferred and registered are four different kinds of claim and the card
@@ -123,12 +133,22 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('London, England, GB') < 0) throw new Error('the overruled answer must be quoted');
   if (h.indexOf('the router\u2019s own name') < 0) throw new Error('the placement source should be named');
   if (h.indexOf('hoppanel') < 0) throw new Error('there should be a panel for hop detail');
+  // None of the map's marks are self-evident, so there has to be a key.
+  if (h.indexOf('class="legend"') < 0) throw new Error('the map needs a legend');
+  ['a leg several destinations share', 'a leg used by one destination', 'submarine cable',
+   'the latency rules this placement out'].forEach(function (k) {
+    if (h.indexOf(k) < 0) throw new Error('the legend should explain: ' + k);
+  });
   // Zooming shrinks the viewBox, which would scale the dots along with the
   // geography and bury the detail the zoom was for. Every circle has to carry
   // the size it was drawn at so the zoom can divide it back down.
-  var sized = (h.match(/data-r="/g) || []).length;
-  var circles2 = (h.match(/<circle/g) || []).length;
-  if (sized !== circles2) throw new Error('every circle needs data-r, got ' + sized + ' of ' + circles2);
+  // Scoped to the map: the legend's swatches are circles too, and they must
+  // NOT carry data-r, or zooming the map would shrink the key explaining it.
+  var mapOnly = h.slice(h.indexOf('class="pathmap"'), h.indexOf('</svg>', h.indexOf('class="pathmap"')));
+  var sized = (mapOnly.match(/data-r="/g) || []).length;
+  var circles2 = (mapOnly.match(/<circle/g) || []).length;
+  if (sized !== circles2) throw new Error('every circle on the map needs data-r, got ' + sized + ' of ' + circles2);
+  if (/data-r=/.test(h.slice(h.indexOf('class="legend"')))) throw new Error('legend swatches must not be rescaled by the map zoom');
   if (h.indexOf('data-r="7"') < 0) throw new Error('the ruled-out ring should carry its base radius');
   if (h.indexOf('data-r="2.5"') < 0) throw new Error('the ghost should carry its base radius');
   // Scoped and unscoped facility lists are different claims.
@@ -161,9 +181,9 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('class="land"') < 0) throw new Error('the map has no land on it');
   if (!FS.landPath || FS.landPath.length < 10000) throw new Error('land outlines look truncated');
   if (h.indexOf('Natural Earth') < 0) throw new Error('the land source should be credited');
-  if (h.indexOf('class="cable"') < 0) throw new Error('cables are not drawn');
-  if ((h.match(/class="cable"/g) || []).length !== 2) throw new Error('want one path per cable run');
-  var pac = h.slice(h.indexOf('class="cable"', h.indexOf('class="cable"') + 1));
+  if (mapOnly.indexOf('class="cable"') < 0) throw new Error('cables are not drawn');
+  if ((mapOnly.match(/class="cable"/g) || []).length !== 2) throw new Error('want one path per cable run');
+  var pac = mapOnly.slice(mapOnly.indexOf('class="cable"', mapOnly.indexOf('class="cable"') + 1));
   if ((pac.slice(0, 200).match(/M/g) || []).length < 2) throw new Error('a run wrapping the antimeridian must break into two subpaths');
   if (h.indexOf('TeleGeography') < 0) throw new Error('the source should be credited on the page');
   if (h.indexOf('could have crossed') < 0) throw new Error('candidate cables should appear in the hover text');

@@ -149,3 +149,56 @@ print('plain table OK');
   window.PointerEvent = realPE;
   print('FS.panZoom pans and pinches with touch OK');
 })();
+
+// A world map is a cylinder. Two points ten degrees apart across the
+// antimeridian are ten degrees apart, not three hundred and fifty, and a map
+// that measures them the long way draws a link across the whole world to
+// reach a neighbour and frames a short route as though it were global.
+(function () {
+  var attrs = {}, handlers = {};
+  var svg = {
+    style: { setProperty: function () {} },
+    setAttribute: function (k, v) { attrs[k] = v; },
+    addEventListener: function (n, f) { handlers[n] = f; },
+    getBoundingClientRect: function () { return { left: 0, top: 0, width: 720, height: 360 }; }
+  };
+  var realRAF = this.requestAnimationFrame;
+  this.requestAnimationFrame = undefined;   // settle immediately, no tween to wait on
+  var realPE = window.PointerEvent; window.PointerEvent = undefined;
+  // An earlier block restored this to what it found, which was nothing.
+  window.addEventListener = window.addEventListener || function () {};
+  var h = FS.panZoom(svg, 720, 360, { wrapX: true });
+  var box = function () { return attrs.viewBox.split(' ').map(parseFloat); };
+
+  // Nearest copy: from x=700, the point at x=20 is 40 to the east (at 740),
+  // not 680 to the west.
+  if (h.nearest(20, 700) !== 740) throw new Error('nearest went the long way: ' + h.nearest(20, 700));
+  if (h.nearest(700, 20) !== -20) throw new Error('nearest should go west across the seam: ' + h.nearest(700, 20));
+  // A point already close by is left alone.
+  if (h.nearest(300, 360) !== 300) throw new Error('nearest moved a point that was already nearest');
+
+  // Moving keeps the view on the middle copy, by whole worlds, which is
+  // invisible because the copy it lands on is identical.
+  h.moveTo(740, 180, 360);
+  var v = box();
+  if (v[0] < -360 || v[0] >= 720) throw new Error('the view drifted off the middle copy: ' + v[0]);
+  if (Math.abs((v[0] + v[2] / 2) - 20) > 0.001) throw new Error('moveTo should centre on the wrapped point, got ' + (v[0] + v[2] / 2));
+
+  // Framing a route that crosses the seam must zoom to the route, not the
+  // world: from x=700 to x=740 is 40 wide, not 680.
+  h.reset();
+  h.fit(700, 150, 740, 210);
+  v = box();
+  if (v[2] > 200) throw new Error('a short route across the seam framed as if it were global: w=' + v[2]);
+  if (Math.abs((v[0] + v[2] / 2) - 720) > 0.001 && Math.abs((v[0] + v[2] / 2)) > 0.001)
+    throw new Error('the framed centre should be the middle of the route: ' + (v[0] + v[2] / 2));
+
+  // Framing uses whichever side is tighter, or the other spills out of view.
+  h.reset();
+  h.fit(300, 20, 320, 340);
+  v = box();
+  if (v[3] < 320) throw new Error('a tall box must not be cropped: h=' + v[3]);
+
+  this.requestAnimationFrame = realRAF; window.PointerEvent = realPE;
+  print('FS.panZoom measures across the antimeridian the short way OK');
+})();

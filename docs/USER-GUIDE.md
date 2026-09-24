@@ -253,11 +253,22 @@ dot on the map and opens its detail; the route's legs are lifted out of the
 rest and the others dimmed rather than hidden, because a route means little
 without the routes it diverges from. *Show every route* goes back.
 
+Clicking a step travels to it: the map slides to that hop at the zoom you are
+already using, so you can see which way the route went. Clicking the last step
+frames the whole route instead, zoomed to fit it rather than to the world.
+
 The trail begins inside your network rather than at the first router that
 answered, which is where a traceroute's own output starts. Where more than one
 device used the route, the one with the most flows to that destination is
 shown, or whichever you are filtering on. A hop that never answered keeps its
 place, drawn hollow: the traffic went through it even though nothing replied.
+
+**The map wraps.** It slides east and west without end; pan past the edge and
+the land, cables and routes continue rather than stopping at a seam. Distances
+are measured the short way round, so a leg between two points either side of
+the antimeridian is drawn as the short hop it is instead of a line across the
+whole map, and a route from here to Asia runs west across the Pacific, which
+is the way the packets went. A key to the marks sits under the map.
 
 **Filters** on country, latency, distance in hops and device. Wheel to zoom,
 drag to pan, and *Reset zoom* to go back. On a touchscreen or with a pen, one

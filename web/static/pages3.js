@@ -374,11 +374,26 @@
           cables += `<path class="cable" d="${d.trim()}"/>`;
         });
       });
+      // The short way round. Two points 350 degrees apart in longitude are ten
+      // degrees apart on a globe, and drawing the straight line between their
+      // x positions draws the 350 -- a link that crosses the whole map to
+      // reach a neighbour. Shifting one end by whole worlds until it is
+      // nearest the other gives the leg people actually travel; the repeated
+      // copies below make it appear at both edges.
+      const near = (x, ref) => {
+        let best = x, bestD = Math.abs(x - ref);
+        for (let k = -2; k <= 2; k++) {
+          const c = x + k * MAPW, d = Math.abs(c - ref);
+          if (d < bestD) { best = c; bestD = d; }
+        }
+        return best;
+      };
       let lines = '', dots = '';
       legs.forEach(l => {
         const a = byId[l.from], b = byId[l.to];
         if (!a || !b || !a.located || !b.located) return;
-        const [x1, y1] = xy(a), [x2, y2] = xy(b);
+        const [x1, y1] = xy(a); let [x2, y2] = xy(b);
+        x2 = near(x2, x1);
         const n = (l.destinations || []).length;
         const cbl = (l.cables || []).length
           ? `\ncould have crossed: ${l.cables.map(c => `${c.name} (${num(c.km)} km)`).join(', ')}`
@@ -559,8 +574,35 @@
           <button class="btn small" id="f-reset">Reset zoom</button>
         </div>
         <svg class="pathmap" id="pathmap" viewBox="0 0 ${MAPW} ${MAPH}" preserveAspectRatio="xMidYMid meet">
-          ${FS.landPath ? `<path class="land" d="${FS.landPath}"/>` : ''}${FS.graticule(MAPW, MAPH, 30)}${cables}${lines}${dots}
+          <defs><g id="fs-world">${FS.landPath ? `<path class="land" d="${FS.landPath}"/>` : ''}${FS.graticule(MAPW, MAPH, 30)}${cables}</g></defs>
+          ${/* The backdrop is heavy -- one land outline and a couple of thousand
+                cable runs -- so the copies either side reference it rather than
+                repeat it. Nothing in it is clickable, so a reference is enough. */''}
+          <use href="#fs-world" x="${-MAPW}"/><use href="#fs-world"/><use href="#fs-world" x="${MAPW}"/>
+          ${/* Routes and markers are light and have to stay clickable, which a
+                <use> copy does not, so these are drawn three times for real.
+                Pan past the edge and the hop under the cursor still answers. */''}
+          ${[-MAPW, 0, MAPW].map(dx => `<g transform="translate(${dx},0)">${lines}${dots}</g>`).join('')}
         </svg>
+        ${(() => {
+          // Nothing on this map is self-evident: a thick grey line and a thin
+          // coloured one are opposite claims, and a red ring is a statement
+          // about physics. A key costs a few lines and saves the reader
+          // guessing at any of it.
+          const sw = (cls, style) => `<svg class="lg" viewBox="0 0 22 10" aria-hidden="true"><line class="${cls}" style="${style || ''}" x1="1" y1="5" x2="21" y2="5"/></svg>`;
+          const dot = (fill, cls) => `<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="${cls || ''}" cx="6" cy="6" r="3.4" fill="${fill || 'none'}"/></svg>`;
+          const it = (mark, text) => `<span class="lgi">${mark}${esc(text)}</span>`;
+          return `<div class="legend">
+            ${it(sw('leg shared', 'stroke:var(--muted)'), 'a leg several destinations share')}
+            ${it(sw('leg', 'stroke:' + FS.palette[0]), 'a leg used by one destination')}
+            ${(cab.cables || []).length ? it(sw('cable'), 'submarine cable') : ''}
+            ${it(dot(FS.palette[2]), 'a hop, sized by how many addresses answered')}
+            ${it(dot(FS.palette[2], 'rich'), 'operator known')}
+            ${it(dot('', 'ruledout'), 'the latency rules this placement out')}
+            ${it(sw('corrected'), 'correction: database \u2192 the site in the router\u2019s name')}
+            ${picked ? it(sw('leg onroute', 'stroke:' + FS.palette[0]), 'the route you picked; the rest is dimmed') : ''}
+          </div>`;
+        })()}
         <div class="hoppanel" id="hoppanel">${hopCards || '<div class="muted small">No hop has coordinates yet.</div>'}
           <div class="muted small" style="margin-top:9px">Click any hop on the map for who runs it, where it is, and how that was decided.</div></div>
         <div class="help" style="margin-top:8px">Land outlines are Natural Earth 1:110m, public domain. ${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. Coordinates come from an address database: dependable for end-user addresses and rough for carrier equipment, which is why placements the measured latency rules out are circled rather than trusted. Where a router's hostname carries a site code, that is used instead of the database, and an amber line shows where the two disagreed.</div>`)}</div>
@@ -633,26 +675,66 @@
       // touching either should light up both. Without that the trail reads as
       // a list beside a picture rather than a way into it.
       const crumbEls = el.querySelectorAll('[data-crumb]');
+      // The route laid out along the cylinder, each hop shifted by whole
+      // worlds until it is nearest the one before it. This is what makes a
+      // route from Kansas to Tokyo run west across the Pacific instead of
+      // doubling back across Europe, and it is the same arithmetic the legs
+      // are drawn with, so the trail and the map agree about which way round
+      // the journey went.
+      const placed = routeHops.filter(n => n.located);
+      const laid = [];
+      placed.forEach((n, i) => {
+        const [px, py] = xy(n);
+        laid.push({ id: n.id, x: i === 0 ? px : near(px, laid[i - 1].x), y: py });
+      });
+      const laidById = {}; laid.forEach(p => laidById[p.id] = p);
+      const H = () => FS.panZoomHandle;
+
       crumbEls.forEach(li => {
         const id = li.getAttribute('data-crumb');
-        const dot = el.querySelector('.hop[data-hop="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
-        const on = () => {
+        const dots2 = el.querySelectorAll('.hop[data-hop="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+        const mark = () => {
           crumbEls.forEach(x => x.classList.remove('here'));
           li.classList.add('here');
           el.querySelectorAll('.hop.lit').forEach(x => x.classList.remove('lit'));
-          if (dot) dot.classList.add('lit');
+          dots2.forEach(d => d.classList.add('lit'));
           showHop(id);
         };
-        li.addEventListener('mouseenter', on);
-        li.addEventListener('click', on);
+        li.addEventListener('mouseenter', mark);
+        li.addEventListener('click', () => {
+          mark();
+          const pz = H(); if (!pz) return;
+          // The last step frames the journey rather than visiting its end: by
+          // then the question has stopped being "where is this hop" and become
+          // "how far did that go". Everything before it travels, keeping the
+          // zoom the reader chose.
+          if (li.classList.contains('endpoint') && laid.length > 1) {
+            let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+            laid.forEach(p => {
+              x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+              y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+            });
+            // Framed where it was laid out, then slid to the copy of the world
+            // nearest the view, so the map travels rather than jumping.
+            const mid = pz.nearest((x0 + x1) / 2);
+            const shift = mid - (x0 + x1) / 2;
+            pz.fit(x0 + shift, y0, x1 + shift, y1);
+            return;
+          }
+          const p = laidById[id];
+          if (p) pz.moveTo(pz.nearest(p.x), p.y);
+        });
       });
 
       // Radii are attributes, not styles, so the zoom factor has to be applied
       // to them by hand. Everything else holds its size through CSS.
       const svg = FS.$('#pathmap', el);
       const sized = svg ? svg.querySelectorAll('[data-r]') : [];
-      FS.panZoomHandle = FS.panZoom(svg, MAPW, MAPH, (z) => {
-        sized.forEach(c => c.setAttribute('r', (parseFloat(c.getAttribute('data-r')) / z).toFixed(2)));
+      FS.panZoomHandle = FS.panZoom(svg, MAPW, MAPH, {
+        wrapX: true,
+        onZoom: (z) => {
+          sized.forEach(c => c.setAttribute('r', (parseFloat(c.getAttribute('data-r')) / z).toFixed(2)));
+        }
       });
       const go = () => {
         const p = [];

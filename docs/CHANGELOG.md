@@ -12,6 +12,33 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241515
+
+**The map is a cylinder now, and behaves like one.** It slides east and west
+without end: pan past the edge and you arrive back on the other side, with the
+land, the cables and the routes all continuing rather than stopping at a seam.
+
+This is not presentation. A leg between two points either side of the
+antimeridian used to be drawn the long way -- a line clear across the map to
+reach what is, on a globe, the next town over -- because the drawing measured
+the distance from west to east instead of taking the shorter of the two ways
+round. Legs are now laid out along the cylinder, and a route from here to
+Tokyo runs west across the Pacific, which is the way the packets went.
+
+**Clicking a step in the trail travels to it.** The map slides to that hop at
+whatever zoom you are already using, in the direction the route actually goes,
+rather than cutting to it -- on a map that wraps, a jump gives the reader no
+way to tell which way they went. Clicking the last step frames the whole
+route instead of visiting its end: by then the question has changed from
+"where is this hop" to "how far did that go". Framing measures along the
+cylinder too, so a short route that happens to straddle the seam is framed as
+the short route it is rather than zoomed out to the whole world.
+
+**There is a legend.** The marks on the map are not self-evident -- a thick
+grey line and a thin coloured one are opposite claims, and a red ring is an
+assertion about physics -- so there is now a key, drawn with the same styles
+as the map itself so it cannot drift out of date.
+
 ## 0.9.8r202609241511
 
 **A chosen route is now drawn as a trail, one step per link.** Click a

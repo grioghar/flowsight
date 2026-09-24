@@ -296,9 +296,23 @@ FS.graticule = (w, h, step) => {
 // widths and type to divide by, and to an onZoom callback for anything that
 // has to be set as an attribute. Callers that ignore both get the old
 // behaviour.
-FS.panZoom = (svg, w, h, onZoom) => {
+FS.panZoom = (svg, w, h, opts) => {
   if (!svg) return;
+  if (typeof opts === 'function') opts = { onZoom: opts };
+  opts = opts || {};
+  const onZoom = opts.onZoom;
   const view = { x: 0, y: 0, w: w, h: h };
+  // A world map is a cylinder: pan far enough east and you arrive back in the
+  // west. The caller says so with wrapX, and draws its content three times, a
+  // world apart, so there is always something either side of the edge. All
+  // this has to do is keep the view near the middle copy, which it can do by
+  // whole worlds at a time -- a shift of exactly one world is invisible,
+  // because the copy it lands on is identical to the one it left.
+  const rewrap = () => {
+    if (!opts.wrapX) return;
+    while (view.x + view.w / 2 < 0) view.x += w;
+    while (view.x + view.w / 2 >= w) view.x -= w;
+  };
   const apply = () => {
     svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     const z = w / view.w;
@@ -428,7 +442,71 @@ FS.panZoom = (svg, w, h, onZoom) => {
 
   svg.style.cursor = 'grab';
   apply();
-  return { reset: () => { view.x = 0; view.y = 0; view.w = w; view.h = h; apply(); } };
+
+  // Going somewhere, visibly.
+  //
+  // A jump cut leaves the reader to work out what moved and which way, which
+  // on a map that wraps is exactly the thing they cannot work out. Travelling
+  // there shows the direction, and on a cylinder the direction is the whole
+  // point: a route from Kansas to Tokyo goes west across the Pacific, and a
+  // map that snapped eastward across Europe to get there would be showing the
+  // long way round as though it were the short one.
+  let frame = null;
+  const stop = () => { if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame); frame = null; };
+  const centre = () => [view.x + view.w / 2, view.y + view.h / 2];
+  const moveTo = (cx, cy, nw, ms) => {
+    stop();
+    nw = clampW(nw == null ? view.w : nw);
+    const nh = nw * (h / w);
+    const from = { x: view.x, y: view.y, w: view.w, h: view.h };
+    const to = { x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh };
+    const dur = ms == null ? 420 : ms;
+    if (!dur || typeof requestAnimationFrame !== 'function') {
+      view.x = to.x; view.y = to.y; view.w = to.w; view.h = to.h; rewrap(); apply(); return;
+    }
+    const t0 = (typeof performance === 'object' && performance.now) ? performance.now() : Date.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / dur);
+      // Ease out: quick to set off, unhurried to arrive, so the direction
+      // registers and the landing does not overshoot the eye.
+      const k = 1 - Math.pow(1 - p, 3);
+      view.x = from.x + (to.x - from.x) * k;
+      view.y = from.y + (to.y - from.y) * k;
+      view.w = from.w + (to.w - from.w) * k;
+      view.h = from.h + (to.h - from.h) * k;
+      apply();
+      if (p < 1) { frame = requestAnimationFrame(step); }
+      else { frame = null; rewrap(); apply(); }
+    };
+    frame = requestAnimationFrame(step);
+  };
+
+  // The nearest copy of a point on a wrapping map. Going west to a place that
+  // is nominally east of you is the short way round, and this is what says so.
+  const nearest = (x, from) => {
+    if (!opts.wrapX) return x;
+    const ref = from == null ? centre()[0] : from;
+    let best = x, bestD = Math.abs(x - ref);
+    for (let k = -2; k <= 2; k++) {
+      const c = x + k * w, d = Math.abs(c - ref);
+      if (d < bestD) { best = c; bestD = d; }
+    }
+    return best;
+  };
+
+  return {
+    reset: () => { stop(); view.x = 0; view.y = 0; view.w = w; view.h = h; apply(); },
+    centre, moveTo, nearest,
+    // Frame a box, keeping its aspect honest and leaving room round the edge.
+    fit: (x0, y0, x1, y1, pad, ms) => {
+      pad = pad == null ? 1.35 : pad;
+      const bw = Math.max(Math.abs(x1 - x0), 1e-6), bh = Math.max(Math.abs(y1 - y0), 1e-6);
+      // Whichever side is tighter decides the zoom, or the box spills out of
+      // the side that was not measured.
+      const nw = clampW(Math.max(bw, bh * (w / h)) * pad);
+      moveTo((x0 + x1) / 2, (y0 + y1) / 2, nw, ms);
+    }
+  };
 };
 
 // --------------------------------------------------------------- state
