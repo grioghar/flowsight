@@ -46,6 +46,17 @@ type Node struct {
 	DistanceKM float64 `json:"distance_km,omitempty"`
 	FloorMS    float64 `json:"floor_ms,omitempty"`
 	Why        string  `json:"why,omitempty"`
+	// DatabaseSaid records where the address database put this hop, kept only
+	// when the router's own name contradicted it. A reader who trusts the
+	// database more than the naming convention can see both and judge.
+	DatabaseSaid string  `json:"database_said,omitempty"`
+	MovedKM      float64 `json:"moved_km,omitempty"`
+	DBLat        float64 `json:"db_lat,omitempty"`
+	DBLon        float64 `json:"db_lon,omitempty"`
+	// Detail is who runs this hop and, where it can be told, which building.
+	// Kept as a pointer so a hop nothing is known about costs nothing in the
+	// payload rather than carrying a page of empty fields.
+	Detail *Detail `json:"detail,omitempty"`
 }
 
 // Leg is one step from one node to the next, and everything that uses it.

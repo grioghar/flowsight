@@ -166,6 +166,8 @@ Traces the route to destinations this network already contacts, and keeps what i
 | `trace_ipv6` | Trace IPv6 destinations too | bool | `true` |  |
 | `cables` | Show submarine cables | bool | `false` | Fetches TeleGeography's public cable map (about a megabyte, refreshed monthly) and draws it behind the routes. Not bundled: their data is a free public resource but is not openly licensed. |
 | `cable_near_km` | A cable serves a place within (km) | int | `400` | How close a cable must pass to count as a candidate. Deliberately loose. |
+| `registry` | Look up who runs each hop | bool | `true` | Asks the public routing table which network announces a hop's address, and the regional registry who that block is allocated to. The registry's postal address is a head office, not the room the router is in, and is labelled that way wherever it is shown. Cached for a month. |
+| `facilities` | List buildings the operator occupies | bool | `true` | Adds street addresses from PeeringDB, where operators publish which data centres they are in. Narrowed to a hop only when the router's own hostname gave away its city; otherwise presented as the unrelated list it is. |
 | `cables_url` | Cable map URL | string | `""` | Empty: TeleGeography's published map. |
 | `home` | Your location | string | `""` | Latitude and longitude, comma separated. The origin the map is drawn from, and the reference for checking a hop could really be where the database says. Empty: worked out from the gateway's public address. The Map page can fill it in from your browser. |
 

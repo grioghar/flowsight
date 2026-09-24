@@ -319,6 +319,103 @@ func (m *Module) locate(nodes []Node) {
 			}
 		}
 	}
+	m.describe(nodes)
+}
+
+// describe attaches operator detail, and lets a router's own name overrule the
+// address database about where it is.
+//
+// The override is the point rather than a side effect. A database places a
+// carrier's equipment wherever the block was registered, which is how a
+// Microsoft router in Los Angeles ends up drawn in London on a range RIPE
+// holds. When the operator has written the site into the hostname, that is
+// first-hand and the database is not, so the name wins -- and what the
+// database claimed is kept alongside, because this is an inference and a
+// reader is entitled to check it.
+func (m *Module) describe(nodes []Node) {
+	pairs := map[string]string{}
+	for i := range nodes {
+		n := &nodes[i]
+		for j, ip := range n.IPs {
+			host := ""
+			if j < len(n.Names) {
+				host = n.Names[j]
+			} else if len(n.Names) > 0 {
+				host = n.Names[0]
+			}
+			pairs[ip] = host
+		}
+	}
+	if len(pairs) == 0 {
+		return
+	}
+	if len(pairs) > 400 {
+		// A cap rather than a queue: this runs while somebody is waiting for
+		// the page, and the sources are other people's.
+		trimmed := make(map[string]string, 400)
+		for ip, h := range pairs {
+			if len(trimmed) >= 400 {
+				break
+			}
+			trimmed[ip] = h
+		}
+		pairs = trimmed
+	}
+	detail := m.detailAll(pairs)
+	for i := range nodes {
+		n := &nodes[i]
+		for _, ip := range n.IPs {
+			d, ok := detail[ip]
+			if !ok {
+				continue
+			}
+			if n.Detail == nil {
+				c := d
+				n.Detail = &c
+			}
+			if d.PoPLat == 0 && d.PoPLon == 0 {
+				continue
+			}
+			if n.Located && n.Source == "database" {
+				if km := greatCircleKM(n.Lat, n.Lon, d.PoPLat, d.PoPLon); km > 250 {
+					n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
+					n.MovedKM = km
+					n.DBLat, n.DBLon = n.Lat, n.Lon
+				}
+			}
+			n.Lat, n.Lon, n.Located, n.Source = d.PoPLat, d.PoPLon, true, "name"
+			n.City, n.Region, n.Country = splitPlace(d.PoPCity)
+			break
+		}
+	}
+}
+
+// splitPlace turns "Los Angeles, CA, US" back into its parts.
+func splitPlace(s string) (city, region, country string) {
+	f := strings.Split(s, ",")
+	for i := range f {
+		f[i] = strings.TrimSpace(f[i])
+	}
+	switch len(f) {
+	case 0:
+		return "", "", ""
+	case 1:
+		return f[0], "", ""
+	case 2:
+		return f[0], "", f[1]
+	default:
+		return f[0], f[1], f[2]
+	}
+}
+
+func nonEmpty(xs ...string) []string {
+	var out []string
+	for _, x := range xs {
+		if x != "" {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 func (m *Module) enrich(ips []string) map[string]enrich.Info {

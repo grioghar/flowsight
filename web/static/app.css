@@ -183,3 +183,27 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .pathmap .ruledout { fill: none; stroke: var(--bad); stroke-width: 1.4; opacity: .95; }
 /* Submarine cables, drawn for context behind the measured routes. */
 .pathmap .cable { fill: none; stroke: var(--line); stroke-width: .6; opacity: .9; }
+/* Land, so the map reads as a map. Natural Earth 1:110m, public domain. */
+.pathmap .land { fill: color-mix(in srgb, var(--ink) 9%, transparent); stroke: var(--line); stroke-width: .4; }
+
+/* A correction: the line runs from where the address database put a hop to
+   where the router's own name says it is. The ghost marks the abandoned
+   position, because a correction the reader cannot audit is just an assertion. */
+.pathmap .corrected { fill: none; stroke: var(--warn, #f59e0b); stroke-width: .7; stroke-dasharray: 2 2; opacity: .85; }
+.pathmap .ghost { fill: none; stroke: var(--warn, #f59e0b); stroke-width: .7; opacity: .85; }
+.pathmap .hop.rich { stroke: #cbd5e1; stroke-width: .9; }
+.pathmap .hop { cursor: pointer; }
+.pathmap .hop:hover { stroke: #fff; stroke-width: 1.6; }
+.hoppanel { margin-top: 10px; padding: 12px 14px; background: var(--panel-2, rgba(127,127,127,.06));
+  border: 1px solid var(--line); border-radius: 8px; min-height: 60px; }
+.hoppanel h4 { margin: 0 0 8px; font-size: 13.5px; }
+.hoppanel .hg { margin: 11px 0 4px; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+.hoppanel .hr { display: flex; gap: 10px; padding: 2px 0; font-size: 12.5px; }
+.hoppanel .hr > span { flex: 0 0 168px; color: var(--muted); }
+.hoppanel .hr > b { flex: 1 1 auto; font-weight: 500; word-break: break-word; }
+.hoppanel .hr.warn > b { color: var(--warn, #f59e0b); }
+.hoppanel .hr.soft > b { color: var(--muted); font-weight: 400; }
+.hoppanel .hfac { padding: 5px 8px; margin: 4px 0; background: var(--panel-3, rgba(127,127,127,.09));
+  border-radius: 5px; border-left: 2px solid var(--accent, #4c8dff); font-size: 12.5px; }
+.hoppanel .hfac.dim { border-left-color: var(--line); color: var(--muted); }

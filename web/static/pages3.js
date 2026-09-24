@@ -369,8 +369,55 @@
         const [x, y] = xy(n);
         const label = [n.city, n.region, n.country].filter(Boolean).join(', ');
         if (n.impossible) dots += `<circle class="ruledout" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7"/>`;
-        dots += `<circle class="hop" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2 + Math.min(3, n.ips.length)).toFixed(1)}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${n.names && n.names.length ? '\n' + esc(n.names.join(', ')) : ''}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\nRULED OUT: ' + esc(n.why) : ''}</title></circle>`;
+        if (n.moved_km && n.db_lat) {
+          // Drawn from where the database put it to where the name says it is,
+          // so a reader can see the size of the correction rather than take it.
+          const [px, py] = xy({ lat: n.db_lat, lon: n.db_lon });
+          dots += `<path class="corrected" d="M${px.toFixed(1)},${py.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}"/><circle class="ghost" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5"/>`;
+        }
+        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}" data-hop="${esc(n.id)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2 + Math.min(3, n.ips.length)).toFixed(1)}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\nRULED OUT: ' + esc(n.why) : ''}\nclick for detail</title></circle>`;
       });
+
+      // What a hop is, told in the order the evidence deserves: what was
+      // measured, then what the router called itself, then what a registry
+      // says about the block, then buildings -- each labelled, so a street
+      // address published by an operator is never mistaken for this router's
+      // address, and a head office is never mistaken for either.
+      const hopCard = (n) => {
+        const d = n.detail || {};
+        const r = (k, v, cls) => v ? `<div class="hr ${cls || ''}"><span>${esc(k)}</span><b>${esc(v)}</b></div>` : '';
+        const grp = (t) => `<div class="hg">${esc(t)}</div>`;
+        let h = `<h4>Hop ${n.index} &mdash; <span class="mono">${esc(n.ips.join(', '))}</span></h4>`;
+        h += grp('Measured') + r('Round trip', n.rtt_ms ? n.rtt_ms + ' ms' : '');
+        if (n.names && n.names.length) h += grp('Resolved') + r('Router name', n.names.join(', '));
+        if (d.pop_city) {
+          h += grp('Site, read from the router name') + r('Code in the name', d.pop_code) + r('Site', d.pop_city);
+          if (n.database_said) h += r('The database said', `${n.database_said} — ${num(Math.round(n.moved_km))} km away; the name is first-hand, so it wins`, 'warn');
+        }
+        if (d.asn) {
+          h += grp('Who runs it') + r('Network', 'AS' + d.asn + (d.as_name ? '  ' + d.as_name : ''))
+             + r('Announced prefix', d.prefix)
+             + r('Registry', d.rir ? d.rir.toUpperCase() + (d.allocated ? ', allocated ' + d.allocated : '') : '')
+             + r('Allocation', d.net_name) + r('Registrant', d.org)
+             + r('Registrant address', d.org_addr ? d.org_addr + '  (head office, not this router)' : '', 'soft');
+        }
+        if ((d.facilities || []).length) {
+          h += grp(d.facilities_scoped ? `Buildings this operator occupies in ${d.pop_city.split(',')[0]}` : 'Operator buildings, not narrowed to this hop');
+          h += d.facilities.map(f => `<div class="hfac ${d.facilities_scoped ? '' : 'dim'}"><b>${esc(f.name)}</b>${f.address ? `<div class="muted small">${esc(f.address)}</div>` : ''}</div>`).join('');
+          h += `<div class="muted small" style="margin-top:5px">${d.facilities_scoped
+            ? 'One of these, most likely. An operator publishes which buildings it occupies; it does not publish which rack answers a traceroute.'
+            : 'The router name gave no site, so this is everywhere that operator is. It is not evidence about this hop.'}</div>`;
+        }
+        h += grp('Placement') + r('Shown at', [n.city, n.region, n.country].filter(Boolean).join(', '))
+           + r('Source', n.location_source === 'name' ? 'the router\u2019s own name' : 'address database');
+        if (n.why) h += r('Impossible', n.why, 'warn');
+        return h;
+      };
+      // Every card is rendered into the page rather than built on click, so
+      // the detail is in the document a reader can search, print or save, and
+      // the panel is never empty on arrival.
+      const hopCards = located.map((n, i) =>
+        `<div class="hopcard" data-for="${esc(n.id)}"${i ? ' hidden' : ''}>${hopCard(n)}</div>`).join('');
 
       // Built before the template so it is part of the page, not appended to it.
       const rulesOut = impossible.length ? `<div style="margin-top:14px">${card('Placements the physics rules out', table(impossible.map(n => ({
@@ -427,9 +474,11 @@
           <button class="btn small" id="f-reset">Reset zoom</button>
         </div>
         <svg class="pathmap" id="pathmap" viewBox="0 0 ${MAPW} ${MAPH}" preserveAspectRatio="xMidYMid meet">
-          ${FS.graticule(MAPW, MAPH, 30)}${cables}${lines}${dots}
+          ${FS.landPath ? `<path class="land" d="${FS.landPath}"/>` : ''}${FS.graticule(MAPW, MAPH, 30)}${cables}${lines}${dots}
         </svg>
-        <div class="help" style="margin-top:8px">${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. The grid is longitude and latitude, not a map of land: these coordinates come from an address database and are dependable for end-user addresses and rough for carrier equipment.</div>`)}</div>
+        <div class="hoppanel" id="hoppanel">${hopCards || '<div class="muted small">No hop has coordinates yet.</div>'}
+          <div class="muted small" style="margin-top:9px">Click any hop on the map for who runs it, where it is, and how that was decided.</div></div>
+        <div class="help" style="margin-top:8px">Land outlines are Natural Earth 1:110m, public domain. ${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. Coordinates come from an address database: dependable for end-user addresses and rough for carrier equipment, which is why placements the measured latency rules out are circled rather than trusted. Where a router's hostname carries a site code, that is used instead of the database, and an amber line shows where the two disagreed.</div>`)}</div>
 
       ${rulesOut}
 
@@ -479,6 +528,16 @@
         FS.toast(r.error || 'Back to detecting it', !!r.error);
         if (!r.error) FS.render();
       };
+
+      const cards = el.querySelectorAll('.hopcard');
+      el.querySelectorAll('.hop').forEach(c => {
+        const show = () => {
+          const want = c.getAttribute('data-hop');
+          cards.forEach(d => { d.hidden = d.getAttribute('data-for') !== want; });
+        };
+        c.addEventListener('click', show);
+        c.addEventListener('mouseenter', show);
+      });
 
       FS.panZoomHandle = FS.panZoom(FS.$('#pathmap', el), MAPW, MAPH);
       const go = () => {

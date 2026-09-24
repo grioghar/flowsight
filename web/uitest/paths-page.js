@@ -15,6 +15,7 @@ var localStorage = { getItem:function(){ return null; }, setItem:function(){} };
 var location = { hash:'#paths' };
 var setTimeout = function(){};
 load('web/static/lib.js');
+load('web/static/land.js');
 
 // Projection must put the equator and prime meridian in the middle.
 var mid = FS.project(0, 0, 720, 360);
@@ -27,6 +28,16 @@ var GRAPH = { nodes: [
   { id:'h1', index:1, ips:['192.168.1.254'], located:false, silent:false },
   { id:'h2', index:2, ips:['172.11.154.1'], located:true, lat:39.18, lon:-96.57, country:'US', city:'Manhattan', region:'Kansas', rtt_ms:3.4 },
   { id:'h3', index:3, ips:['32.130.107.216','32.130.107.218'], located:true, lat:32.78, lon:-96.80, country:'US', city:'Dallas', rtt_ms:16.7 },
+  // Placed by its own hostname, against a database that said London.
+  { id:'h35', index:6, ips:['51.10.49.216'], names:['po1.owr03.lax31.ntwk.msn.net'], located:true,
+    lat:34.0522, lon:-118.2437, country:'US', region:'CA', city:'Los Angeles', rtt_ms:134.7,
+    location_source:'name', database_said:'London, England, GB', moved_km:8756, db_lat:51.5072, db_lon:-0.1276,
+    detail:{ pop_code:'lax', pop_city:'Los Angeles, CA, US', asn:'8075',
+      as_name:'MICROSOFT-CORP-MSN-AS-BLOCK - Microsoft Corporation, US', prefix:'51.10.0.0/15',
+      rir:'ripencc', allocated:'1993-09-01', net_name:'MSFT-51-10', org:'Microsoft Corporation',
+      org_addr:'One Microsoft Way, Redmond, WA, 98052, United States',
+      facilities:[{ name:'Equinix LA1 - Los Angeles', address:'600 W 7th St, Los Angeles, CA, 90017-3859, US' }],
+      facilities_scoped:true } },
   { id:'h4', index:4, ips:['1.1.1.1'], located:true, lat:-33.86, lon:151.20, country:'AU', city:'Sydney', rtt_ms:18.9,
     impossible:true, distance_km:14071, floor_ms:140.7, why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' },
   { id:'s5', index:5, ips:[], located:false, silent:true } ],
@@ -75,8 +86,34 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // Silent hops are counted, never drawn.
   if (h.indexOf('never answered') < 0) throw new Error('silent hops should be counted');
   // Two addresses at one hop is one circle, not two.
-  var circles = (h.match(/class="hop"/g) || []).length;
-  if (circles !== 3) throw new Error('want 3 plotted hops (one per located node), got ' + circles);
+  var circles = (h.match(/class="hop /g) || []).length;
+  if (circles !== 4) throw new Error('want 4 plotted hops (one per located node), got ' + circles);
+
+  // A hop must carry its operator, not just a dot. Measured, resolved,
+  // inferred and registered are four different kinds of claim and the card
+  // has to keep them apart.
+  if (h.indexOf('AS8075') < 0) throw new Error('the network running a hop should be named');
+  if (h.indexOf('51.10.0.0/15') < 0) throw new Error('the announced prefix should be shown');
+  if (h.indexOf('RIPENCC') < 0) throw new Error('the registry should be shown');
+  if (h.indexOf('Equinix LA1') < 0) throw new Error('published buildings should be listed');
+  if (h.indexOf('600 W 7th St') < 0) throw new Error('a building needs its street address');
+  if (h.indexOf('head office, not this router') < 0)
+    throw new Error('a registrant address must not be passed off as the router\'s location');
+  if (h.indexOf('does not publish which rack') < 0)
+    throw new Error('a building list must say what it does not prove');
+  if (h.indexOf('Who runs it') < 0) throw new Error('registry detail needs its own heading');
+  if (h.indexOf('Site, read from the router name') < 0)
+    throw new Error('an inference from a hostname must be labelled as one');
+  // The correction has to be visible and auditable, not silent.
+  if (h.indexOf('class="corrected"') < 0) throw new Error('a corrected placement should be drawn');
+  if (h.indexOf('class="ghost"') < 0) throw new Error('the abandoned position should be marked');
+  if (h.indexOf('The database said') < 0) throw new Error('the card must say what it overruled');
+  if (h.indexOf('London, England, GB') < 0) throw new Error('the overruled answer must be quoted');
+  if (h.indexOf('the router\u2019s own name') < 0) throw new Error('the placement source should be named');
+  if (h.indexOf('hoppanel') < 0) throw new Error('there should be a panel for hop detail');
+  // Scoped and unscoped facility lists are different claims.
+  if (h.indexOf('Buildings this operator occupies in Los Angeles') < 0)
+    throw new Error('a scoped building list should name the city it was narrowed to');
   // The device filter must be a picker of devices, not a box for typing an
   // address, and one entry per device however many addresses it holds.
   if (h.indexOf('<select id="f-dev"') < 0) throw new Error('the device filter should be a picker');
@@ -94,6 +131,10 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('Ruled out by latency') < 0) throw new Error('impossible placements need a count');
   // Cables are drawn behind the routes, and a run crossing the antimeridian
   // must break rather than stripe straight across the map.
+  // Land, so the thing reads as a map rather than a grid with dots on it.
+  if (h.indexOf('class="land"') < 0) throw new Error('the map has no land on it');
+  if (!FS.landPath || FS.landPath.length < 10000) throw new Error('land outlines look truncated');
+  if (h.indexOf('Natural Earth') < 0) throw new Error('the land source should be credited');
   if (h.indexOf('class="cable"') < 0) throw new Error('cables are not drawn');
   if ((h.match(/class="cable"/g) || []).length !== 2) throw new Error('want one path per cable run');
   var pac = h.slice(h.indexOf('class="cable"', h.indexOf('class="cable"') + 1));

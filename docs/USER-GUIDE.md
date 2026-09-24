@@ -255,11 +255,54 @@ rotating IPv6 privacy addresses is one thing to filter by, and filtering on
 whichever address happened to be handy would show a fraction of where it has
 actually been.
 
-**What the map does not claim.** The background is a longitude and latitude
-grid, not a drawing of land, because the coordinates come from an address
-database and that database is dependable for end-user addresses and rough for
-carrier equipment. A router often resolves to wherever its address block was
-registered rather than where it sits. Hops with no coordinates are listed
+**What each hop tells you.** Click any point on the map. The panel below it
+gives, in this order and under these headings:
+
+- *Measured* -- the round trip, and where the hop falls in the route. This is
+  observation; nothing else on the card is.
+- *Resolved* -- the router's own name, from reverse DNS.
+- *Site, read from the router name* -- carriers write the site into the
+  hostname. `po1.owr03.lax31.ntwk.msn.net` says Los Angeles; `ae10.edge1.dal2.
+  sp.lumen.tech` says Dallas; `172-11-154-1.lightspeed.tpkaks.sbcglobal.net`
+  says Topeka, Kansas. Reading that code is an inference and is labelled as
+  one, but it is first-hand in a way a database is not, so it overrules the
+  database when the two disagree.
+- *Who runs it* -- which network announces the address today, taken from the
+  public routing table, plus the registry's record of the allocation: the
+  regional registry, the date, the allocation's name, and who it is
+  registered to. The registrant's postal address is shown and is marked *head
+  office, not this router*, because it is. Every Lumen router in the world is
+  registered to one building in Monroe, Louisiana.
+- *Buildings this operator occupies in <city>* -- real street addresses, from
+  PeeringDB, where operators publish which data centres they are in. This
+  appears **only** once the router's name has already given away the city, so
+  the list is short and about this hop. When the city is unknown the heading
+  changes to say the list is not narrowed, because then it is simply
+  everywhere that operator is and proves nothing about the hop in front of
+  you. Even narrowed it is a short list, never one answer: an operator
+  publishes which buildings it occupies, not which rack answers a traceroute.
+- *Placement* -- where the point is drawn and which of the above decided it.
+
+**Corrections are shown, not made quietly.** Where a router's name contradicts
+the address database, the name wins and an amber dashed line runs from the
+position the database gave to the position now used, with a small ring on the
+abandoned one. The card quotes what the database claimed and how far off it
+was. This matters more than it sounds: Microsoft answers from a range the
+RIPE registry holds, so an address database places its Los Angeles routers in
+London, seven thousand miles out, and the latency check cannot catch it
+because London is a perfectly plausible distance from Kansas at 134 ms.
+
+Looking anything up over the network is optional -- *Settings > paths > Look
+up who runs each hop* and *List buildings the operator occupies*. Reading the
+site out of a hostname is free and always on. Results are kept for a month,
+because allocations outlive most networks and buildings do not move.
+
+**What the map does not claim.** Land outlines are drawn from Natural Earth's
+public-domain 1:110m data, so you can tell Kansas from Kazakhstan. They are
+not a claim about precision: coordinates come from an address database that is
+dependable for end-user addresses and rough for carrier equipment, and a
+router often resolves to wherever its address block was registered rather than
+where it sits. That is what the hostname reading above is for. Hops with no coordinates are listed
 underneath rather than placed at zero, which would pile a stack of routers
 into the Gulf of Guinea. Hops that never answered are counted and not drawn
 at all, and they keep their position in the numbering so the path is not

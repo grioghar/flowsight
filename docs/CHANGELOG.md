@@ -12,6 +12,55 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240803
+
+**The map has land, and every hop says who runs it.**
+
+Land outlines are drawn from Natural Earth's public-domain 1:110m data. The
+background had been a bare longitude and latitude grid, on the reasoning that
+coastlines would imply a precision the coordinates do not have. That was the
+wrong call: without land you cannot tell Kansas from Kazakhstan, and a map you
+cannot read is not more honest than one you can. The caveats now live in the
+text, where they belong.
+
+Points carry what is actually known about them, in four kinds and labelled as
+four kinds:
+
+- what was **measured** -- the round trip, the position in the route;
+- what **resolved** -- the router's own name;
+- what its name **implies** -- carriers write the site into the hostname, so
+  `po1.owr03.lax31.ntwk.msn.net` is in Los Angeles and
+  `172-11-154-1.lightspeed.tpkaks.sbcglobal.net` is in Topeka;
+- what the **registry** records -- which network announces the address, the
+  allocation, and who holds it.
+
+Where PeeringDB has the operator publishing street addresses of the data
+centres it occupies, those are listed too.
+
+**A hostname now overrules the address database about where a router is**, and
+says so on the map. This is the substantive change rather than a presentational
+one. Microsoft answers from a range the RIPE registry holds, so an address
+database places its Los Angeles routers in London -- seven thousand miles out,
+and the latency check cannot catch it, because London is a perfectly plausible
+distance from Kansas at 134 ms. The operator's own naming can catch it. When
+the two disagree the name wins, an amber dashed line runs from the discarded
+position to the one now used, and the card quotes what the database had
+claimed and by how much it missed. A correction you cannot audit is just an
+assertion.
+
+Two things this deliberately does not do. A registrant's postal address is
+never presented as a router's location: it is a head office, and shown under
+that label, or every Lumen router on earth sits in one building in Monroe,
+Louisiana. And a list of buildings is only attached to a hop once the hostname
+has already given away the city; otherwise the heading says it is not narrowed,
+because a list of everywhere Cloudflare is tells you nothing about the hop in
+front of you. Even narrowed it stays a short list. An operator publishes which
+buildings it occupies, not which rack answers a traceroute.
+
+Looking anything up over the network is optional, under *Settings > paths*.
+Reading a site out of a hostname is free and always on. Results are kept for a
+month.
+
 ## 0.9.8r202609240747
 
 **Submarine cables, fetched at runtime and used to rule things out.** With
