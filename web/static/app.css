@@ -414,3 +414,8 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .pathmap .leg.local { stroke: var(--ink); stroke-width: 1.1; stroke-dasharray: 3 3; opacity: .5; }
 .legend .lg .home { fill: var(--ink); stroke: none; }
 .legend .lg .homering { fill: none; stroke: var(--ink); stroke-width: 1.2; opacity: .6; }
+
+/* Zoomed out past one world there is nothing either side to show, so the
+   copies that make panning seamless are taken away and the extra width is
+   empty. Blank margins are honest; the same continent at both edges is not. */
+.pathmap.whole .worldcopy { display: none; }

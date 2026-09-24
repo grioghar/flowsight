@@ -656,14 +656,14 @@
             ${FS.landPath ? `<path class="land" style="fill:color-mix(in srgb, var(--ink) 13%, transparent);stroke:var(--line);stroke-width:.4;vector-effect:non-scaling-stroke" d="${FS.landPath}"/>` : ''}
             <g style="fill:none;stroke:var(--line);stroke-width:.6;opacity:.9;vector-effect:non-scaling-stroke">${cables}</g>
           </g></defs>
-          <use href="#fs-world" x="${-MAPW}"/><use href="#fs-world"/><use href="#fs-world" x="${MAPW}"/>
+          <use class="worldcopy" href="#fs-world" x="${-MAPW}"/><use href="#fs-world"/><use class="worldcopy" href="#fs-world" x="${MAPW}"/>
           ${/* The graticule is drawn rather than referenced because its labels
                 need a fill of their own, which they would not inherit inside
                 the group above. It is a few dozen elements; the saving was
                 never there. Routes and markers are drawn for real too: a <use>
                 copy cannot be clicked, and a reader who pans past the edge
                 would find a map whose hops no longer answer. */''}
-          ${[-MAPW, 0, MAPW].map(dx => `<g transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${dots}${originArt}</g>`).join('')}
+          ${[-MAPW, 0, MAPW].map(dx => `<g class="${dx ? 'worldcopy' : ''}" transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${dots}${originArt}</g>`).join('')}
         </svg>
         ${(() => {
           // Nothing on this map is self-evident: a thick grey line and a thin
@@ -855,10 +855,37 @@
             .forEach(x => x.classList.add('onpath'));
         });
       };
+      // Clicking a hop goes to it; clicking it again comes back.
+      //
+      // A dot on a world map is a few pixels wide and a reader who wants to
+      // know where it is has to zoom, then find their way back out. The same
+      // click does both, because the second click on a thing you are already
+      // looking at can only mean you have finished looking at it.
+      let zoomedOn = null;
+      const CLOSE = MAPW / 9;
       el.querySelectorAll('.hop').forEach(c => {
         const id = c.getAttribute('data-hop');
         c.addEventListener('mouseenter', () => showHop(id));
-        c.addEventListener('click', () => { showHop(id); litRoute(routeOf(id)); });
+        c.addEventListener('click', () => {
+          showHop(id);
+          litRoute(routeOf(id));
+          const pz = FS.panZoomHandle;
+          const n = byId[id];
+          // Decide what can happen before recording that it did. Arming the
+          // toggle first meant a click that could not move anywhere -- no
+          // handle yet, or a hop with no position -- still counted, so the
+          // next click on that hop came back out of a zoom that never
+          // happened.
+          if (!pz || !n || !n.located) { zoomedOn = null; return; }
+          if (zoomedOn === id) {
+            zoomedOn = null;
+            pz.reset();
+            return;
+          }
+          zoomedOn = id;
+          const [nx, ny] = xy(n);
+          pz.moveTo(pz.nearest(nx), ny, CLOSE);
+        });
       });
 
       // A step in the trail and its dot on the map are the same hop, so
@@ -936,6 +963,14 @@
           sized.forEach(c => c.setAttribute('r', (parseFloat(c.getAttribute('data-r')) / z).toFixed(2)));
         }
       });
+      // Moving the map by hand means you are no longer looking at whatever
+      // was clicked, so the next click on it should take you there rather
+      // than pretend to bring you back.
+      if (svg) {
+        svg.addEventListener('wheel', () => { zoomedOn = null; }, { passive: true });
+        svg.addEventListener('pointerdown', () => { zoomedOn = null; });
+      }
+
       const go = () => {
         const p = [];
         const c = FS.$('#f-country', el).value, la = FS.$('#f-lat', el).value,
@@ -952,7 +987,10 @@
         if (c) c.onchange = go;
       });
       FS.$('#f-clear', el).onclick = () => FS.go('paths');
-      FS.$('#f-reset', el).onclick = () => FS.panZoomHandle && FS.panZoomHandle.reset();
+      FS.$('#f-reset', el).onclick = () => {
+        zoomedOn = null;
+        if (FS.panZoomHandle) FS.panZoomHandle.reset();
+      };
     }
   });
 

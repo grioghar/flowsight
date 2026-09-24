@@ -327,17 +327,30 @@ FS.panZoom = (svg, w, h, opts) => {
     while (view.x + view.w / 2 >= w) view.x -= w;
   };
   const apply = () => {
+    if (opts.wrapX) {
+      // Wider than one world: there is nothing either side to pan to, so the
+      // world is centred and the copies are taken away.
+      const whole = view.w > w + 0.5;
+      if (whole) {
+        view.x = (w - view.w) / 2;
+        view.y = (h - view.h) / 2;
+      }
+      svg.classList.toggle('whole', whole);
+    }
     svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     const z = w / view.w;
     svg.style.setProperty('--z', z);
     if (onZoom) onZoom(z);
   };
-  // How far out you may zoom. On a map that wraps, one world is the limit:
-  // any wider and the copies that make the wrap work come into view, and the
-  // same place is on screen twice. Somewhere that does not wrap has no such
-  // problem and keeps the old room to pull back from its content.
-  const maxOut = opts.wrapX ? w : w * 4;
-  const clampW = (x) => Math.min(maxOut, Math.max(w / 40, x));
+  // How far out you may zoom.
+  //
+  // Far enough to see the whole thing, and no further. On a wide window that
+  // is wider than one world -- a two-to-one map cannot show pole to pole in a
+  // three-to-one box without it -- so past one world the repeated copies are
+  // hidden and the extra width is empty space. Blank margins are honest;
+  // the same continent at both edges is not.
+  const maxOut = () => opts.wrapX ? Math.max(w, h / aspect()) : w * 4;
+  const clampW = (x) => Math.min(maxOut(), Math.max(w / 40, x));
   // Where a point on screen falls in the drawing, as a fraction of each side.
   const frac = (cx, cy) => {
     const r = svg.getBoundingClientRect();
@@ -458,6 +471,9 @@ FS.panZoom = (svg, w, h, opts) => {
     });
   }
 
+  // Set while a move is in flight, so nothing else moves the view under it.
+  let frame = null;
+
   // Where a full view sits when the box is not the shape of the world.
   //
   // A short, wide window cannot show a two-to-one world whole without either
@@ -465,10 +481,12 @@ FS.panZoom = (svg, w, h, opts) => {
   // must never do. So it crops top and bottom -- but centred on the equator,
   // not anchored to the north pole. Anchored, a wide window lost the whole
   // southern hemisphere: South America and Australia simply were not there.
+  // The whole world, pole to pole, letterboxed rather than cropped.
   const home = () => {
-    view.w = w;
-    view.h = w * aspect();
-    view.x = 0;
+    const a = aspect();
+    view.w = Math.max(w, h / a);
+    view.h = view.w * a;
+    view.x = (w - view.w) / 2;
     view.y = (h - view.h) / 2;
   };
   svg.style.cursor = 'grab';
@@ -479,14 +497,25 @@ FS.panZoom = (svg, w, h, opts) => {
   if (typeof ResizeObserver === 'function') {
     let last = 0;
     new ResizeObserver(() => {
+      // Never while a move is in flight. The observer fires after layout,
+      // which on a fresh page is a moment after the first click may already
+      // have started travelling somewhere -- and putting the view back to the
+      // whole world mid-flight left the animation interpolating towards a
+      // target from a position that no longer existed, landing nowhere near
+      // the hop that was clicked.
+      if (frame) return;
       const a = aspect();
       if (Math.abs(a - last) < 0.0005) return;
-      const grew = last !== 0;
+      const first = last === 0;
       last = a;
-      // Keep what is in the middle in the middle as the shape changes.
-      const cy = view.y + view.h / 2;
-      view.h = view.w * a;
-      view.y = grew ? cy - view.h / 2 : (h - view.h) / 2;
+      if (first || view.w > w + 0.5) {
+        home(); // still showing everything; keep showing everything
+      } else {
+        // Keep what is in the middle in the middle as the shape changes.
+        const cy = view.y + view.h / 2;
+        view.h = view.w * a;
+        view.y = cy - view.h / 2;
+      }
       apply();
     }).observe(svg);
   }
@@ -499,7 +528,6 @@ FS.panZoom = (svg, w, h, opts) => {
   // point: a route from Kansas to Tokyo goes west across the Pacific, and a
   // map that snapped eastward across Europe to get there would be showing the
   // long way round as though it were the short one.
-  let frame = null;
   const stop = () => { if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame); frame = null; };
   const centre = () => [view.x + view.w / 2, view.y + view.h / 2];
   const moveTo = (cx, cy, nw, ms) => {

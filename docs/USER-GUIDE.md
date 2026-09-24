@@ -287,6 +287,11 @@ the antimeridian is drawn as the short hop it is instead of a line across the
 whole map, and a route from here to Asia runs west across the Pacific, which
 is the way the packets went. A key to the marks sits under the map.
 
+**Click a hop to go to it, and click it again to come back.** The map opens
+showing the world pole to pole; a click travels in to the hop you picked, a
+second click on the same hop returns to the whole world, and moving the map by
+hand clears that so the next click travels again. *Reset zoom* also returns.
+
 **Filters** on country, latency, distance in hops and device. Choosing one
 applies it; there is no Apply to press. *Clear* goes back to everything. Wheel to zoom,
 drag to pan, and *Reset zoom* to go back. On a touchscreen or with a pen, one

@@ -12,6 +12,31 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241639
+
+**The map opens pole to pole.** It had been cropping top and bottom on a wide
+window, because a two-to-one world cannot fill a three-to-one box without
+either cropping or repeating, and repeating is the thing this map must never
+do. It now letterboxes instead: the world entire, centred, with empty margins
+either side -- and past one world the copies that make panning seamless are
+taken away, so the margins stay blank rather than filling with the same
+continents again.
+
+**Clicking a hop goes to it. Clicking it again comes back.** A dot on a world
+map is a few pixels across, and a reader who wants to see where it is had to
+zoom in and then find their own way out. The same click does both now, because
+a second click on something you are already looking at can only mean you have
+finished looking at it. Moving the map by hand clears that, since you are no
+longer looking at what you clicked.
+
+Two faults of mine on the way. The toggle was armed before it was known
+whether anything could happen, so a click on a hop with no position -- or
+before the map was ready -- still counted, and the next click came back out of
+a zoom that had never happened. And the observer that keeps the viewBox in
+step with the window fired mid-flight and put the view back to the whole
+world, leaving an animation travelling towards a target from a position that
+no longer existed and landing nowhere near the hop.
+
 ## 0.9.8r202609241631
 
 **You are on the map.** A route's first hops are your own machine and your own

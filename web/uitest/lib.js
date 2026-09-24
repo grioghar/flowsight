@@ -46,6 +46,9 @@ print('plain table OK');
 (function () {
   var attrs = {}, props = {}, handlers = {}, zooms = [];
   var svg = {
+    classList: { _s: {}, add: function (c) { this._s[c] = 1; }, remove: function (c) { delete this._s[c]; },
+      contains: function (c) { return !!this._s[c]; },
+      toggle: function (c, on) { if (on === undefined) on = !this._s[c]; if (on) this.add(c); else this.remove(c); return on; } },
     style: { setProperty: function (k, v) { props[k] = v; } },
     setAttribute: function (k, v) { attrs[k] = v; },
     addEventListener: function (n, f) { handlers[n] = f; },
@@ -75,7 +78,8 @@ print('plain table OK');
   if (zooms[zooms.length - 1] !== 1) throw new Error('reset must publish a factor of 1');
 
   // A caller that wants none of this must still work.
-  var plain = { style: { setProperty: function () {} }, setAttribute: function () {},
+  var plain = { classList: { toggle: function () {}, add: function () {}, remove: function () {}, contains: function () { return false; } },
+    style: { setProperty: function () {} }, setAttribute: function () {},
     addEventListener: function () {}, getBoundingClientRect: function () { return {}; } };
   window.addEventListener = function () {};
   if (!FS.panZoom(plain, 720, 360)) throw new Error('panZoom must still work without a callback');
@@ -88,6 +92,9 @@ print('plain table OK');
 (function () {
   var attrs = {}, handlers = {}, captured = {};
   var svg = {
+    classList: { _s: {}, add: function (c) { this._s[c] = 1; }, remove: function (c) { delete this._s[c]; },
+      contains: function (c) { return !!this._s[c]; },
+      toggle: function (c, on) { if (on === undefined) on = !this._s[c]; if (on) this.add(c); else this.remove(c); return on; } },
     style: { setProperty: function () {} },
     setAttribute: function (k, v) { attrs[k] = v; },
     addEventListener: function (n, f) { handlers[n] = f; },
@@ -157,6 +164,9 @@ print('plain table OK');
 (function () {
   var attrs = {}, handlers = {};
   var svg = {
+    classList: { _s: {}, add: function (c) { this._s[c] = 1; }, remove: function (c) { delete this._s[c]; },
+      contains: function (c) { return !!this._s[c]; },
+      toggle: function (c, on) { if (on === undefined) on = !this._s[c]; if (on) this.add(c); else this.remove(c); return on; } },
     style: { setProperty: function () {} },
     setAttribute: function (k, v) { attrs[k] = v; },
     addEventListener: function (n, f) { handlers[n] = f; },
@@ -227,6 +237,9 @@ print('plain table OK');
 (function () {
   var attrs = {}, handlers = {}, boxH = 240, boxW = 720;
   var svg = {
+    classList: { _s: {}, add: function (c) { this._s[c] = 1; }, remove: function (c) { delete this._s[c]; },
+      contains: function (c) { return !!this._s[c]; },
+      toggle: function (c, on) { if (on === undefined) on = !this._s[c]; if (on) this.add(c); else this.remove(c); return on; } },
     style: { setProperty: function () {} },
     setAttribute: function (k, v) { attrs[k] = v; },
     addEventListener: function (n, f) { handlers[n] = f; },
@@ -243,13 +256,21 @@ print('plain table OK');
   var v = box();
   if (Math.abs(v[3] / v[2] - boxH / boxW) > 0.001)
     throw new Error('viewBox shape does not match the box: ' + v.join(' '));
-  // Exactly one world wide, never more.
-  if (Math.abs(v[2] - 720) > 0.001) throw new Error('a full view should be one world wide, got ' + v[2]);
-  // Cropped about the equator, not from the pole.
-  var mid = v[1] + v[3] / 2;
-  if (Math.abs(mid - 180) > 0.001)
-    throw new Error('a cropped view should centre on the equator, got ' + mid);
-  if (v[1] <= 0) throw new Error('a short box should crop the top as well as the bottom: y=' + v[1]);
+  // A full view is the whole world, pole to pole. In a box wider than the
+  // world's own proportions that needs more width than one world, so the
+  // world is centred, the margins are blank, and the copies either side are
+  // taken away -- blank margins are honest, the same continent at both edges
+  // is not.
+  if (Math.abs(v[3] - 360) > 0.001) throw new Error('a full view should be pole to pole, got height ' + v[3]);
+  if (Math.abs((v[1] + v[3] / 2) - 180) > 0.001) throw new Error('the world should be centred vertically');
+  if (Math.abs((v[0] + v[2] / 2) - 360) > 0.001) throw new Error('the world should be centred horizontally');
+  if (!(v[2] > 720)) throw new Error('a wide box needs more width than one world to show it all: ' + v[2]);
+  if (!svg.classList.contains('whole')) throw new Error('past one world the copies must be hidden');
+  // Zoomed back in, the copies return or panning tears at the seam.
+  handlers.wheel({ preventDefault: function () {}, deltaY: -1, clientX: 360, clientY: 120 });
+  handlers.wheel({ preventDefault: function () {}, deltaY: -1, clientX: 360, clientY: 120 });
+  if (box()[2] <= 720 && svg.classList.contains('whole'))
+    throw new Error('inside one world the copies must come back');
 
   // Zoom keeps the shape.
   handlers.wheel({ preventDefault: function () {}, deltaY: -1, clientX: 360, clientY: 120 });

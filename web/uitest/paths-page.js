@@ -118,8 +118,14 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // a <use> copy cannot be clicked.
   var circles = (h.match(/class="hop /g) || []).length;
   if (circles !== 15) throw new Error('want 5 located nodes across 3 copies of the world, got ' + circles);
-  if ((h.match(/<use href="#fs-world"/g) || []).length !== 3)
+  if ((h.match(/href="#fs-world"/g) || []).length !== 3)
     throw new Error('the backdrop should be referenced three times, not redrawn');
+  // The copies either side are marked so they can be taken away when the view
+  // is wider than one world and there is nothing out there to show.
+  if ((h.match(/<use class="worldcopy"/g) || []).length !== 2)
+    throw new Error('both backdrop copies should be marked as copies');
+  if ((h.match(/<g class="worldcopy"/g) || []).length !== 2)
+    throw new Error('both route copies should be marked as copies');
   if ((h.match(/<path class="land"/g) || []).length !== 1)
     throw new Error('the land outline must be drawn once and referenced, not tripled');
   // A <use> shadow copy is not reached by `.pathmap .land`, so the styling has
