@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240728
+
+**Rules saved from the Enrollment page or the API now take effect straight
+away.** Saving rules read each rule's name, zone and explanation as if they
+were conditions to match. Since conditions FlowSight does not recognise now
+match nothing, every saved rule matched no device, and every device was
+classified as unidentified until the daemon restarted and read the file
+again. Saved rules are now read exactly as the file is at startup. Nothing
+to do: if you saved rules and then restarted to make them work, they were
+already correct on disk.
+
 ## 0.9.8r202609240721
 
 **The map had nodes and no lines between them.** Legs refer to nodes by an
