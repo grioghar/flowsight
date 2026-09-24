@@ -335,13 +335,312 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
-// Export FS.space for further use
+// Export FS.space and add format parsers
 if (!FS.space) {
-  FS.space = {
-    parseGLB(data) {
-      // Placeholder: parse GLB format
-      // Returns { vertices, triangles, mesh }
-      return { vertices: 0, triangles: 0 };
+  FS.space = {};
+}
+
+// GLB parser: handles glTF 2.0 binary format
+FS.space.parseGLB = function(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+
+  // Read header (20 bytes)
+  const magic = view.getUint32(0, true);
+  if (magic !== 0x46546c67) { // 'glTF'
+    throw new Error('Invalid GLB magic');
+  }
+
+  const version = view.getUint32(4, true);
+  if (version !== 2) {
+    throw new Error('Unsupported GLB version: ' + version);
+  }
+
+  const totalLength = view.getUint32(8, true);
+
+  // Parse chunks
+  let offset = 12;
+  let jsonData = null;
+  let binData = null;
+
+  while (offset < totalLength) {
+    const chunkLength = view.getUint32(offset, true);
+    const chunkType = view.getUint32(offset + 4, true);
+    const chunkStart = offset + 8;
+
+    if (chunkType === 0x4e4f534a) { // 'JSON'
+      const jsonBytes = new Uint8Array(arrayBuffer, chunkStart, chunkLength);
+      const jsonStr = new TextDecoder().decode(jsonBytes);
+      jsonData = JSON.parse(jsonStr);
+    } else if (chunkType === 0x004e4942) { // 'BIN\0'
+      binData = new ArrayBuffer(chunkLength);
+      const binView = new Uint8Array(binData);
+      const srcView = new Uint8Array(arrayBuffer, chunkStart, chunkLength);
+      binView.set(srcView);
     }
+
+    offset += 8 + chunkLength;
+  }
+
+  if (!jsonData || !binData) {
+    throw new Error('Missing JSON or BIN chunk');
+  }
+
+  // Parse the glTF structure
+  return parseGltfData(jsonData, binData);
+};
+
+function parseGltfData(json, binData) {
+  const result = {
+    vertices: 0,
+    triangles: 0,
+    positions: [],
+    normals: [],
+    indices: [],
+    meshes: [],
+    materials: json.materials || [],
+    texture: null
+  };
+
+  // Helper: read accessor data
+  function getAccessor(accessorIdx) {
+    if (!json.accessors || !json.accessors[accessorIdx]) return null;
+    const acc = json.accessors[accessorIdx];
+    const bufView = json.bufferViews[acc.bufferView];
+    const offset = (bufView.byteOffset || 0) + (acc.byteOffset || 0);
+
+    const TypedArray = {
+      5120: Int8Array,    // BYTE
+      5121: Uint8Array,   // UNSIGNED_BYTE
+      5122: Int16Array,   // SHORT
+      5123: Uint16Array,  // UNSIGNED_SHORT
+      5125: Uint32Array,  // UNSIGNED_INT
+      5126: Float32Array  // FLOAT
+    }[acc.componentType];
+
+    const componentCount = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 }[acc.type];
+    const count = acc.count;
+    const data = new TypedArray(binData, offset, count * componentCount);
+
+    return { data, count, componentCount };
+  }
+
+  // Parse meshes
+  if (json.meshes) {
+    json.meshes.forEach((mesh, meshIdx) => {
+      const meshData = {
+        primitives: [],
+        positions: new Float32Array(0),
+        normals: new Float32Array(0),
+        indices: new Uint32Array(0),
+        triangles: 0
+      };
+
+      if (mesh.primitives) {
+        mesh.primitives.forEach(prim => {
+          const posAccessor = getAccessor(prim.attributes.POSITION);
+          const posData = posAccessor.data;
+
+          let normals = null;
+          if (prim.attributes.NORMAL !== undefined) {
+            const normAccessor = getAccessor(prim.attributes.NORMAL);
+            normals = normAccessor.data;
+          }
+
+          let indices = null;
+          let indexCount = 0;
+          if (prim.indices !== undefined) {
+            const idxAccessor = getAccessor(prim.indices);
+            indices = new Uint32Array(idxAccessor.data);
+            indexCount = idxAccessor.count;
+          } else {
+            indexCount = posAccessor.count;
+          }
+
+          meshData.primitives.push({
+            positions: posData,
+            normals: normals,
+            indices: indices,
+            indexCount: indexCount
+          });
+
+          result.vertices += posAccessor.count;
+          result.triangles += Math.floor(indexCount / 3);
+          meshData.triangles += Math.floor(indexCount / 3);
+        });
+      }
+
+      result.meshes.push(meshData);
+    });
+  }
+
+  return result;
+}
+
+// OBJ parser
+FS.space.parseOBJ = function(text) {
+  const lines = text.split('\n');
+  const positions = [];
+  const normals = [];
+  const indices = [];
+  const vertices = new Map(); // "x,y,z" -> index
+  let vertexCount = 0;
+
+  lines.forEach(line => {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length === 0 || parts[0].startsWith('#')) return;
+
+    if (parts[0] === 'v') {
+      positions.push(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3]));
+    } else if (parts[0] === 'vn') {
+      normals.push(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3]));
+    } else if (parts[0] === 'f') {
+      // Parse face (triangulate quads)
+      const faceIndices = [];
+      for (let i = 1; i < parts.length; i++) {
+        const vertexStr = parts[i];
+        const refs = vertexStr.split('/');
+        const posIdx = parseInt(refs[0]) - 1; // OBJ uses 1-based indexing
+
+        const key = posIdx.toString();
+        let outIdx = vertices.get(key);
+        if (outIdx === undefined) {
+          outIdx = vertexCount++;
+          vertices.set(key, outIdx);
+        }
+        faceIndices.push(outIdx);
+      }
+
+      // Triangulate if needed
+      for (let i = 1; i < faceIndices.length - 1; i++) {
+        indices.push(faceIndices[0], faceIndices[i], faceIndices[i + 1]);
+      }
+    }
+  });
+
+  return {
+    vertices: vertexCount,
+    triangles: Math.floor(indices.length / 3),
+    positions: new Float32Array(positions),
+    normals: normals.length > 0 ? new Float32Array(normals) : null,
+    indices: new Uint32Array(indices)
+  };
+};
+
+// PLY parser (ASCII and binary little-endian)
+FS.space.parsePLY = function(data) {
+  let text = data;
+  if (data instanceof ArrayBuffer) {
+    text = new TextDecoder().decode(new Uint8Array(data));
+  }
+
+  const lines = text.split('\n');
+  let headerEnd = 0;
+  let format = 'ascii';
+  let vertexCount = 0;
+  let vertexProps = [];
+
+  // Parse header
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line === 'end_header') {
+      headerEnd = i + 1;
+      break;
+    }
+    if (line.startsWith('format ')) {
+      format = line.split(/\s+/)[1];
+    } else if (line.startsWith('element vertex ')) {
+      vertexCount = parseInt(line.split(/\s+/)[2]);
+    } else if (line.startsWith('property ')) {
+      const parts = line.split(/\s+/);
+      vertexProps.push({ type: parts[1], name: parts[2] });
+    }
+  }
+
+  if (format === 'ascii' || format.startsWith('binary_little_endian')) {
+    return parsePLYAscii(lines.slice(headerEnd), vertexCount, vertexProps);
+  } else {
+    throw new Error('Unsupported PLY format: ' + format);
+  }
+};
+
+function parsePLYAscii(dataLines, vertexCount, vertexProps) {
+  const positions = [];
+  const normals = [];
+
+  for (let i = 0; i < vertexCount && i < dataLines.length; i++) {
+    const parts = dataLines[i].trim().split(/\s+/);
+
+    if (vertexProps.length >= 3) {
+      // Assume first 3 are x, y, z
+      positions.push(parseFloat(parts[0]), parseFloat(parts[1]), parseFloat(parts[2]));
+
+      // Look for normals
+      if (vertexProps.length >= 6 && vertexProps[3].name === 'nx') {
+        normals.push(parseFloat(parts[3]), parseFloat(parts[4]), parseFloat(parts[5]));
+      }
+    }
+  }
+
+  return {
+    vertices: Math.floor(positions.length / 3),
+    triangles: 0,
+    positions: new Float32Array(positions),
+    normals: normals.length > 0 ? new Float32Array(normals) : null,
+    indices: new Uint32Array([])
   };
 }
+
+// RoomPlan JSON parser: convert to extruded boxes
+FS.space.parseRoomPlan = function(json) {
+  if (typeof json === 'string') {
+    json = JSON.parse(json);
+  }
+
+  const positions = [];
+  const indices = [];
+  let vertexCount = 0;
+
+  // Create extruded boxes for each object
+  if (json.objects && Array.isArray(json.objects)) {
+    json.objects.forEach(obj => {
+      const w = (obj.dimensions?.width || 1000) / 1000;
+      const d = (obj.dimensions?.depth || 1000) / 1000;
+      const h = (obj.dimensions?.height || 2000) / 1000;
+      const x = (obj.center?.x || 0) / 1000;
+      const y = (obj.center?.y || 0) / 1000;
+      const z = (obj.center?.z || 0) / 1000;
+
+      const ox = x - w / 2, ox2 = x + w / 2;
+      const oy = y - d / 2, oy2 = y + d / 2;
+      const oz = z, oz2 = z + h;
+
+      const boxVerts = [
+        ox, oy, oz,   ox2, oy, oz,  ox2, oy2, oz, ox, oy2, oz,  // bottom
+        ox, oy, oz2,  ox2, oy, oz2, ox2, oy2, oz2, ox, oy2, oz2 // top
+      ];
+
+      const base = vertexCount;
+      positions.push(...boxVerts);
+      vertexCount += 8;
+
+      const boxIndices = [
+        base, base+1, base+2, base, base+2, base+3,         // bottom
+        base+4, base+6, base+5, base+4, base+7, base+6,     // top
+        base, base+4, base+5, base, base+5, base+1,         // front
+        base+2, base+6, base+7, base+2, base+7, base+3,     // back
+        base+1, base+5, base+6, base+1, base+6, base+2,     // right
+        base+3, base+7, base+4, base+3, base+4, base+0      // left
+      ];
+
+      indices.push(...boxIndices);
+    });
+  }
+
+  return {
+    vertices: vertexCount,
+    triangles: Math.floor(indices.length / 3),
+    positions: new Float32Array(positions),
+    normals: null,
+    indices: new Uint32Array(indices)
+  };
+};
