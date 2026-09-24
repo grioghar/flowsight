@@ -2,6 +2,7 @@ package enroll
 
 import (
 	"net"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -498,4 +499,53 @@ func TestUnknownConditionDoesNotMatch(t *testing.T) {
 	if m.matchCondition("not_a_real_condition", []interface{}{"x"}, &Device{Vendor: "Tuya"}, nil) {
 		t.Error("an unknown condition key must not match")
 	}
+}
+
+// Rules saved through the API or UI must be parsed the same way as rules read
+// from disk. apiSetRules once used the whole rule as its conditions; with
+// unrecognised keys failing closed that matched nothing, so every device fell
+// into the captive zone until the next restart reread the file.
+func TestSetRulesThroughAPIUsesWhenObject(t *testing.T) {
+	dir := t.TempDir()
+	m := &Module{ctx: &core.Context{Platform: &core.Platform{EtcDir: dir}}}
+	body := []byte(`{"rules":[
+      {"id":"hypervisor-guest","zone":"infra","confidence":"high","why":"a guest",
+       "when":{"guest_kind":["vm","ct","node"]}},
+      {"id":"iot-vendor","zone":"iot","confidence":"high","why":"a gadget",
+       "when":{"vendor":["Tuya","Roku","Reolink"]}}]}`)
+	req := core.NewReq(httptest.NewRequest("POST", "/api/enroll/rules", nil), "admin", "127.0.0.1", body)
+	if _, err := m.apiSetRules(req); err != nil {
+		t.Fatalf("apiSetRules: %v", err)
+	}
+
+	check := func(label string) {
+		t.Helper()
+		if len(m.rules) != 2 {
+			t.Fatalf("%s: want 2 rules, got %d", label, len(m.rules))
+		}
+		for _, r := range m.rules {
+			for _, leaked := range []string{"id", "zone", "confidence", "why", "when"} {
+				if _, ok := r.When[leaked]; ok {
+					t.Errorf("%s: rule %s: %q leaked into the conditions", label, r.ID, leaked)
+				}
+			}
+		}
+		hub := &Device{MAC: "ec:71:db:00:00:01", Vendor: "Reolink Innovation Limited"}
+		zone, rule, _, _ := m.classify(hub, nil)
+		if zone != "iot" || rule != "iot-vendor" {
+			t.Errorf("%s: Reolink classified as zone %q rule %q, want iot / iot-vendor", label, zone, rule)
+		}
+		vm := &Device{MAC: "bc:24:11:00:00:01", GuestKind: "vm"}
+		if zone, rule, _, _ := m.classify(vm, nil); zone != "infra" || rule != "hypervisor-guest" {
+			t.Errorf("%s: VM classified as zone %q rule %q, want infra / hypervisor-guest", label, zone, rule)
+		}
+	}
+	check("after POST")
+
+	// What was saved must load back to the same rules.
+	m.rules = nil
+	if err := m.loadRules(); err != nil {
+		t.Fatalf("loadRules: %v", err)
+	}
+	check("after reload")
 }

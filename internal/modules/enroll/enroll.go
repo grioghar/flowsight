@@ -340,47 +340,57 @@ func (m *Module) loadRules() error {
 		return fmt.Errorf("parse rules: %w", err)
 	}
 
-	rules := []*Rule{}
-	if rulesRaw, ok := doc["rules"].([]interface{}); ok {
-		for _, r := range rulesRaw {
-			ruleMap, ok := r.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			// The conditions are the "when" object, not the rule that
-			// contains it. Assigning the whole rule put id, zone, confidence
-			// and why alongside the real conditions; combined with an
-			// unrecognised key counting as a match, every rule matched every
-			// device and the first one won. On a live network that classified
-			// all 106 devices as infrastructure.
-			rule := &Rule{}
-			if when, ok := ruleMap["when"].(map[string]interface{}); ok {
-				rule.When = when
-			}
-			if id, ok := ruleMap["id"].(string); ok {
-				rule.ID = id
-			}
-			if zone, ok := ruleMap["zone"].(string); ok {
-				rule.Zone = zone
-			}
-			if conf, ok := ruleMap["confidence"].(string); ok {
-				rule.Confidence = conf
-			}
-			if why, ok := ruleMap["why"].(string); ok {
-				rule.Why = why
-			}
-
-			// Validate regexes
-			if err := m.validateRuleRegexes(rule); err != nil {
-				return fmt.Errorf("rule %s: %w", rule.ID, err)
-			}
-
-			rules = append(rules, rule)
-		}
+	rules, err := m.parseRules(doc)
+	if err != nil {
+		return err
 	}
 
 	m.rules = rules
 	return nil
+}
+
+// parseRules turns a rules document, as read from enroll-rules.json or
+// posted to the API, into rules. Both paths must share it: the conditions are
+// the "when" object, not the rule that contains it. Assigning the whole rule
+// put id, zone, confidence and why alongside the real conditions; combined
+// with an unrecognised key counting as a match, every rule matched every
+// device and the first one won. On a live network that classified all 106
+// devices as infrastructure. Now that unrecognised keys fail closed, the same
+// mistake would instead match nothing and send every device to the captive
+// zone.
+func (m *Module) parseRules(doc map[string]interface{}) ([]*Rule, error) {
+	rules := []*Rule{}
+	rulesRaw, _ := doc["rules"].([]interface{})
+	for _, r := range rulesRaw {
+		ruleMap, ok := r.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		rule := &Rule{}
+		if when, ok := ruleMap["when"].(map[string]interface{}); ok {
+			rule.When = when
+		}
+		if id, ok := ruleMap["id"].(string); ok {
+			rule.ID = id
+		}
+		if zone, ok := ruleMap["zone"].(string); ok {
+			rule.Zone = zone
+		}
+		if conf, ok := ruleMap["confidence"].(string); ok {
+			rule.Confidence = conf
+		}
+		if why, ok := ruleMap["why"].(string); ok {
+			rule.Why = why
+		}
+
+		// Validate regexes
+		if err := m.validateRuleRegexes(rule); err != nil {
+			return nil, fmt.Errorf("rule %s: %w", rule.ID, err)
+		}
+
+		rules = append(rules, rule)
+	}
+	return rules, nil
 }
 
 func (m *Module) validateRuleRegexes(rule *Rule) error {
@@ -1018,34 +1028,9 @@ func (m *Module) apiSetRules(r *core.Req) (any, error) {
 		return nil, err
 	}
 
-	rules := []*Rule{}
-	if rulesRaw, ok := doc["rules"].([]interface{}); ok {
-		for _, r := range rulesRaw {
-			ruleMap, ok := r.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			rule := &Rule{When: ruleMap}
-			if id, ok := ruleMap["id"].(string); ok {
-				rule.ID = id
-			}
-			if zone, ok := ruleMap["zone"].(string); ok {
-				rule.Zone = zone
-			}
-			if conf, ok := ruleMap["confidence"].(string); ok {
-				rule.Confidence = conf
-			}
-			if why, ok := ruleMap["why"].(string); ok {
-				rule.Why = why
-			}
-
-			// Validate regexes
-			if err := m.validateRuleRegexes(rule); err != nil {
-				return nil, fmt.Errorf("rule %s: %w", rule.ID, err)
-			}
-
-			rules = append(rules, rule)
-		}
+	rules, err := m.parseRules(doc)
+	if err != nil {
+		return nil, err
 	}
 
 	m.mu.Lock()

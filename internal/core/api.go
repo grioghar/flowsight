@@ -165,6 +165,12 @@ func (r *Req) Body() map[string]any {
 // Raw returns the raw body bytes.
 func (r *Req) Raw() []byte { return r.body }
 
+// NewReq builds a request carrying body, for calling handlers directly (tests,
+// or a listener outside the API server) the way the server itself would.
+func NewReq(r *http.Request, user, client string, body []byte) *Req {
+	return &Req{Request: r, User: user, Client: client, body: body}
+}
+
 // Setup ---------------------------------------------------------------------
 
 func NewAPI(core *Core, static fs.FS, log *slog.Logger) *API {
