@@ -30,6 +30,8 @@ type Module struct {
 	seenAt  map[string]map[string]int64 // mac -> address -> last seen
 	vendors map[string]string           // oui -> vendor
 	leases  map[string]Lease            // mac -> lease
+	everMAC map[string]string           // ip -> mac, from every source that ever recorded one; does not decay
+	macName map[string]string           // mac -> a name learned on any of its addresses
 	nets    []*net.IPNet
 	netStrs []string
 	updated time.Time
@@ -103,13 +105,31 @@ func (m *Module) Name(ip string) string {
 	if n := m.names[ip]; n != "" {
 		return n
 	}
+	// A device has one name whichever address it is using; an address that
+	// has fallen out of the live tables still belongs to the device it did.
+	if mac := m.macs[ip]; mac != "" {
+		if n := m.macName[mac]; n != "" {
+			return n
+		}
+	}
+	if mac := m.everMAC[ip]; mac != "" {
+		return m.macName[mac]
+	}
 	return ""
 }
 
+// MAC is the hardware address behind an IP. The live tables answer first;
+// failing that, whatever any module ever recorded in the hosts table. That
+// second answer does not age: an IPv6 privacy address that belonged to a
+// laptop a fortnight ago still belonged to it then, and the traffic it sent
+// is that laptop's however long ago the address rotated away.
 func (m *Module) MAC(ip string) string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.macs[ip]
+	if mac := m.macs[ip]; mac != "" {
+		return mac
+	}
+	return m.everMAC[ip]
 }
 
 func (m *Module) Vendor(mac string) string {
@@ -254,6 +274,46 @@ func (m *Module) saveSeen() {
 	_ = m.ctx.Store.KVSet(seenKV, out)
 }
 
+// durable is the association nothing should forget: every address the hosts
+// table has a hardware address for, and the best name known for each
+// hardware address from any of its addresses. The memory window above says
+// which addresses a device holds now; this says which device an address
+// belonged to, which is a fact about the past and does not expire. Called
+// with the module lock held.
+func (m *Module) durable(names, macs map[string]string) (everMAC, macName map[string]string) {
+	everMAC, macName = map[string]string{}, map[string]string{}
+	if m.ctx == nil || m.ctx.Store == nil {
+		return
+	}
+	rows, _ := m.ctx.Store.Rows(`SELECT ip, mac, name FROM hosts WHERE mac IS NOT NULL AND mac <> ''`)
+	for _, r := range rows {
+		ip, _ := r["ip"].(string)
+		mac, _ := r["mac"].(string)
+		name, _ := r["name"].(string)
+		mac = strings.ToLower(strings.TrimSpace(mac))
+		if ip == "" || mac == "" {
+			continue
+		}
+		everMAC[ip] = mac
+		if name != "" && macName[mac] == "" {
+			macName[mac] = name
+		}
+	}
+	// Names learned live (leases, reservations, the device table) outrank
+	// whatever the hosts row happened to record.
+	for ip, mac := range macs {
+		if n := names[ip]; n != "" && mac != "" {
+			macName[mac] = n
+		}
+	}
+	for ip, mac := range everMAC {
+		if n := names[ip]; n != "" {
+			macName[mac] = n
+		}
+	}
+	return
+}
+
 func (m *Module) memoryCutoff() int64 {
 	hours := core.Int(m.ctx.Settings(), "address_memory_hours", 24)
 	if hours < 1 {
@@ -298,9 +358,18 @@ func (m *Module) Addresses(ip string) []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	list := append([]string(nil), m.ips[mac]...)
+	// Every address the device has ever been recorded with, current or not:
+	// filtering by a device has to reach the traffic it sent from addresses
+	// it no longer holds.
+	for other, om := range m.everMAC {
+		if om == mac && !contains(list, other) {
+			list = append(list, other)
+		}
+	}
 	if !contains(list, ip) {
 		list = append(list, ip)
 	}
+	sort.Strings(list)
 	return list
 }
 
@@ -469,6 +538,7 @@ func (m *Module) refresh() error {
 		}
 	}
 	m.names, m.macs, m.ips, m.leases, m.static = names, macs, ips, leases, static
+	m.everMAC, m.macName = m.durable(names, macs)
 	m.nets = nets
 	m.netStrs = m.netStrs[:0]
 	for _, n := range nets {

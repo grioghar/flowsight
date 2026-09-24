@@ -12,6 +12,20 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242015
+
+**IPv6 addresses stay with their device.** Which addresses a device holds
+*now* comes from the neighbour table and the leases, remembered for a day
+because privacy addresses rotate. Which device an address *belonged to* is a
+different question, and it does not expire: an IPv6 address a laptop used a
+fortnight ago was that laptop's, and the traffic it sent is that laptop's.
+Identity now answers the second question from every hardware address any
+module ever recorded against an address, and carries the device's name to
+it. The Map's device list had 79 entries that were bare IPv6 addresses --
+including several that were the same MacBook -- and the trail's *inside*
+address could go unnamed; both now resolve to the device, and filtering by a
+device reaches the traffic it sent from addresses it no longer holds.
+
 ## 0.9.8r202609242011
 
 **A CPU profile over the API.** `GET /api/system/profile?kind=cpu&seconds=10`
