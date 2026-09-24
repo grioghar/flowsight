@@ -50,6 +50,11 @@ A lock next to a menu entry means the same.
 
 ### Overview
 
+Each row under *Top sites* carries a *map* link: the route, on the Map page,
+to the endpoint that served the site (the one with a measured route where
+there is one, else the busiest). A dashed link means the map has not traced
+that endpoint yet; it will when it can.
+
 The network at a glance for the window: throughput inbound and outbound
 (shown separately, both in the figure and in the chart), active hosts,
 sessions, applications, DNS queries, blocked requests. Charts of

@@ -600,3 +600,10 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .f h4.fsec:first-child { margin-top: 2px; }
 /* The traffic mode in the key: a switch for a way of reading, not a layer. */
 .legend.onmap button.lgmode[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* A second, smaller link on a bar row: the same site on another page. */
+.barrow .maplink { margin-left: 6px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase;
+  padding: 0 6px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); text-decoration: none; }
+.barrow .maplink:hover { color: var(--accent, #4c8dff); border-color: var(--accent, #4c8dff); }
+.barrow .maplink.untraced { border-style: dashed; }
+

@@ -701,6 +701,7 @@ func (m *Module) apiTop(r *core.Req) (any, error) {
 	domains, _ := st.Rows(`SELECT domain, MAX(category) AS category, SUM(bytes_in) AS bytes_in,
 		SUM(bytes_out) AS bytes_out, SUM(flows) AS flows, COUNT(DISTINCT src_ip) AS hosts
 		FROM rollup_domain WHERE bucket>=? GROUP BY domain ORDER BY bytes_in+bytes_out DESC LIMIT ?`, since, limit)
+	m.endpointsFor(domains, since)
 	dsts, _ := st.Rows(`SELECT dst_ip AS ip, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out,
 		SUM(flows) AS flows, COUNT(DISTINCT src_ip) AS hosts FROM rollup_dst WHERE bucket>=?
 		GROUP BY dst_ip ORDER BY bytes_in+bytes_out DESC LIMIT ?`, since, limit)
@@ -718,6 +719,80 @@ func (m *Module) apiTop(r *core.Req) (any, error) {
 	m.decorate(blocked, "ip", "name")
 	return map[string]any{"hosts": hosts, "apps": apps, "categories": cats, "domains": domains,
 		"destinations": dsts, "blocked": blocked}, nil
+}
+
+// endpointsFor puts, on each top site, the address that site's traffic
+// actually went to -- the endpoint the Map page can show the route to. A
+// site is a name and a route is to an address; the flows join the two. Where
+// several addresses served the name, one with a measured route wins, then
+// the busiest. Rows gain dst_ip and traced; a site nothing can be found for
+// gains nothing.
+func (m *Module) endpointsFor(domains []map[string]any, since int64) {
+	if len(domains) == 0 {
+		return
+	}
+	names := make([]string, 0, len(domains))
+	args := []any{since}
+	ph := make([]string, 0, len(domains))
+	for _, d := range domains {
+		if n, _ := d["domain"].(string); n != "" {
+			names = append(names, n)
+			args = append(args, n)
+			ph = append(ph, "?")
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+	in := strings.Join(ph, ",")
+	rows, err := m.ctx.Store.Rows(`SELECT f.domain AS domain, f.dst_ip AS ip, SUM(f.bytes_in+f.bytes_out) AS b,
+		MAX(CASE WHEN p.dst IS NULL THEN 0 ELSE 1 END) AS traced
+		FROM flows f LEFT JOIN path_runs p ON p.dst = f.dst_ip
+		WHERE f.ts > ? AND f.dst_ip <> '' AND f.domain IN (`+in+`) GROUP BY f.domain, f.dst_ip`, args...)
+	if err != nil {
+		// Without the paths module there is no path_runs table; the busiest
+		// address still answers the question.
+		rows, err = m.ctx.Store.Rows(`SELECT domain, dst_ip AS ip, SUM(bytes_in+bytes_out) AS b, 0 AS traced
+			FROM flows WHERE ts > ? AND dst_ip <> '' AND domain IN (`+in+`) GROUP BY domain, dst_ip`, args...)
+		if err != nil {
+			return
+		}
+	}
+	type pick struct {
+		ip     string
+		b      int64
+		traced bool
+	}
+	best := map[string]pick{}
+	for _, r := range rows {
+		dom, _ := r["domain"].(string)
+		ip, _ := r["ip"].(string)
+		b := asInt64(r["b"])
+		traced := asInt64(r["traced"]) > 0
+		cur, ok := best[dom]
+		if !ok || (traced && !cur.traced) || (traced == cur.traced && b > cur.b) {
+			best[dom] = pick{ip, b, traced}
+		}
+	}
+	for _, d := range domains {
+		if n, _ := d["domain"].(string); n != "" {
+			if p, ok := best[n]; ok {
+				d["dst_ip"], d["traced"] = p.ip, p.traced
+			}
+		}
+	}
+}
+
+func asInt64(v any) int64 {
+	switch x := v.(type) {
+	case int64:
+		return x
+	case int:
+		return int64(x)
+	case float64:
+		return int64(x)
+	}
+	return 0
 }
 
 func (m *Module) apiTimeseries(r *core.Req) (any, error) {

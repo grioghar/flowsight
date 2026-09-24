@@ -36,7 +36,11 @@
         ${card('Top categories', donut((top.categories || []).map(c => ({ label: c.category, value: (c.bytes_in || 0) + (c.bytes_out || 0) })), bytes))}
       </div>
       <div class="grid cols-3" style="margin-top:14px">
-        ${card('Top sites', bars((top.domains || []).map(d => ({ label: d.domain, sub: d.category || '', value: (d.bytes_in || 0) + (d.bytes_out || 0), href: '#flows?domain=' + encodeURIComponent(d.domain) })), bytes))}
+        ${card('Top sites', bars((top.domains || []).map(d => ({ label: d.domain, sub: d.category || '', value: (d.bytes_in || 0) + (d.bytes_out || 0), href: '#flows?domain=' + encodeURIComponent(d.domain),
+          // Where the site's traffic actually went, on the map: the endpoint
+          // with a measured route when there is one, else the busiest.
+          extra: d.dst_ip ? ` <a class="maplink${d.traced ? '' : ' untraced'}" href="#paths?dst=${encodeURIComponent(d.dst_ip)}" title="${d.traced ? 'Route to ' + FS.esc(d.dst_ip) + ' on the map' : FS.esc(d.dst_ip) + ' on the map \u2014 not traced yet; the map will trace it when it can'}">map</a>` : '' })), bytes),
+          'map: the route to the endpoint that served the site')}
         ${card('Blocked', bars((top.blocked || []).map(b => ({ label: (b.name || b.ip) + ' → ' + b.app, value: b.flows, href: '#host/' + b.ip }))) )}
         ${card('DNS', dns.error ? FS.err(dns.error) : `<div class="kv"><dt>Queries</dt><dd>${num((dns.totals || {}).queries)}</dd><dt>Blocked</dt><dd>${num((dns.totals || {}).blocked)} (${FS.pct((dns.totals || {}).blocked, (dns.totals || {}).queries)})</dd><dt>Clients</dt><dd>${num((dns.totals || {}).clients)}</dd><dt>Domains</dt><dd>${num((dns.totals || {}).domains)}</dd></div><div style="margin-top:8px">${bars((dns.blocked || []).slice(0, 5).map(d => ({ label: d.domain, value: d.queries, sub: d.list })))}</div>`)}
       </div>

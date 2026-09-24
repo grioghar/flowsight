@@ -12,6 +12,15 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242025
+
+**Every top site on the Overview links to its endpoint on the Map.** A site
+is a name and a route is to an address; the flows join the two. Each row of
+*Top sites* now carries a small *map* link to the route for the address that
+served the site -- the one with a measured route where there is one,
+otherwise the busiest, drawn dashed when the map has not traced it yet. The
+API row for a site gains `dst_ip` and `traced`.
+
 ## 0.9.8r202609242021
 
 **Arrows show which way the packets went.** Every leg carries a small arrow

@@ -240,7 +240,7 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | GET | `/api/visibility/host` | Everything about one host | hours (window), ip (address) |
 | GET | `/api/visibility/summary` | Throughput, active flows and hosts right now |  |
 | GET | `/api/visibility/timeseries` | Metric series for charts | hours (window), metric (name), step (seconds) |
-| GET | `/api/visibility/top` | Top hosts, applications, categories, destinations | hours (window), limit (rows) |
+| GET | `/api/visibility/top` | Top hosts, applications, categories, sites (each with `dst_ip`, the endpoint that served it, and `traced`), destinations | hours (window), limit (rows) |
 
 ### web
 

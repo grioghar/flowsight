@@ -133,7 +133,7 @@ FS.bars = (rows, fmt) => {
   if (!rows || !rows.length) return FS.empty();
   const max = Math.max(...rows.map(r => Number(r.value) || 0), 1);
   fmt = fmt || FS.num;
-  return rows.map(r => `<div class="barrow"><span class="lab" title="${FS.esc(r.title || r.label)}">${r.href ? `<a href="${r.href}">${FS.esc(r.label)}</a>` : FS.esc(r.label)}${r.sub ? ` <span class="muted small">${FS.esc(r.sub)}</span>` : ''}</span><span class="num">${fmt(r.value)}</span><span class="bar"><i style="width:${Math.max(1, 100 * (Number(r.value) || 0) / max)}%"></i></span></div>`).join('');
+  return rows.map(r => `<div class="barrow"><span class="lab" title="${FS.esc(r.title || r.label)}">${r.href ? `<a href="${r.href}">${FS.esc(r.label)}</a>` : FS.esc(r.label)}${r.sub ? ` <span class="muted small">${FS.esc(r.sub)}</span>` : ''}${r.extra || ''}</span><span class="num">${fmt(r.value)}</span><span class="bar"><i style="width:${Math.max(1, 100 * (Number(r.value) || 0) / max)}%"></i></span></div>`).join('');
 };
 
 // Sortable table. cols: [{k, t, f(row), num, w}]
