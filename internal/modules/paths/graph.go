@@ -61,7 +61,9 @@ type Node struct {
 	ExpectedKM  float64 `json:"expected_km,omitempty"`
 	ExpectedMS  float64 `json:"expected_ms,omitempty"`
 	ExpectedVia string  `json:"expected_via,omitempty"`
-	DistanceKM  float64 `json:"distance_km,omitempty"`
+	// SlackKM is how much the hard verdict allowed for the origin being wrong.
+	SlackKM    float64 `json:"slack_km,omitempty"`
+	DistanceKM float64 `json:"distance_km,omitempty"`
 	// Via names the cable the distance was measured along, when the straight
 	// line was not the honest measure. Empty means the great circle was used.
 	Via     string  `json:"via,omitempty"`

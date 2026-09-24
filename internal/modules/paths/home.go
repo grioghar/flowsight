@@ -161,6 +161,24 @@ func (m *Module) checkPlausible(nodes []Node, h Home) {
 		return
 	}
 	hop := m.hopDelayMS()
+	// How far the origin itself might be wrong.
+	//
+	// Every floor is measured from here, and "here" is usually worked out
+	// from the gateway's own public address -- which is where the carrier
+	// registered the block, not where the wire ends. That is routinely tens
+	// of kilometres out and occasionally hundreds. Calling a placement
+	// impossible on a margin thinner than that error is claiming a precision
+	// the origin does not have: on this network the tightest such verdict was
+	// a hop in Montreal missing its floor by 0.2 ms over 2,000 km, which is
+	// one per cent, and one per cent of the origin is a rounding error.
+	//
+	// So the hard verdict is measured from the nearest point the origin could
+	// honestly be. It only ever withdraws accusations, never adds them, and a
+	// declared origin gets no allowance because the reader said where it is.
+	slack := 0.0
+	if h.Source != "declared" {
+		slack = float64(m.originSlackKM())
+	}
 	for i := range nodes {
 		n := &nodes[i]
 		if !n.Located || n.RTT <= 0 {
@@ -179,10 +197,18 @@ func (m *Module) checkPlausible(nodes []Node, h Home) {
 		// disproved -- it is beating anything anyone has built, which is a
 		// different and softer claim, and the two must not be run together.
 		km, via := m.pathKM(h.Lat, h.Lon, n.Lat, n.Lon)
-		floor := floorMS(km)
 		n.DistanceKM = math.Round(km)
-		n.FloorMS = math.Round(floor*10) / 10
 		n.Via = via
+		// The floor that rules is the one the origin's own uncertainty
+		// allows; the floor that is reported is that same number, so the
+		// arithmetic on screen is the arithmetic that was applied.
+		nearest := km - slack
+		if nearest < 0 {
+			nearest = 0
+		}
+		floor := floorMS(nearest)
+		n.FloorMS = math.Round(floor*10) / 10
+		n.SlackKM = math.Round(slack)
 
 		ekm, evia := m.expectedKM(h.Lat, h.Lon, n.Lat, n.Lon)
 		if ekm < km {
@@ -196,8 +222,8 @@ func (m *Module) checkPlausible(nodes []Node, h Home) {
 		switch {
 		case n.RTT < floor:
 			n.Impossible = true
-			n.Why = fmt.Sprintf("answers in %.1f ms, but %.0f km away%s cannot answer in less than %.0f ms",
-				n.RTT, km, viaPhrase(via), floor)
+			n.Why = fmt.Sprintf("answers in %.1f ms, but %.0f km away%s cannot answer in less than %.0f ms%s",
+				n.RTT, km, viaPhrase(via), floor, slackPhrase(slack))
 		case expected > floor && n.RTT < expected:
 			n.Tight = true
 			n.Why = fmt.Sprintf("answers in %.1f ms, which light allows over %.0f km%s but no built route does: %s comes to %.0f ms, and %d hop%s add %.1f ms more",
@@ -228,4 +254,24 @@ func viaPhrase(via string) string {
 		return ""
 	}
 	return " by the shortest cable route (" + via + ")"
+}
+
+// originSlackKM is how far the origin might be wrong, in kilometres.
+func (m *Module) originSlackKM() int {
+	if m.ctx == nil {
+		return 100
+	}
+	v := core.Int(m.ctx.Settings(), "origin_slack_km", 100)
+	if v < 0 {
+		v = 0
+	}
+	return v
+}
+
+// slackPhrase says that the origin was given the benefit of the doubt.
+func slackPhrase(slack float64) string {
+	if slack <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (measured from %.0f km nearer, in case your own position is out)", slack)
 }

@@ -12,6 +12,28 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241716
+
+**A placement is no longer called impossible on a margin thinner than the
+origin's own error.**
+
+Every floor is measured from your origin, and unless you declared it that
+origin came from the address database -- which is where the carrier registered
+the block, not where the wire ends, routinely tens of kilometres out and
+sometimes hundreds. The tightest verdict on this network was a hop claiming
+Montreal and missing its floor by 0.2 ms over 2,008 km. That is one per cent,
+and one per cent of an origin that is itself a guess is a rounding error, not
+a proof.
+
+The hard verdict is now measured from the nearest point the origin could
+honestly be -- 100 km by default, adjustable, and nothing at all for a
+declared origin, where you have said where you are. It only ever withdraws
+accusations. Those hops are still listed as doubtful; they have simply stopped
+being called disproved.
+
+The tables say when the allowance was made, so the arithmetic shown is the
+arithmetic applied.
+
 ## 0.9.8r202609241708
 
 **The map is shaped like the world.** Two to one, always, so at full zoom-out

@@ -426,9 +426,21 @@ licence and is the one substantial open set; the comprehensive maps of North
 America, Europe and Asia are sold commercially. Sources are a list of URLs, so
 adding one later is a line of configuration.
 
-**Placements the physics rules out.** Light in fibre covers about 200,000 km
-per second, so a round trip cannot beat twice the distance divided by that,
-before any routing detour or equipment delay.
+**Placements the physics rules out.** This one is geometry rather than a guess
+about routing: no path between two points is shorter than the straight line
+over the earth's surface, and nothing in fibre beats about 200,000 km per
+second. Twice that distance divided by that speed is therefore a bound no
+route of any kind can undercut -- not the shortest route FlowSight could find,
+but the shortest that could exist. A reply that beats it means the coordinates
+are wrong, because the round trip is the one thing here that was measured
+directly.
+
+The floor is taken from the nearest point your own origin could honestly be
+(*Settings › paths › Your own position could be wrong by*, 100 km by default,
+and nothing if you declared your location). A shortfall thinner than that
+uncertainty is not counted: calling a placement impossible on a margin
+narrower than the error in your own position would be claiming a precision
+nobody has.
 
 Between continents that distance is measured along the cables rather than
 across the map. Cables follow continental shelves, skirt trenches and come

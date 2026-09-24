@@ -26,8 +26,10 @@ func TestPlausibilityHasThreeVerdicts(t *testing.T) {
 		rtt             float64
 		impossible, tig bool
 	}{
-		{"under the floor is disproved", floor * 0.5, true, false},
-		{"a hair under is still disproved", floor * 0.99, true, false},
+		{"well under the floor is disproved", floor * 0.5, true, false},
+		// A hair under is not disproved, because the origin is not known to a
+		// hair. See TestAMarginThinnerThanTheOriginsOwnErrorIsNotAProof.
+		{"a hair under is inside the origin's own error", floor * 0.99, false, true},
 		{"above the floor but faster than any built route", floor * 1.05, false, true},
 		{"just under what a built route needs", built * 0.98, false, true},
 		{"just over it is accepted", built * 1.02, false, false},
@@ -93,5 +95,54 @@ func TestHopsOfTheirOwnCostTime(t *testing.T) {
 	m.checkPlausible(far, home)
 	if !(far[0].ExpectedMS > near[0].ExpectedMS) {
 		t.Fatalf("twenty hops should cost more than one: %.2f vs %.2f", far[0].ExpectedMS, near[0].ExpectedMS)
+	}
+}
+
+// Every floor is measured from the origin, and unless it was declared the
+// origin came from the address database, which is routinely tens of
+// kilometres out. Calling a placement impossible on a margin thinner than
+// that claims a precision nobody has: the tightest such verdict on a real
+// network missed its floor by 0.2 ms over 2,000 km, which is one per cent,
+// and one per cent of the origin is a rounding error.
+func TestAMarginThinnerThanTheOriginsOwnErrorIsNotAProof(t *testing.T) {
+	m := &Module{}
+	detected := Home{Lat: 39.1836, Lon: -96.5717, OK: true, Source: "public address"}
+	declared := Home{Lat: 39.1836, Lon: -96.5717, OK: true, Source: "declared"}
+	// Montreal: about 2,000 km, so a floor near 20 ms.
+	at := func(rtt float64) []Node {
+		return []Node{{Located: true, Lat: 45.5017, Lon: -73.5673, RTT: rtt, IPs: []string{"1.2.3.4"}}}
+	}
+	km := greatCircleKM(39.1836, -96.5717, 45.5017, -73.5673)
+	floor := floorMS(km)
+
+	// Missing by a fifth of a millisecond over two thousand kilometres.
+	n := at(floor - 0.2)
+	m.checkPlausible(n, detected)
+	if n[0].Impossible {
+		t.Errorf("a %.1f%% shortfall was called impossible from an origin that is only a guess",
+			100*0.2/floor)
+	}
+	if !n[0].Tight {
+		t.Error("it should still be doubted, just not disproved")
+	}
+	if n[0].SlackKM <= 0 {
+		t.Error("the allowance should be recorded so a reader can see it was made")
+	}
+
+	// Declared, the reader has said where they are and gets no allowance.
+	n = at(floor - 0.2)
+	m.checkPlausible(n, declared)
+	if !n[0].Impossible {
+		t.Error("a declared origin should be taken at its word")
+	}
+	if n[0].SlackKM != 0 {
+		t.Errorf("a declared origin needs no allowance, got %v km", n[0].SlackKM)
+	}
+
+	// And a shortfall far larger than any plausible origin error still stands.
+	n = at(floor * 0.5)
+	m.checkPlausible(n, detected)
+	if !n[0].Impossible {
+		t.Error("halving the floor is not an origin error")
 	}
 }

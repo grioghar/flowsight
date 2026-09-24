@@ -536,7 +536,7 @@
             + r('Source', n.location_source === 'name' ? 'the router\u2019s own name' : 'address database');
         }
         if (n.distance_km) h += r('Distance used', `${num(n.distance_km)} km${n.via ? ' along ' + n.via : ' (straight line)'}`);
-        if (n.floor_ms) h += r('Light alone allows', `${n.floor_ms} ms — nothing can beat this`);
+        if (n.floor_ms) h += r('Light alone allows', `${n.floor_ms} ms — nothing can beat this${n.slack_km ? `, measured from ${num(n.slack_km)} km nearer in case your own position is out` : ''}`);
         if (n.expected_ms) h += r('A built route needs', `${n.expected_ms} ms${n.expected_via ? ' along ' + n.expected_via : ` over ${num(n.expected_km)} km once fibre's detours are allowed for`}`);
         if (n.why) h += r(n.impossible ? 'Impossible' : 'Too fast for the distance', n.why, 'warn');
         return h;
@@ -646,14 +646,14 @@
       const shortBy = (k) => ({ t: 'Short by', num: true, sort: 'rtt',
           f: r => r[k] > 0 ? `${(r[k] - r.rtt).toFixed(1)} ms` : '—' });
       const impossibleCols = plHead.concat(
-          [{ t: 'Light alone needs', f: r => `${r.floor} ms`, num: true, sort: 'floor' }, shortBy('floor')], plTail);
+          [{ t: 'Light alone needs', f: r => `${r.floor} ms${r.slack ? `<div class="muted small">allowing ${num(r.slack)} km for your own position</div>` : ''}`, num: true, sort: 'floor' }, shortBy('floor')], plTail);
       const doubtfulCols = plHead.concat(
           [{ t: 'A built route needs', f: r => r.expected ? `${r.expected} ms` : '—', num: true, sort: 'expected' },
            shortBy('expected'),
            { t: 'Light alone allows', f: r => `${r.floor} ms`, num: true, sort: 'floor' }], plTail);
       const plRow = (n) => ({ index: n.index, ips: n.ips.join(', '),
           where: [n.city, n.region, n.country].filter(Boolean).join(', '),
-          rtt: n.rtt_ms, floor: n.floor_ms, expected: n.expected_ms, km: n.distance_km, via: n.via || '' });
+          rtt: n.rtt_ms, floor: n.floor_ms, expected: n.expected_ms, km: n.distance_km, via: n.via || '', slack: n.slack_km || 0 });
       const doubtful = nodes.filter(n => n.tight);
       const doubtOut = doubtful.length ? `<div style="margin-top:14px">${card('Placements too fast for any built route', table(doubtful.map(plRow), doubtfulCols),
           'read the middle two columns together: each answered sooner than the route to it could deliver, which is the whole verdict. The last column is the speed-of-light floor and sits below the time measured, because that is not what ruled on them. Being slow is never suspicious — congestion and indirect routing explain themselves. Being too fast is, because the only thing that makes a reply quicker is the place being nearer. So these are wrong in the same direction as the table above, and for the same reason: the coordinates, not the measurement — just not provably')}</div>` : '';
