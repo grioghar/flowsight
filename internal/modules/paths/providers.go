@@ -65,13 +65,14 @@ var azureLinkRe = regexp.MustCompile(`https://download\.microsoft\.com/download/
 
 // providerRange is one row as kept and looked up.
 type providerRange struct {
-	Net      *net.IPNet
-	Provider string
-	Region   string
-	Lat, Lon float64
-	City     string
-	Anycast  bool
-	Sites    []anySite // where an anycast prefix has been seen served from
+	Net       *net.IPNet
+	Provider  string
+	Region    string
+	Lat, Lon  float64
+	City      string
+	Anycast   bool
+	Sites     []anySite // the nearby sites an anycast prefix is served from
+	SiteTotal int       // how many worldwide
 }
 
 // providerIndex answers "whose range, and where" for an address. Buckets by
@@ -552,7 +553,7 @@ func (m *Module) loadProviders(stats map[string]providerStats) error {
 		stats["geofeeds"] = providerStats{Name: "Registry geofeeds", Prefixes: geofeedRows, FetchedAt: time.Now().Unix()}
 	}
 	{
-		n := loadCensusInto(idx, filepath.Join(dir, censusFile))
+		n := loadCensusInto(idx, filepath.Join(dir, censusFile), m.home())
 		st := providerStats{Name: "Anycast census (LACeS)", Prefixes: n}
 		if fi, err := os.Stat(filepath.Join(dir, censusFile)); err == nil {
 			st.FetchedAt = fi.ModTime().Unix()

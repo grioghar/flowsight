@@ -12,6 +12,15 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242233
+
+**The anycast census costs a fiftieth of the memory.** Sixty thousand
+prefixes each carrying thirty sites were two hundred megabytes of heap on a
+daemon that steers to a quarter of that. Only the six sites nearest your
+origin, within five thousand kilometres, are kept per prefix -- the only
+ones that could be the instance you reach -- while the card still says how
+many sites there are worldwide.
+
 ## 0.9.8r202609242228
 
 **The anycast census now loads, and the operator rule is narrower.** The

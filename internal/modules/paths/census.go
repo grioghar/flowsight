@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -191,8 +192,42 @@ func (m *Module) fetchCensusOne(u string, out io.Writer) (int, error) {
 	})
 }
 
+// nearSites keeps the few sites that could be the instance reached from
+// here: the closest to the origin, within a hemisphere's worth of distance.
+// Sixty thousand prefixes each with thirty sites were two hundred megabytes
+// of heap on a daemon with a quarter of that to spend; six sites within
+// five thousand kilometres answer the same question for a fiftieth of it.
+func nearSites(sites []anySite, home Home) []anySite {
+	if len(sites) <= 6 || !home.OK {
+		if len(sites) > 6 {
+			return sites[:6]
+		}
+		return sites
+	}
+	type d struct {
+		km float64
+		s  anySite
+	}
+	ds := make([]d, 0, len(sites))
+	for _, s := range sites {
+		km := greatCircleKM(home.Lat, home.Lon, s.Lat, s.Lon)
+		if km <= 5000 {
+			ds = append(ds, d{km, s})
+		}
+	}
+	sort.Slice(ds, func(i, j int) bool { return ds[i].km < ds[j].km })
+	if len(ds) > 6 {
+		ds = ds[:6]
+	}
+	out := make([]anySite, 0, len(ds))
+	for _, x := range ds {
+		out = append(out, x.s)
+	}
+	return out
+}
+
 // loadCensusInto adds the census rows to a provider index, all anycast.
-func loadCensusInto(idx *providerIndex, path string) int {
+func loadCensusInto(idx *providerIndex, path string, home Home) int {
 	fh, err := os.Open(path)
 	if err != nil {
 		return 0
@@ -218,11 +253,13 @@ func loadCensusInto(idx *providerIndex, path string) int {
 		asn, _ := strconv.Atoi(rec[1])
 		var sites []anySite
 		_ = json.Unmarshal([]byte(rec[2]), &sites)
+		total := len(sites)
+		sites = nearSites(sites, home)
 		prov := "anycast census"
 		if asn > 0 {
 			prov = fmt.Sprintf("anycast census, AS%d", asn)
 		}
-		idx.add(providerRange{Net: ipn, Provider: prov, Region: "anycast", Anycast: true, Sites: sites})
+		idx.add(providerRange{Net: ipn, Provider: prov, Region: "anycast", Anycast: true, Sites: sites, SiteTotal: total})
 		n++
 	}
 	return n

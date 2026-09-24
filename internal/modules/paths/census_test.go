@@ -72,3 +72,20 @@ func TestCensusReaderSniffsGzip(t *testing.T) {
 		t.Fatalf("%d %v", n, err)
 	}
 }
+
+func TestOnlyNearbySitesAreKept(t *testing.T) {
+	home := Home{Lat: 39.18, Lon: -96.57, OK: true}
+	var sites []anySite
+	for i := 0; i < 40; i++ {
+		sites = append(sites, anySite{City: "far", Lat: -30, Lon: 100 + float64(i)})
+	}
+	sites = append(sites, anySite{City: "Dallas", Lat: 32.8, Lon: -96.8}, anySite{City: "Chicago", Lat: 41.9, Lon: -87.6}, anySite{City: "Honolulu", Lat: 21.3, Lon: -157.9})
+	kept := nearSites(sites, home)
+	// Honolulu is 6,100 km away and falls outside the regional radius.
+	if len(kept) != 2 || kept[0].City != "Dallas" || kept[1].City != "Chicago" {
+		t.Fatalf("%+v", kept)
+	}
+	if got := nearSites(sites, Home{}); len(got) != 6 {
+		t.Fatalf("without an origin the first six are kept, got %d", len(got))
+	}
+}

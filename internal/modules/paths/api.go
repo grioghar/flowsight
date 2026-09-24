@@ -635,7 +635,7 @@ func (m *Module) describe(nodes []Node, h Home) {
 				if pr.Anycast {
 					n.Anycast = true
 					n.Provider = pr.Provider + " anycast"
-					n.anycastSites, n.AnycastSites = pr.Sites, len(pr.Sites)
+					n.anycastSites, n.AnycastSites = pr.Sites, pr.SiteTotal
 					if n.Located && n.Source != "name" {
 						n.SetAside = fmt.Sprintf("%s announces this range from many places at once (anycast); the %s's position for it is meaningless, so it is placed by timing", pr.Provider, sourceNoun(n.Source))
 						n.DBLat, n.DBLon = n.Lat, n.Lon

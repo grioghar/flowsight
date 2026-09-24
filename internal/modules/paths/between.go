@@ -132,7 +132,7 @@ func placeNear(a *Node, run []*Node) {
 				n.Located, n.Source, n.Inferred = true, "anycast", true
 				n.Between = []string{firstIP(a)}
 				n.City, n.Country = st.City, st.CC
-				n.BetweenHow = fmt.Sprintf("anycast: served from %d sites worldwide; the one nearest %s (%s, %.0f km from it) is the local or regional instance you reach, %.1f ms after that hop", len(n.anycastSites), firstIP(a), st.City, bestKM, extra)
+				n.BetweenHow = fmt.Sprintf("anycast: served from %d sites worldwide; the one nearest %s (%s, %.0f km from it) is the local or regional instance you reach, %.1f ms after that hop", n.AnycastSites, firstIP(a), st.City, bestKM, extra)
 				continue
 			}
 		}
