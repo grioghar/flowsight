@@ -408,6 +408,7 @@
         // stays the same size on screen however far in you go and stops
         // swallowing the neighbours it is meant to distinguish.
         if (n.impossible) dots += `<circle class="ruledout" data-r="7" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7"/>`;
+        else if (n.tight) dots += `<circle class="doubtful" data-r="6" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6"/>`;
         if (n.moved_km && n.db_lat) {
           // Drawn from where the database put it to where the name says it is,
           // so a reader can see the size of the correction rather than take it.
@@ -415,7 +416,7 @@
           dots += `<path class="corrected" d="M${px.toFixed(1)},${py.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}"/><circle class="ghost" data-r="2.5" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5"/>`;
         }
         const hr = (2 + Math.min(3, n.ips.length)).toFixed(1);
-        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\nRULED OUT: ' + esc(n.why) : ''}\nclick for detail</title></circle>`;
+        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'DOUBTFUL: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
       });
 
       // What a hop is, told in the order the evidence deserves: what was
@@ -450,7 +451,7 @@
         }
         h += grp('Placement') + r('Shown at', [n.city, n.region, n.country].filter(Boolean).join(', '))
            + r('Source', n.location_source === 'name' ? 'the router\u2019s own name' : 'address database');
-        if (n.why) h += r('Impossible', n.why, 'warn');
+        if (n.why) h += r(n.impossible ? 'Impossible' : 'Doubtful', n.why, 'warn');
         return h;
       };
       // Every card is rendered into the page rather than built on click, so
@@ -473,6 +474,7 @@
           const cls = ['crumb'];
           if (o.silent) cls.push('silent');
           if (o.impossible) cls.push('bad');
+          else if (o.doubtful) cls.push('doubt');
           if (o.kind) cls.push(o.kind);
           return `<li class="${cls.join(' ')}"${o.id ? ` data-crumb="${esc(o.id)}"` : ''}>
             <span class="ct">${esc(o.top)}</span>
@@ -493,7 +495,7 @@
               sub: 'traffic passed through' }));
             return;
           }
-          items.push(one({ id: n.id, impossible: !!n.impossible, kind: last ? 'endpoint' : '',
+          items.push(one({ id: n.id, impossible: !!n.impossible, doubtful: !!n.tight, kind: last ? 'endpoint' : '',
             top: (last ? 'endpoint \u00b7 hop ' : 'hop ') + n.index,
             main: `<b>${esc((n.names || [])[0] || n.ips[0])}</b>${n.ips.length > 1 ? ` <span class="muted">+${n.ips.length - 1}</span>` : ''}`,
             sub: [where, n.rtt_ms ? n.rtt_ms + ' ms' : ''].filter(Boolean).join(' \u00b7 ') }));
@@ -506,6 +508,24 @@
       const trail = crumbs();
 
       // Built before the template so it is part of the page, not appended to it.
+      // Two tables, because the claims differ. One says a reading is
+      // disproved; the other says it is only doubted, and running them
+      // together would either accuse the doubtful or excuse the disproved.
+      const plCols = [
+          { t: 'Hop', f: r => num(r.index), num: true, sort: 'index' },
+          { t: 'Address', f: r => `<span class="mono small">${esc(r.ips)}</span>`, sort: 'ips' },
+          { t: 'Placed at', f: r => esc(r.where) || '<span class="muted">unknown</span>', sort: 'where' },
+          { t: 'Answered in', f: r => `${r.rtt} ms`, num: true, sort: 'rtt' },
+          { t: 'Floor', f: r => `${r.floor} ms`, num: true, sort: 'floor' },
+          { t: 'Over floor', f: r => r.floor > 0 ? `${((r.rtt / r.floor - 1) * 100).toFixed(0)}%` : '—', num: true, sort: 'rtt' },
+          { t: 'Away', f: r => `${num(r.km)} km`, num: true, sort: 'km' }];
+      const plRow = (n) => ({ index: n.index, ips: n.ips.join(', '),
+          where: [n.city, n.region, n.country].filter(Boolean).join(', '),
+          rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km });
+      const doubtful = nodes.filter(n => n.tight);
+      const doubtOut = doubtful.length ? `<div style="margin-top:14px">${card('Placements the latency makes doubtful', table(doubtful.map(plRow), plCols),
+          'these clear the floor, but only just. The floor assumes a dead straight fibre with nothing attached to it, and no real route is either: a packet follows coasts and rights of way and is switched at every hop. A placement a few per cent above the minimum is claiming a journey that does not exist, so it is probably wrong in the same way as the table above — just not provably')}</div>` : '';
+
       const rulesOut = impossible.length ? `<div style="margin-top:14px">${card('Placements the physics rules out', table(impossible.map(n => ({
           index: n.index, ips: n.ips.join(', '),
           where: [n.city, n.region, n.country].filter(Boolean).join(', '),
@@ -599,6 +619,7 @@
             ${it(dot(FS.palette[2]), 'a hop, sized by how many addresses answered')}
             ${it(dot(FS.palette[2], 'rich'), 'operator known')}
             ${it(dot('', 'ruledout'), 'the latency rules this placement out')}
+            ${it(dot('', 'doubtful'), 'possible, but only just: doubtful')}
             ${it(sw('corrected'), 'correction: database \u2192 the site in the router\u2019s name')}
             ${picked ? it(sw('leg onroute', 'stroke:' + FS.palette[0]), 'the route you picked; the rest is dimmed') : ''}
           </div>`;
@@ -610,6 +631,7 @@
       ${trail ? `<div style="margin-top:14px">${trail}</div>` : ''}
 
       ${rulesOut}
+      ${doubtOut}
 
       ${unlocated.length || silent ? `<div class="unlocated">${card('Not on the map', table(unlocated.map(n => ({
           index: n.index, ips: n.ips.join(', '), names: (n.names || []).join(', '), country: n.country || '' })), [

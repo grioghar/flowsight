@@ -42,7 +42,12 @@ type Node struct {
 	// Impossible marks a placement the measured latency rules out: the point
 	// is too far away to have answered as quickly as it did. The location is
 	// wrong, not the measurement.
-	Impossible bool    `json:"impossible,omitempty"`
+	Impossible bool `json:"impossible,omitempty"`
+	// Tight marks a placement the latency does not forbid but comes close
+	// enough to that it would need a perfect path. Kept apart from Impossible
+	// because "provably wrong" and "probably wrong" are different claims and
+	// collapsing them would either overstate the one or hide the other.
+	Tight      bool    `json:"tight,omitempty"`
 	DistanceKM float64 `json:"distance_km,omitempty"`
 	FloorMS    float64 `json:"floor_ms,omitempty"`
 	Why        string  `json:"why,omitempty"`

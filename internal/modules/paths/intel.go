@@ -82,8 +82,6 @@ type Facility struct {
 }
 
 var labelSplit = regexp.MustCompile(`[-_]`)
-var codeThenDigits = regexp.MustCompile(`^([a-z]{2,4})[0-9]{0,3}$`)
-var sixLetters = regexp.MustCompile(`^[a-z]{6,8}$`)
 
 // decodePoP reads a site out of a router's hostname.
 //
@@ -113,21 +111,54 @@ func decodePoP(host string) (code string, p pop, ok bool) {
 		if skip[x] {
 			continue
 		}
-		if m := codeThenDigits.FindStringSubmatch(x); m != nil {
-			if q, hit := pops[m[1]]; hit {
-				return m[1], q, true
-			}
+		// The digits are a unit number, not part of the place: dfw01, Dallas3
+		// and londen12 all name somewhere, and none of them name it with the
+		// number attached.
+		base := strings.TrimRight(x, "0123456789")
+		if len(base) < 2 {
+			continue
 		}
-		// Telephone-company style: "tpkaks" is Topeka plus a state, "sndgca"
-		// is San Diego plus one. The first three letters carry the city.
-		if sixLetters.MatchString(x) {
-			if q, hit := pops[x[:3]]; hit {
-				return x[:3], q, true
+		if q, hit := pops[base]; hit {
+			return base, q, true
+		}
+		// Carriers that spell the place out: Level 3 writes ear1.Dallas3,
+		// bar1.Portland1, ear2.SanJose1. The names come from the table itself,
+		// so a code and its spelled-out form can never disagree.
+		if q, hit := cityNames[base]; hit {
+			return base, q, true
+		}
+		// City plus a state or country, run together. NTT writes dllstx14 for
+		// Dallas, Texas and londen12 for London; AT&T writes tpkaks for
+		// Topeka, Kansas. The split is four and two or three and three, so
+		// both are tried, longest first.
+		if len(base) >= 6 {
+			for _, n := range []int{4, 3} {
+				if q, hit := pops[base[:n]]; hit {
+					return base[:n], q, true
+				}
 			}
 		}
 	}
 	return "", pop{}, false
 }
+
+// cityNames maps a spelled-out city to the same place its code names, built
+// from the code table so the two cannot drift apart. "Dallas, TX, US" becomes
+// "dallas"; "Los Angeles, CA, US" becomes "losangeles".
+var cityNames = func() map[string]pop {
+	out := map[string]pop{}
+	for _, p := range pops {
+		city := p.City
+		if i := strings.IndexByte(city, ','); i >= 0 {
+			city = city[:i]
+		}
+		key := strings.ToLower(strings.NewReplacer(" ", "", "-", "", ".", "", "'", "").Replace(city))
+		if len(key) >= 4 {
+			out[key] = p
+		}
+	}
+	return out
+}()
 
 // reverseName asks what a router calls itself. Most do not answer: a hop with
 // no name is the common case, not a fault, and the caller must carry on.
@@ -426,11 +457,13 @@ const detailKV = "paths.detail."
 // spend someone else's rate limit to learn nothing.
 const detailTTL = 30 * 24 * time.Hour
 
-// detailSchema is bumped whenever what gets gathered changes. Without it a
-// month-long cache quietly serves answers collected by an older, thinner
-// version of this code, and the new fields read as "nothing known" rather
-// than "not asked yet".
-const detailSchema = 2
+// detailSchema is bumped whenever what gets gathered changes -- and that
+// includes how it is worked out, not just which fields exist. Teaching
+// decodePoP a new naming convention changes the answer for addresses already
+// cached, and without a bump the month-old answer stands and the improvement
+// is invisible. It was, once: the decoder learned four carriers' spellings and
+// the map went on showing the same forty-eight sites it had before.
+const detailSchema = 3
 
 type cachedDetail struct {
 	At time.Time `json:"at"`

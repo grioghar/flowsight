@@ -12,6 +12,37 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241520
+
+**A third verdict: doubtful.** The speed of light gives a hard floor for a
+round trip, and a hop that answers sooner than its placement allows is
+disproved. Just above the floor was being accepted, and should not have been:
+the floor assumes a dead straight fibre with nothing attached to it, and no
+real route is either -- cables follow coasts and rights of way, and a packet
+is queued and switched at every hop. A placement that clears the minimum by a
+few per cent is claiming a journey that does not exist.
+
+Those are now flagged as doubtful, in their own table and with their own mark
+on the map: amber and dashed, against the solid red of a placement that is
+ruled out. The two are kept apart deliberately. One says a reading is
+disproved; the other says it is only doubted, and merging them would either
+accuse the doubtful or excuse the disproved. The band is *Settings > paths*
+and defaults to 15%; zero turns the category off.
+
+**Reading router names got considerably better, which changes who gets
+accused.** The decoder handled one spelling. Carriers use several: Cogent
+writes dfw01, Arelion writes dls- and ash- and adm-, NTT writes dllstx14 and
+londen12, and Level 3 spells the place out as Dallas3 or SanJose1. All of them
+are read now, and the spelled-out names are derived from the code table so a
+code and its long form cannot disagree.
+
+That is not cosmetic either. A hop whose name is not understood keeps the
+address database's answer -- which is the thing the names exist to overrule --
+and can then be ruled out over a distance it never had. Arelion's
+dls-b23-link is a Dallas router that the database places in St Petersburg;
+answering in 17.9 ms it was being reported as physically impossible, when what
+was impossible was the location, and the router's own name said so all along.
+
 ## 0.9.8r202609241515
 
 **The map is a cylinder now, and behaves like one.** It slides east and west

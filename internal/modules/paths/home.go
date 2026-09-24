@@ -155,10 +155,27 @@ func floorMS(km float64) float64 { return 2 * km / fibreKMS * 1000 }
 
 // checkPlausible marks the placements the measured latency rules out. It never
 // moves a point or invents one; it says which ones cannot be where they claim.
+// tightMargin is how close to the theoretical floor still counts as
+// suspicious. A round trip only a few per cent above it describes a path that
+// does not exist. Settings are optional here so the check can be exercised on
+// its own; the arithmetic is the interesting part, not where the number came
+// from.
+func (m *Module) tightMargin() float64 {
+	pct := 15
+	if m.ctx != nil {
+		pct = core.Int(m.ctx.Settings(), "tight_margin_pct", 15)
+	}
+	if pct < 0 {
+		pct = 0
+	}
+	return float64(pct) / 100
+}
+
 func (m *Module) checkPlausible(nodes []Node, h Home) {
 	if !h.OK {
 		return
 	}
+	margin := m.tightMargin()
 	for i := range nodes {
 		n := &nodes[i]
 		if !n.Located || n.RTT <= 0 {
@@ -168,10 +185,24 @@ func (m *Module) checkPlausible(nodes []Node, h Home) {
 		floor := floorMS(km)
 		n.DistanceKM = math.Round(km)
 		n.FloorMS = math.Round(floor*10) / 10
-		if n.RTT < floor {
+		switch {
+		case n.RTT < floor:
 			n.Impossible = true
 			n.Why = fmt.Sprintf("answers in %.1f ms, but %.0f km away cannot answer in less than %.0f ms",
 				n.RTT, km, floor)
+		case floor > 0 && n.RTT <= floor*(1+margin):
+			// Possible, and still almost certainly wrong.
+			//
+			// The floor assumes a perfectly straight fibre with nothing
+			// attached to it. Real routes wander -- cables follow coasts and
+			// rights of way, and a packet is queued and switched at every hop
+			// -- so a measured round trip is normally well above it. A
+			// placement that only just clears the floor is claiming a journey
+			// with no detour and no equipment in it, which is not a claim
+			// physics forbids but is one nothing in the real world satisfies.
+			n.Tight = true
+			n.Why = fmt.Sprintf("answers in %.1f ms against a floor of %.0f ms for %.0f km: possible only with a perfectly straight path and no equipment delay, which is %.0f%% above the theoretical minimum",
+				n.RTT, floor, km, (n.RTT/floor-1)*100)
 		}
 	}
 }

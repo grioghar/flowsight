@@ -104,3 +104,50 @@ func TestVCardReadsAddressFromTheLabelParameter(t *testing.T) {
 		t.Errorf("addr = %q, want %q", addr, want)
 	}
 }
+
+// The carriers each spell a place differently, and every one of these appears
+// in real router names on a working network. A miss is not harmless: the hop
+// keeps the address database's answer, which is what these are here to
+// overrule, and a wrong placement can then be ruled out for a distance it
+// never had.
+func TestDecodePoPHandlesEachCarriersSpelling(t *testing.T) {
+	cases := []struct{ host, city string }{
+		{"be2764.ccr32.dfw01.atlas.cogentco.com", "Dallas, TX, US"},        // code plus unit number
+		{"dls-b23-link.ip.twelve99.net", "Dallas, TX, US"},                 // Arelion's own abbreviation
+		{"ash-b2-link.ip.twelve99.net", "Ashburn, VA, US"},                 // ditto
+		{"adm-bb2-link.ip.twelve99.net", "Amsterdam, NL"},                  // ditto
+		{"ae-13.a01.dllstx14.us.bb.gin.ntt.net", "Dallas, TX, US"},         // NTT: city plus state, four and two
+		{"ae-6.a03.londen12.uk.bb.gin.ntt.net", "London, GB"},              // NTT abroad
+		{"CENTURYLINK.edge6.Dallas3.Level3.net", "Dallas, TX, US"},         // Level 3 spells it out
+		{"JAPAN-REGIS.ear2.SanJose1.Level3.net", "San Jose, CA, US"},       // and runs two words together
+		{"ae3.6.bar1.Portland1.net.lumen.tech", "Portland, OR, US"},        // Lumen, likewise
+		{"172-11-154-1.lightspeed.tpkaks.sbcglobal.net", "Topeka, KS, US"}, // AT&T: three and three
+		{"ae14.cr3-mtl1.ip4.gtt.net", "Montreal, QC, CA"},                  // GTT
+	}
+	for _, c := range cases {
+		_, p, ok := decodePoP(c.host)
+		if !ok {
+			t.Errorf("%s: read no site", c.host)
+			continue
+		}
+		if p.City != c.city {
+			t.Errorf("%s: got %q, want %q", c.host, p.City, c.city)
+		}
+	}
+}
+
+// The spelled-out names are derived from the code table, so a place can never
+// be in one and not the other.
+func TestCityNamesAgreeWithTheCodes(t *testing.T) {
+	if len(cityNames) < 60 {
+		t.Fatalf("only %d spelled-out names derived; the table should be most of pops", len(cityNames))
+	}
+	if p, ok := cityNames["losangeles"]; !ok || p.City != "Los Angeles, CA, US" {
+		t.Errorf("a two-word city should run together: %v %v", p, ok)
+	}
+	for _, p := range cityNames {
+		if p.Lat == 0 && p.Lon == 0 {
+			t.Errorf("%s has no coordinates", p.City)
+		}
+	}
+}

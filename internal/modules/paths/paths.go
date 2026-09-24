@@ -74,6 +74,7 @@ func (m *Module) Info() core.ModuleInfo {
 			"cables_url":       "",
 			"cable_near_km":    400,
 			"registry":         true,
+			"tight_margin_pct": 15,
 			"facilities":       true,
 		},
 		Schema: []core.SettingField{
@@ -90,6 +91,8 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Downloads TeleGeography's public cable map (about a megabyte, refreshed monthly) and draws it behind the routes. A traceroute never names a cable, so no leg is claimed to follow one; what this gives is the cables that could have carried a leg, minus the ones too long to have produced the latency measured."},
 			{Key: "cable_near_km", Label: "A cable serves a place within (km)", Type: "int",
 				Help: "How close a cable has to pass to count. Landfalls are rarely where a router is, and a router is rarely exactly where the database says, so this is deliberately loose."},
+			{Key: "tight_margin_pct", Label: "Call a placement doubtful within (%) of the floor", Type: "int",
+				Help: "The speed of light gives a hard floor for a round trip, and anything under it is impossible. Just above it is a different matter: the floor assumes a dead straight fibre with no equipment on it, so a hop that only just clears it is claiming a path nothing real provides. Within this margin a placement is flagged as doubtful rather than accepted. Zero turns the category off."},
 			{Key: "registry", Label: "Look up who runs each hop", Type: "bool",
 				Help: "Asks the public routing table which network announces a hop's address, and the regional registry who that block is allocated to. The registry's postal address is a head office, not the room the router is in, and is labelled that way. Results are kept for a month, because none of it changes quickly."},
 			{Key: "facilities", Label: "List buildings the operator occupies", Type: "bool",

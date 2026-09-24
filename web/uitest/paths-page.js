@@ -40,6 +40,9 @@ var GRAPH = { nodes: [
       facilities_scoped:true } },
   { id:'h4', index:4, ips:['1.1.1.1'], located:true, lat:-33.86, lon:151.20, country:'AU', city:'Sydney', rtt_ms:18.9,
     impossible:true, distance_km:14071, floor_ms:140.7, why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' },
+  // Clears the floor by 4%: physics allows it, a real route does not.
+  { id:'h7', index:7, ips:['62.115.143.52'], located:true, lat:51.5072, lon:-0.1276, country:'GB', city:'London', rtt_ms:73.2,
+    tight:true, distance_km:7000, floor_ms:70.0, why:'answers in 73.2 ms against a floor of 70 ms for 7000 km: possible only with a perfectly straight path and no equipment delay, which is 4% above the theoretical minimum' },
   { id:'s5', index:5, ips:[], located:false, silent:true } ],
   legs: [
     { from:'h2', to:'h3', destinations:['1.1.1.1','8.8.8.8'], shared:true },
@@ -103,7 +106,7 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // backdrop is referenced rather than repeated; the markers are real, because
   // a <use> copy cannot be clicked.
   var circles = (h.match(/class="hop /g) || []).length;
-  if (circles !== 12) throw new Error('want 4 located nodes across 3 copies of the world, got ' + circles);
+  if (circles !== 15) throw new Error('want 5 located nodes across 3 copies of the world, got ' + circles);
   if ((h.match(/<use href="#fs-world"/g) || []).length !== 3)
     throw new Error('the backdrop should be referenced three times, not redrawn');
   if ((h.match(/<path class="land"/g) || []).length !== 1)
@@ -175,6 +178,15 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('class="ruledout"') < 0) throw new Error('an impossible placement must be marked on the map');
   if (h.indexOf('RULED OUT') < 0) throw new Error('the reason should be in the hover text');
   if (h.indexOf('Ruled out by latency') < 0) throw new Error('impossible placements need a count');
+  // Disproved and merely doubted are different claims and get different marks.
+  if (h.indexOf('class="doubtful"') < 0) throw new Error('a doubtful placement needs its own mark on the map');
+  if (h.indexOf('Placements the latency makes doubtful') < 0) throw new Error('doubtful placements need their own table');
+  if (h.indexOf('just not provably') < 0) throw new Error('the doubtful table must say what it is not claiming');
+  if (h.indexOf('possible, but only just') < 0) throw new Error('the legend should explain the doubtful mark');
+  if (h.indexOf('DOUBTFUL: ') < 0) throw new Error('hover text should distinguish doubtful from ruled out');
+  // The counts must not be conflated.
+  if ((h.match(/class="ruledout"/g) || []).length === (h.match(/class="doubtful"/g) || []).length &&
+      h.indexOf('class="ruledout"') < 0) throw new Error('the two categories collapsed into one');
   // Cables are drawn behind the routes, and a run crossing the antimeridian
   // must break rather than stripe straight across the map.
   // Land, so the thing reads as a map rather than a grid with dots on it.

@@ -355,6 +355,14 @@ dual-stack line that is always the IPv4 address: the two families geolocate to
 different places, and an origin that changed between restarts would quietly
 move the line between a placement being ruled out and one standing.
 
+**Placements the latency makes doubtful.** Clearing the floor is not the same
+as being plausible. The floor assumes a dead straight fibre with nothing
+attached to it, and no real route is either, so a hop that beats the minimum
+by only a few per cent is claiming a journey that does not exist. Those are
+listed separately and marked on the map with a dashed amber ring rather than a
+solid red one: doubted, not disproved. The band is *Settings › paths › Call a
+placement doubtful within (%) of the floor*, 15% by default; zero turns it off.
+
 **Placements the physics rules out.** Light in fibre covers about 200,000 km
 per second, so a round trip cannot beat twice the straight-line distance
 divided by that, before any routing detour or equipment delay. A hop that
