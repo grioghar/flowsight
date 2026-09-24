@@ -423,7 +423,8 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     // Who and what: the devices behind the route and their services.
     if (t.indexOf('Who and what') < 0) throw new Error('the trail should say who was talking');
     if (t.indexOf('QUIC \u00b7 one.one.one.one \u00b7 udp/443') < 0) throw new Error('services should read app · name · proto/port');
-    if ((t.match(/class="talker"/g) || []).length !== 2 && (t.match(/class="talker"/g) || []).length !== 3) throw new Error('both devices should be listed');
+    // Both devices, in the trail's block and again in brief on the endpoint's card.
+    if ((t.match(/class="talker"/g) || []).length < 2 || t.indexOf('pihole') < 0) throw new Error('both devices should be listed');
     if (t.indexOf('device=192.168.1.53') < 0) throw new Error('a device should link to the map narrowed to it');
     var rbRows = (t.match(/class="rb[ "]/g) || []).length;
     if (rbRows !== 5) throw new Error('route table should list inside + 4 hops, got ' + rbRows);
