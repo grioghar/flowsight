@@ -12,6 +12,32 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241511
+
+**A chosen route is now drawn as a trail, one step per link.** Click a
+destination and the page lays the route out left to right: the machine on your
+own network that made the connection, your gateway, each carrier router in
+turn, and the address that was finally reached, marked as the endpoint. Each
+step carries its name, where it is and what it cost in milliseconds.
+
+**It starts inside the network.** A traceroute's own output begins at the
+first router that answered, which is already one step out, and leaves the
+reader to supply the beginning from memory -- when the beginning, which of
+their own machines this was, is usually what they came to find out. FlowSight
+joins the flow records back to the device and starts there instead. Where more
+than one device used a route, the one with the most flows to that destination
+is shown, or the one being filtered on.
+
+Hovering a step lights up its dot on the map and opens its detail. Choosing a
+route lifts its legs out of the rest and dims the others rather than hiding
+them: a route means little without the routes it diverges from, and removing
+them would make a shared leg look exclusive.
+
+A hop that never answered keeps its place in the trail, drawn hollow, because
+the traffic still went through it -- dropping it would report the path as
+shorter than it is. A placement the latency rules out stays flagged as such
+inside the trail, not only on the map.
+
 ## 0.9.8r202609241508
 
 **The origin shows its public address next to its coordinates.** *Your

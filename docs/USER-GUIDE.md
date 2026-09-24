@@ -245,6 +245,20 @@ answers from several addresses, which is how a carrier balances across
 parallel links, that is one point carrying several addresses rather than
 several points.
 
+**One route at a time.** Click a destination in the table and the page draws
+that route as a trail, left to right, one step per link: the machine on your
+network that made the connection, your gateway, each carrier router in turn,
+and the address reached, marked as the endpoint. Hovering a step lights up its
+dot on the map and opens its detail; the route's legs are lifted out of the
+rest and the others dimmed rather than hidden, because a route means little
+without the routes it diverges from. *Show every route* goes back.
+
+The trail begins inside your network rather than at the first router that
+answered, which is where a traceroute's own output starts. Where more than one
+device used the route, the one with the most flows to that destination is
+shown, or whichever you are filtering on. A hop that never answered keeps its
+place, drawn hollow: the traffic went through it even though nothing replied.
+
 **Filters** on country, latency, distance in hops and device. Wheel to zoom,
 drag to pan, and *Reset zoom* to go back. On a touchscreen or with a pen, one
 finger pans and two pinch to zoom; a two-finger drag does both at once. A tap

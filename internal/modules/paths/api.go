@@ -73,9 +73,73 @@ func (m *Module) apiPath(r *core.Req) (any, error) {
 	}
 	g := buildGraph(rows)
 	m.locate(g.Nodes)
+	h := m.home()
+	m.checkPlausible(g.Nodes, h)
 	sort.Slice(g.Nodes, func(i, j int) bool { return g.Nodes[i].Index < g.Nodes[j].Index })
-	return map[string]any{"destination": dst, "hops": g.Nodes,
-		"note": "A hop with several addresses answered from more than one router, which is how a carrier balances across parallel links. A silent hop did not answer; the traffic still passed through it."}, nil
+	out := map[string]any{"destination": dst, "hops": g.Nodes, "home": h,
+		"note": "A hop with several addresses answered from more than one router, which is how a carrier balances across parallel links. A silent hop did not answer; the traffic still passed through it."}
+	// A route starts inside the network, not at the first router that
+	// answered. Without this the trail begins mid-journey and a reader has to
+	// supply the first step from memory.
+	if inside := m.insideFor(dst, strings.TrimSpace(r.Q("device", ""))); inside != nil {
+		out["inside"] = inside
+	}
+	return out, nil
+}
+
+// Inside is where a route begins: the address on this network that reached
+// the destination, and the device it belongs to.
+type Inside struct {
+	Addresses []string `json:"addresses"`
+	Name      string   `json:"name,omitempty"`
+	Vendor    string   `json:"vendor,omitempty"`
+}
+
+// insideFor finds which device on this network talked to a destination.
+//
+// Several may have. When a device is being filtered on, that one answers;
+// otherwise the busiest does, because a trail has one beginning and picking
+// the loudest speaker is at least a rule a reader can be told. The count is
+// over flows, not addresses, so a laptop that rotates through a dozen IPv6
+// addresses does not outrank a device that simply talked more.
+func (m *Module) insideFor(dst, device string) *Inside {
+	var args []any
+	where := `WHERE dst_ip = ? AND src_ip <> ''`
+	args = append(args, dst)
+	if device != "" {
+		addrs := m.addressesOf(device)
+		ph := make([]string, len(addrs))
+		for i, a := range addrs {
+			ph[i] = "?"
+			args = append(args, a)
+		}
+		where += ` AND src_ip IN (` + strings.Join(ph, ",") + `)`
+	}
+	rows, err := m.ctx.Store.Rows(
+		`SELECT src_ip AS ip, COUNT(*) AS n FROM flows `+where+` GROUP BY src_ip ORDER BY n DESC`, args...)
+	if err != nil || len(rows) == 0 {
+		return nil
+	}
+	first, _ := rows[0]["ip"].(string)
+	if first == "" {
+		return nil
+	}
+	in := &Inside{Addresses: []string{first}}
+	if m.identity != nil {
+		in.Name = m.identity.Name(first)
+		if mac := m.identity.MAC(first); mac != "" {
+			in.Vendor = m.identity.Vendor(mac)
+			// Every address of the same device, so the trail begins with the
+			// whole of what is there rather than the address that happened to
+			// carry the most flows.
+			for _, a := range m.addressesOf(first) {
+				if !contains(in.Addresses, a) {
+					in.Addresses = append(in.Addresses, a)
+				}
+			}
+		}
+	}
+	return in
 }
 
 func (m *Module) apiGraph(r *core.Req) (any, error) {

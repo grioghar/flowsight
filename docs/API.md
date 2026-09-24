@@ -128,7 +128,7 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 |---|---|---|---|
 | GET | `/api/paths/status` | Whether tracing is on, how many destinations have a route, and when |  |
 | GET | `/api/paths/destinations` | Destinations with a measured route | limit (rows) |
-| GET | `/api/paths/path` | Every hop to one destination, with names and locations | dst (destination) |
+| GET | `/api/paths/path` | Every hop to one destination, in order, with names, locations and operator detail, plus `inside`: the device on this network that used the route | dst (destination), device (whose flows to count) |
 | GET | `/api/paths/devices` | Devices whose traffic has a measured route, one entry per device |  |
 | GET | `/api/paths/cables` | The submarine cable map, simplified for drawing | detail (points per cable) |
 | GET | `/api/paths/home` | The origin the map is drawn from, this gateway's own public addresses (`public_v4`, `public_v6`, and `public_address` for the one the origin was worked out from), and what could be detected for it |  |

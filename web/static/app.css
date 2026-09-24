@@ -220,3 +220,35 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .hoppanel .hfac { padding: 5px 8px; margin: 4px 0; background: var(--panel-3, rgba(127,127,127,.09));
   border-radius: 5px; border-left: 2px solid var(--accent, #4c8dff); font-size: 12.5px; }
 .hoppanel .hfac.dim { border-left-color: var(--line); color: var(--muted); }
+
+/* The route as a trail, left to right, beginning inside the network. The
+   chevron between steps is the link itself; a step with no answer is drawn
+   hollow because the traffic went through it even though nothing replied. */
+.trail { list-style: none; display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; margin: 0; padding: 0; }
+.trail .crumb { position: relative; display: flex; flex-direction: column; justify-content: center;
+  padding: 6px 14px 6px 18px; margin: 3px 7px 3px 0; min-width: 0; max-width: 260px;
+  background: var(--panel-2, rgba(127,127,127,.07)); border: 1px solid var(--line);
+  border-radius: 6px; cursor: pointer; transition: background .12s, border-color .12s; }
+.trail .crumb:first-child { padding-left: 12px; }
+/* The arrow into a step: the link a reader is being shown. */
+.trail .crumb:not(:first-child)::before { content: ''; position: absolute; left: -7px; top: 50%;
+  width: 7px; height: 0; border-top: 2px solid var(--line); transform: translateY(-50%); }
+.trail .crumb:not(:first-child)::after { content: ''; position: absolute; left: -4px; top: 50%;
+  width: 5px; height: 5px; border-top: 2px solid var(--line); border-right: 2px solid var(--line);
+  transform: translateY(-50%) rotate(45deg); }
+.trail .ct { font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.trail .cm { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trail .cs { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trail .crumb:hover { background: var(--panel-3, rgba(127,127,127,.13)); }
+.trail .crumb.here { border-color: var(--accent, #4c8dff); background: color-mix(in srgb, var(--accent, #4c8dff) 14%, transparent); }
+.trail .crumb.inside { border-left: 3px solid var(--ok, #22c55e); }
+.trail .crumb.endpoint { border-left: 3px solid var(--accent, #4c8dff); }
+.trail .crumb.silent { background: transparent; border-style: dashed; cursor: default; }
+.trail .crumb.bad { border-color: var(--bad); }
+.trail .crumb.bad .ct { color: var(--bad); }
+
+/* With a route chosen, the rest of the map stays visible but steps back. */
+.pathmap .leg.offroute { opacity: .12; }
+.pathmap .hop.offroute { opacity: .3; }
+.pathmap .leg.onroute { opacity: 1; stroke-width: 2.6; }
+.pathmap .hop.lit { stroke: var(--accent, #4c8dff); stroke-width: 2.4; }

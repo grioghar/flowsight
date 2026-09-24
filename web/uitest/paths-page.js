@@ -61,7 +61,18 @@ var CAB = { cables: [
   attribution:"Submarine cable routes from TeleGeography's public cable map." };
 var STATUS = { active:true, last_run:1790200000, destinations:2, hops:11, error:'' };
 
+var ROUTE = { destination:'1.1.1.1',
+  inside:{ addresses:['192.168.1.119','2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6'], name:'MacBookPro', vendor:'Apple' },
+  hops:[
+    { id:'h1', index:1, ips:['192.168.1.254'], located:false },
+    { id:'h2', index:2, ips:['172.11.154.1'], names:['172-11-154-1.lightspeed.tpkaks.sbcglobal.net'],
+      located:true, city:'Topeka', country:'US', rtt_ms:3.4 },
+    { id:'s3', index:3, ips:[], silent:true, located:false },
+    { id:'h4', index:4, ips:['1.1.1.1'], located:true, city:'Sydney', country:'AU', rtt_ms:18.9,
+      impossible:true, why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' } ] };
+
 FS.get = function(p){
+  if (p.indexOf('/api/paths/path') === 0) return Promise.resolve(ROUTE);
   if (p.indexOf('/api/paths/status') === 0) return Promise.resolve(STATUS);
   if (p.indexOf('/api/paths/graph') === 0) return Promise.resolve(GRAPH);
   if (p.indexOf('/api/paths/destinations') === 0) return Promise.resolve(DESTS);
@@ -158,6 +169,35 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('could have crossed') < 0) throw new Error('candidate cables should appear in the hover text');
   if (h.indexOf('Southern Cross NEXT') < 0) throw new Error('the candidate name is missing');
   print('Map page renders routes, cables, shared legs, unplaced hops, devices, the origin with both detectors, and placements the physics rules out');
+
+  // With a route chosen, the page must show it as a trail that starts inside
+  // the network and ends at the address that was reached.
+  var el2 = mkEl();
+  FS.pages.paths.render(el2, { params:{ dst:'1.1.1.1' } }).then(function(){
+    var t = el2.innerHTML;
+    if (t.indexOf('class="trail"') < 0) throw new Error('a chosen route should be drawn as a trail');
+    // It begins inside, not at the first router that answered.
+    if (t.indexOf('MacBookPro') < 0) throw new Error('the trail must start with the device on this network');
+    if (t.indexOf('192.168.1.119') < 0) throw new Error('the internal address should be the first step');
+    var insideAt = t.indexOf('MacBookPro'), gwAt = t.indexOf('192.168.1.254');
+    if (!(insideAt >= 0 && gwAt > insideAt)) throw new Error('the internal address must come before the gateway');
+    // Every link in between, in order, ending at the endpoint.
+    if (t.indexOf('tpkaks') < 0) throw new Error('intermediate hops belong in the trail');
+    if (t.indexOf('endpoint') < 0) throw new Error('the last step should be marked as the endpoint');
+    var endAt = t.lastIndexOf('1.1.1.1');
+    if (!(endAt > gwAt)) throw new Error('the endpoint must come last');
+    // A hop that never answered still carried the traffic and keeps its place.
+    if (t.indexOf('no answer') < 0) throw new Error('a silent hop should still occupy its step');
+    if (t.indexOf('crumb silent') < 0) throw new Error('a silent step should be marked as such');
+    // An impossible placement stays flagged inside the trail.
+    if (t.indexOf('bad') < 0) throw new Error('a ruled-out hop should be flagged in the trail');
+    // Steps are tied to the map, and the rest of the map steps back.
+    if (t.indexOf('data-crumb="h2"') < 0) throw new Error('steps must be addressable to light up their dot');
+    if (t.indexOf('onroute') < 0) throw new Error('the chosen route should be lifted out on the map');
+    if (t.indexOf('offroute') < 0) throw new Error('other routes should be dimmed, not removed');
+    if (t.indexOf('Show every route') < 0) throw new Error('there must be a way back to all routes');
+    print('Map page renders the chosen route as a trail from the inside address to the endpoint');
+  }).catch(fail);
 }).catch(fail);
 if (typeof drainMicrotasks === 'function') drainMicrotasks();
 if (FAILURE) throw FAILURE;

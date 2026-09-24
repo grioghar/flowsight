@@ -313,13 +313,25 @@
       if (ctx.params.country) q.push('country=' + encodeURIComponent(ctx.params.country));
       if (ctx.params.max_latency) q.push('max_latency=' + encodeURIComponent(ctx.params.max_latency));
       if (ctx.params.max_hops) q.push('max_hops=' + encodeURIComponent(ctx.params.max_hops));
-      const [st, g, dests, devs, home, cab] = await Promise.all([
+      const picked = ctx.params.dst || '';
+      // Choosing a route must not throw away the filters that led to it.
+      const routeQ = (dst) => {
+        const p = [];
+        ['device', 'country', 'max_latency', 'max_hops'].forEach(k => {
+          if (ctx.params[k]) p.push(k + '=' + encodeURIComponent(ctx.params[k]));
+        });
+        if (dst) p.push('dst=' + encodeURIComponent(dst));
+        return p.join('&');
+      };
+      const [st, g, dests, devs, home, cab, route] = await Promise.all([
         get('/api/paths/status'),
         get('/api/paths/graph' + (q.length ? '?' + q.join('&') : '')),
         get('/api/paths/destinations?limit=400'),
         get('/api/paths/devices'),
         get('/api/paths/home'),
-        get('/api/paths/cables?detail=36')]);
+        get('/api/paths/cables?detail=36'),
+        picked ? get('/api/paths/path?dst=' + encodeURIComponent(picked)
+          + (ctx.params.device ? '&device=' + encodeURIComponent(ctx.params.device) : '')) : Promise.resolve(null)]);
       if (st.error && !g.nodes) { el.innerHTML = FS.err(st.error); return; }
 
       const nodes = g.nodes || [], legs = g.legs || [];
@@ -338,6 +350,14 @@
         if (!(d in dstColour)) dstColour[d] = FS.palette[ci++ % FS.palette.length];
       }));
       const legColour = (l) => l.shared ? 'var(--muted)' : (dstColour[(l.destinations || [])[0]] || FS.palette[0]);
+
+      // The legs the chosen route uses. Everything else is dimmed rather than
+      // hidden: a route means little without the other routes it diverges
+      // from, and removing them would make a shared leg look exclusive.
+      const onRoute = {};
+      if (picked) legs.forEach(l => { if ((l.destinations || []).includes(picked)) onRoute[l.from + '>' + l.to] = true; });
+      const routeHops = (route && route.hops) || [];
+      const inRoute = {}; routeHops.forEach(n => { inRoute[n.id] = true; });
 
       const xy = (n) => FS.project(n.lat, n.lon, MAPW, MAPH);
       // Cables first, so they sit behind the routes. A run is broken wherever
@@ -363,7 +383,8 @@
         const cbl = (l.cables || []).length
           ? `\ncould have crossed: ${l.cables.map(c => `${c.name} (${num(c.km)} km)`).join(', ')}`
           : (l.straight_km ? `\nno cable serves both ends` : '');
-        lines += `<path class="leg ${l.shared ? 'shared' : ''}" stroke="${legColour(l)}" d="M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${esc(cbl)}</title></path>`;
+        const rc = picked ? (onRoute[l.from + '>' + l.to] ? ' onroute' : ' offroute') : '';
+        lines += `<path class="leg ${l.shared ? 'shared' : ''}${rc}" data-leg="${esc(l.to)}" stroke="${legColour(l)}" d="M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${esc(cbl)}</title></path>`;
       });
       located.forEach(n => {
         const [x, y] = xy(n);
@@ -379,7 +400,7 @@
           dots += `<path class="corrected" d="M${px.toFixed(1)},${py.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}"/><circle class="ghost" data-r="2.5" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5"/>`;
         }
         const hr = (2 + Math.min(3, n.ips.length)).toFixed(1);
-        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\nRULED OUT: ' + esc(n.why) : ''}\nclick for detail</title></circle>`;
+        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\nRULED OUT: ' + esc(n.why) : ''}\nclick for detail</title></circle>`;
       });
 
       // What a hop is, told in the order the evidence deserves: what was
@@ -422,6 +443,52 @@
       // the panel is never empty on arrival.
       const hopCards = located.map((n, i) =>
         `<div class="hopcard" data-for="${esc(n.id)}"${i ? ' hidden' : ''}>${hopCard(n)}</div>`).join('');
+
+      // The route as a trail, beginning inside the network.
+      //
+      // A traceroute's output starts at the first router that answered, which
+      // is already one step out. Starting there asks the reader to supply the
+      // beginning from memory, and the beginning -- which of their own
+      // machines this was -- is usually the thing they came to find out.
+      const crumbs = () => {
+        if (!picked) return '';
+        if (!routeHops.length) return card('Route', `<div class="muted small">No route stored for ${esc(picked)} yet.</div>`);
+        const dest = (dests.destinations || []).find(d => d.dst === picked) || {};
+        const one = (o) => {
+          const cls = ['crumb'];
+          if (o.silent) cls.push('silent');
+          if (o.impossible) cls.push('bad');
+          if (o.kind) cls.push(o.kind);
+          return `<li class="${cls.join(' ')}"${o.id ? ` data-crumb="${esc(o.id)}"` : ''}>
+            <span class="ct">${esc(o.top)}</span>
+            <span class="cm">${o.main}</span>
+            ${o.sub ? `<span class="cs">${esc(o.sub)}</span>` : ''}</li>`;
+        };
+        const items = [];
+        const ins = route.inside;
+        if (ins) {
+          items.push(one({ kind: 'inside', top: 'inside', main: `<b>${esc(ins.name || ins.addresses[0])}</b>`,
+            sub: ins.addresses.slice(0, 2).join(', ') + (ins.addresses.length > 2 ? ` +${ins.addresses.length - 2}` : '') }));
+        }
+        routeHops.forEach((n, i) => {
+          const last = i === routeHops.length - 1;
+          const where = [n.city, n.country].filter(Boolean).join(', ');
+          if (n.silent) {
+            items.push(one({ id: n.id, silent: true, top: 'hop ' + n.index, main: '<span class="muted">no answer</span>',
+              sub: 'traffic passed through' }));
+            return;
+          }
+          items.push(one({ id: n.id, impossible: !!n.impossible, kind: last ? 'endpoint' : '',
+            top: (last ? 'endpoint \u00b7 hop ' : 'hop ') + n.index,
+            main: `<b>${esc((n.names || [])[0] || n.ips[0])}</b>${n.ips.length > 1 ? ` <span class="muted">+${n.ips.length - 1}</span>` : ''}`,
+            sub: [where, n.rtt_ms ? n.rtt_ms + ' ms' : ''].filter(Boolean).join(' \u00b7 ') }));
+        });
+        const title = `Route to ${esc(dest.name || picked)}`;
+        return card(title, `<ol class="trail">${items.join('')}</ol>
+          <div class="help" style="margin-top:8px">Left to right, from the machine on this network that made the connection to the address it reached. Hover a step to pick it out on the map. A step with no answer still carried the traffic; its position is kept so the numbering stays honest.${route.inside ? '' : ' No flow records name the device that used this route, so the trail begins at the first router.'}</div>
+          <div class="actions" style="margin-top:8px"><button class="btn small" id="r-clear">Show every route</button></div>`);
+      };
+      const trail = crumbs();
 
       // Built before the template so it is part of the page, not appended to it.
       const rulesOut = impossible.length ? `<div style="margin-top:14px">${card('Placements the physics rules out', table(impossible.map(n => ({
@@ -498,6 +565,8 @@
           <div class="muted small" style="margin-top:9px">Click any hop on the map for who runs it, where it is, and how that was decided.</div></div>
         <div class="help" style="margin-top:8px">Land outlines are Natural Earth 1:110m, public domain. ${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. Coordinates come from an address database: dependable for end-user addresses and rough for carrier equipment, which is why placements the measured latency rules out are circled rather than trusted. Where a router's hostname carries a site code, that is used instead of the database, and an amber line shows where the two disagreed.</div>`)}</div>
 
+      ${trail ? `<div style="margin-top:14px">${trail}</div>` : ''}
+
       ${rulesOut}
 
       ${unlocated.length || silent ? `<div class="unlocated">${card('Not on the map', table(unlocated.map(n => ({
@@ -510,7 +579,7 @@
           `${num(silent)} hop${silent === 1 ? '' : 's'} never answered and are not shown at all`)}</div>` : ''}
 
       <div style="margin-top:14px">${card('Destinations', table(dests.destinations || [], [
-        { t: 'Destination', f: r => `<b>${esc(r.name || r.dst)}</b>${r.name ? `<div class="muted small mono">${esc(r.dst)}</div>` : ''}`, sort: 'dst' },
+        { t: 'Destination', f: r => `<a href="#paths?${esc(routeQ(r.dst))}"><b>${esc(r.name || r.dst)}</b></a>${r.name ? `<div class="muted small mono">${esc(r.dst)}</div>` : ''}`, sort: 'dst' },
         { t: 'Where', f: r => esc([r.city, r.country].filter(Boolean).join(', ')) || '<span class="muted">unknown</span>', sort: 'country' },
         { t: 'Hops', f: r => num(r.hops), num: true, sort: 'hops' },
         { t: 'Answered', f: r => num(r.answered), num: true, sort: 'answered' },
@@ -547,14 +616,35 @@
         if (!r.error) FS.render();
       };
 
+      const rc = FS.$('#r-clear', el);
+      if (rc) rc.onclick = () => FS.go('paths?' + routeQ(''));
+
       const cards = el.querySelectorAll('.hopcard');
+      const showHop = (want) => {
+        cards.forEach(d => { d.hidden = d.getAttribute('data-for') !== want; });
+      };
       el.querySelectorAll('.hop').forEach(c => {
-        const show = () => {
-          const want = c.getAttribute('data-hop');
-          cards.forEach(d => { d.hidden = d.getAttribute('data-for') !== want; });
-        };
+        const show = () => showHop(c.getAttribute('data-hop'));
         c.addEventListener('click', show);
         c.addEventListener('mouseenter', show);
+      });
+
+      // A step in the trail and its dot on the map are the same hop, so
+      // touching either should light up both. Without that the trail reads as
+      // a list beside a picture rather than a way into it.
+      const crumbEls = el.querySelectorAll('[data-crumb]');
+      crumbEls.forEach(li => {
+        const id = li.getAttribute('data-crumb');
+        const dot = el.querySelector('.hop[data-hop="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+        const on = () => {
+          crumbEls.forEach(x => x.classList.remove('here'));
+          li.classList.add('here');
+          el.querySelectorAll('.hop.lit').forEach(x => x.classList.remove('lit'));
+          if (dot) dot.classList.add('lit');
+          showHop(id);
+        };
+        li.addEventListener('mouseenter', on);
+        li.addEventListener('click', on);
       });
 
       // Radii are attributes, not styles, so the zoom factor has to be applied
@@ -572,6 +662,7 @@
         if (la) p.push('max_latency=' + encodeURIComponent(la));
         if (ho) p.push('max_hops=' + encodeURIComponent(ho));
         if (dv) p.push('device=' + encodeURIComponent(dv));
+        if (picked) p.push('dst=' + encodeURIComponent(picked));
         FS.go('paths' + (p.length ? '?' + p.join('&') : ''));
       };
       FS.$('#f-apply', el).onclick = go;
