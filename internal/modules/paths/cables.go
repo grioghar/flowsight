@@ -143,7 +143,9 @@ func (m *Module) downloadTo(url, path string) error {
 			return err
 		}
 		defer gz.Close()
-		r = gz
+		// The limit above is on the wire; a file that inflates past it is
+		// not a cable map, and must not be allowed to fill the disk.
+		r = io.LimitReader(gz, 256<<20)
 	}
 	tmp := path + ".tmp"
 	f, err := os.Create(tmp)

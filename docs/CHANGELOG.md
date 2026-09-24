@@ -12,6 +12,30 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241816
+
+**The land-route job was eating the gateway.** Turning on *Use published
+land-route maps* started a job that never finished: AfTerFibre traces roads,
+so its 133 routes are 222,000 points a few hundred metres apart, and the code
+that stitches a cable's runs together compared every point with every other
+-- twenty-five billion distances, and an adjacency list that grew to six
+gigabytes while it ran. The daemon sat at nearly three cores and the *Data
+sources* card said `0 loaded` with no error because the job had not yet
+failed. Runs are now thinned to the points that change their shape by more
+than a kilometre before stitching, and runs are joined through a grid of
+one-degree cells rather than by brute force. The whole African set builds in
+under two seconds and the card reports 133. Along-cable lengths change by less
+than half a percent, which is far inside everything else in the estimate.
+
+**A compressed source is bounded after inflating, not only on the wire.** The
+64 MB cap on a downloaded route file applied to the bytes received; a `.gz`
+source could inflate past it onto the disk. The inflated size is capped too.
+
+**The IPmap count on the *Data sources* card is right.** It counts what is
+known, but the store's prefix count was escaping its wildcard with a character
+that reached SQLite as two, so it answered zero for every prefix. It answers
+correctly now, with a test that pins it.
+
 ## 0.9.8r202609241805
 
 **The land-route file was loading as nothing, and saying nothing about it.**

@@ -312,9 +312,16 @@ func (s *Store) KVGet(key string, into any) bool {
 // know" where a counter in memory would answer "how much since the restart",
 // which is a different and less useful question.
 func (s *Store) KVCount(prefix string) int64 {
+	// The escape character is one that never needs escaping itself. A
+	// backslash here went through two layers of quoting on its way into the
+	// source and reached SQLite as two characters, which is an error -- and an
+	// error this method swallows, so the count read zero while eighty hops
+	// sat placed by the very answers it was failing to count.
+	pat := strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(prefix) + "%"
 	var n int64
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM kv WHERE key LIKE ? ESCAPE '\\'`,
-		strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix)+"%").Scan(&n)
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM kv WHERE key LIKE ? ESCAPE '!'`, pat).Scan(&n); err != nil {
+		return -1 // a count that could not be taken is not nought
+	}
 	return n
 }
 

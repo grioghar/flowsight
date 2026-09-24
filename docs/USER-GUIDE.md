@@ -460,7 +460,9 @@ length is a real bound, but on land a straight line is merely something nobody
 built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons
 licence and is the one substantial open set; the comprehensive maps of North
 America, Europe and Asia are sold commercially. Sources are a list of URLs, so
-adding one later is a line of configuration.
+adding one later is a line of configuration. Road-traced files are thinned to
+the points that change a route's shape by more than a kilometre before use,
+so a large one costs a second or two to load rather than a core for a day.
 
 **Placements the physics rules out.** This one is geometry rather than a guess
 about routing: no path between two points is shorter than the straight line
