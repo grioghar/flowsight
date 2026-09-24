@@ -236,6 +236,12 @@ with a configuration it refuses. A rejected configuration is kept beside the
 live one as `squid.conf.rejected` for inspection, and the proxy keeps running
 on the last one it accepted.
 
+## The one private-host exemption
+
+`osm_overpass_local` lets the configured Overpass API be a private address,
+for an instance the operator runs beside the gateway. It applies to that URL
+only; every other fetch keeps the public-host rule.
+
 ## Operator-supplied route files
 
 Cable and land-route sources are URLs the operator chooses. Each is fetched

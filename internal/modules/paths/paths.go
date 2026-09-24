@@ -129,6 +129,7 @@ func (m *Module) Info() core.ModuleInfo {
 			"ai_per_hour":            20,
 			"azure_service_tags_url": "",
 			"osm_overpass_url":       "",
+			"osm_overpass_local":     false,
 			"facilities":             true,
 		},
 		Schema: []core.SettingField{
@@ -186,6 +187,8 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Fibre and telecom lines where OpenStreetMap mappers have drawn them: dense in a few well-mapped countries, absent elsewhere, and mostly the visible kind. Used at half weight -- where a line offers a route between two hops, the expected time is the average of following it and the plain detour estimate. Never touches the physics floor; never drawn as the route. Fetched from the Overpass API one ten-degree tile per run, twenty minutes apart while any are outstanding, kept a month, starting with the tiles your traffic crosses; a timeout waits an hour, a refusal six."},
 			{Section: "Where things are", Key: "osm_overpass_url", Label: "Overpass API", Type: "string",
 				Help: "Empty: overpass-api.de. Point it at your own Overpass instance if you run one; the public service is shared and asked gently."},
+			{Section: "Where things are", Key: "osm_overpass_local", Label: "My Overpass is on this network", Type: "bool",
+				Help: "Every URL FlowSight fetches is normally required to be a public host, so the daemon cannot be turned into a way into the network it protects. A private Overpass -- one you run in a container beside the gateway -- is the exception; turn this on to allow the Overpass API above to be a private address. Nothing else is exempted."},
 			{Section: "Where things are", Key: "learn_corrections", Label: "Remember what the database gets wrong", Type: "bool",
 				Help: "When a router's own name or a RIPE measurement places a hop far from where the address database put it, the hop's announced prefix is remembered as being where the evidence says, and other addresses in that prefix follow it. A registrant address the database uses for a whole network -- a carrier's head office stamped on every block -- is set aside once two of its addresses are shown to be elsewhere; hops the database would put there are placed by timing instead. Listed at /api/paths/corrections; any item can be forgotten."},
 			{Section: "Where things are", Key: "ipmap", Label: "Ask RIPE where each router is", Type: "bool",

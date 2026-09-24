@@ -92,3 +92,12 @@ func TestSuggestiveLandRoutesCountAtHalfWeight(t *testing.T) {
 		t.Fatalf("a measured route should count in full: %.0f vs %.0f", km2, along)
 	}
 }
+
+func TestPrivateURLDetection(t *testing.T) {
+	if !isPrivateURL("http://192.168.1.56/api/interpreter") || !isPrivateURL("http://10.0.0.5:8080/x") {
+		t.Fatal("RFC1918 hosts are private")
+	}
+	if isPrivateURL("https://overpass-api.de/api/interpreter") || isPrivateURL("ftp://192.168.1.1/") || isPrivateURL("http://127.0.0.1/") {
+		t.Fatal("public hosts, other schemes and loopback are not the exception")
+	}
+}

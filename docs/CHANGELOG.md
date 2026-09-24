@@ -12,6 +12,15 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242244
+
+**A private Overpass on this network is allowed, explicitly.** Every URL
+the daemon fetches must be a public host, so it can never be turned into a
+way into the network it protects. An Overpass instance you run beside the
+gateway is the one sensible exception: *My Overpass is on this network*
+under *Where things are* permits a private address for the Overpass API
+setting and nothing else.
+
 ## 0.9.8r202609242242
 
 **Census anycast applies to endpoints; and eighty megabytes given back.**

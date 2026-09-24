@@ -23,7 +23,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -265,10 +267,15 @@ func (m *Module) fetchOSMBox(b osmBox) error {
 	if u == "" {
 		u = defaultOverpassURL
 	}
-	if err := checkFetchURL(u); err != nil {
-		return err
-	}
 	client := safeClient(4 * time.Minute)
+	if err := checkFetchURL(u); err != nil {
+		// A private Overpass is the one case where a private host is the
+		// point: the operator runs their own on this network and says so.
+		if !core.Bool(m.ctx.Settings(), "osm_overpass_local", false) || !isPrivateURL(u) {
+			return err
+		}
+		client = &http.Client{Timeout: 4 * time.Minute}
+	}
 	req, err := http.NewRequest("POST", u, strings.NewReader("data="+overpassQuery(b)))
 	if err != nil {
 		return err
@@ -366,4 +373,24 @@ func (m *Module) tallyHopBoxes(nodes []Node) {
 	m.mu.Lock()
 	m.hopBoxes = counts
 	m.mu.Unlock()
+}
+
+// isPrivateURL says whether a URL points at an address on a private range,
+// as opposed to being malformed or a public host the public-only client
+// would have accepted anyway.
+func isPrivateURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	host := u.Hostname()
+	ip := net.ParseIP(host)
+	if ip == nil {
+		ips, err := net.LookupIP(host)
+		if err != nil || len(ips) == 0 {
+			return false
+		}
+		ip = ips[0]
+	}
+	return publicOnly(ip) != nil && !ip.IsLoopback() && !ip.IsUnspecified()
 }
