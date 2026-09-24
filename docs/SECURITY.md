@@ -281,3 +281,25 @@ The OpenAPI specification endpoint (`GET /api/openapi.json`) is public and
 contains no authentication secrets; it describes the routes and their
 parameters but not data values. Export it freely for use with external API
 clients and tools.
+
+## Space module: scan uploads and physical placement
+
+The space module stores uploaded scan files and layout blueprints.
+
+- **Scan uploads are size-capped** at 96 MB per file and capped at 4 files
+  kept simultaneously; the oldest are removed to make room for new ones.
+  Files are stored under `<data>/space/` with fixed names and timestamps,
+  never executed, and validated by format (GLB, OBJ, PLY, RoomPlan JSON).
+  Content is sniffed to detect format from magic bytes, not file extensions.
+- **Outbound calls** for address records (geocoding, elevation, footprints,
+  broadband data) go only to census.gov (US Census Geocoder), nationalmap.gov
+  (USGS elevation), the configured Overpass instance (same public-only client
+  as paths module), or broadbandmap.fcc.gov when FCC credentials are set
+  (username and API token as headers, same pattern as paths module). Each
+  call is rate-limited and cached 24 hours.
+- **Layout and placement data** (rooms, floors, device locations) are stored
+  in `<data>/space/layout.json` and saved atomically with a temporary file
+  and rename, readable and writable only by the daemon.
+- **Device placement is read-only integration** with the enroll module's
+  device registry; placements can be associated with MAC addresses but cannot
+  modify the device inventory itself.

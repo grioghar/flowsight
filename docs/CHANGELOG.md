@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240001
+
+**Space module: physical space mapping and 3D device placement.** A new Space
+panel in Inventory allows you to draw your living space, upload a scan from
+your phone (GLB, OBJ, PLY, or RoomPlan JSON), and place each device at its
+real location in 3D. The module integrates address geocoding via US Census,
+building footprints from OpenStreetMap, elevation from USGS, and broadband
+provider data when available. Three panes: Plan (2D room editor with OSM import),
+3D viewer with scan mesh and interactive device placement, and Palette for
+device search and filtering.
+
 ## 0.9.8r202609242345
 
 **Second-hand names stay second-hand.** Pi-hole's client names come from its

@@ -908,6 +908,26 @@ class, hostname pattern, OUI to a class and a zone). *Plan placement* shows
 what enforce mode would write, *Apply placement* writes it. A captive page
 on the LAN explains to an unplaced device what happens next.
 
+### Space
+
+Draw your living space and place each device at its real location in 3D.
+**Plan pane** (2D): draw rooms as polygons (click points, double-click to
+close), set scale by two points and a real distance, import the building
+footprint from OpenStreetMap. **3D pane** (WebGL): load the scan from your
+phone, position it in space, place devices by clicking a floor or wall
+surface. **Palette pane**: search and filter devices by name, address or
+vendor; drag to the 3D view to place. Scans: upload from your phone camera
+scan app — iPhone (Polycam, Scaniverse, Apple RoomPlan apps), Android
+(Polycam, Scaniverse, ARCore-based apps) — export as **GLB** (recommended,
+supports mesh and textures), **OBJ** (mesh only), **RoomPlan JSON** (auto-
+parsed into room outlines), or **PLY** (point cloud). Decimate scans to
+under 50 MB in your app before upload. Address records: geocoding from the
+US Census Geocoder (no API key); elevation from USGS; building footprints
+from OpenStreetMap when available; broadband provider lookup when FCC
+credentials are set in the Paths module. Placements are saved in the layout
+and linked to device identity; when you move a device physically, update
+its location here and it will update links on the Devices page.
+
 ## Administration
 
 ### Reports
