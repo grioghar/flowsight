@@ -209,6 +209,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.fixes.load(ctx.Store)
 	m.providers = &providerIndex{v4: map[byte][]providerRange{}, v6: map[uint16][]providerRange{}}
 	addKnownAnycast(m.providers)
+	// Whatever is already on disk -- provider ranges, geofeeds, the anycast
+	// census -- is loaded at start rather than at the first scheduled run
+	// half an hour later; off the main path, since the census is large.
+	go func() { _ = m.loadProviders(map[string]providerStats{}) }()
 	m.fixes.on = core.Bool(ctx.Settings(), "learn_corrections", true)
 	if m.run == nil {
 		m.run = runTraceroute

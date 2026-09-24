@@ -59,3 +59,33 @@ func TestImpossiblePlacementsAreSetAsideUnlessNamed(t *testing.T) {
 		t.Fatalf("the rejection should carry the evidence: %+v", g.Rejected[0])
 	}
 }
+
+func TestDressedSiteCodesInHostnamesAreRead(t *testing.T) {
+	m := &Module{}
+	h := Home{Lat: 39.18, Lon: -96.57, OK: true}
+	for _, c := range []struct {
+		host string
+		rtt  float64
+		city string
+	}{
+		{"usdal2-vip-fx-103.a.aaplimg.com", 44, "Dallas"},
+		{"usmes2-dns-001.ts.apple.com", 30, "Mesa"},
+		{"dfw07.example.net", 18, "Dallas"},
+	} {
+		match, score, why := m.placeFromName(c.host, c.rtt, h)
+		if score < 0.55 || !strings.HasPrefix(match.Pop.City, c.city) {
+			t.Fatalf("%s -> %s %.2f (%s), want %s", c.host, match.Pop.City, score, why, c.city)
+		}
+	}
+}
+
+func TestAnEdgeAnsweringJustBeforeItsAnchorIsStillBesideIt(t *testing.T) {
+	g := Graph{Nodes: []Node{
+		{ID: "d", Index: 6, IPs: []string{"12.1.1.1"}, RTT: 18.3, Located: true, Lat: 32.78, Lon: -96.8, City: "Dallas", Source: "name"},
+		{ID: "ak", Index: 7, IPs: []string{"23.221.22.75"}, RTT: 16.7, Anycast: true},
+	}, Legs: []Leg{{From: "d", To: "ak", Destinations: []string{"23.221.22.75"}}}}
+	interpolateGaps(&g)
+	if !g.Nodes[1].Located || g.Nodes[1].City != "Dallas" {
+		t.Fatalf("%+v", g.Nodes[1])
+	}
+}

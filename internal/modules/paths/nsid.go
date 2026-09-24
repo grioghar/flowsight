@@ -265,7 +265,7 @@ func identityHost(id string) string {
 			if m[3] != "" {
 				bare = append(bare, m[1]+m[2])
 			}
-			if m[1] != "" {
+			if m[1] != "" && countryHeads[m[1]] {
 				bare = append(bare, m[2])
 			}
 		}

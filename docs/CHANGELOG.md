@@ -12,6 +12,18 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242239
+
+**Three small things the live violator list showed.** The provider files
+and the anycast census on disk are loaded at start, not at the first
+scheduled run half an hour later, so a restart no longer forgets which
+addresses are anycast. Router names carry the same dressed site codes the
+server identifiers do -- `usdal2-vip-fx-103.a.aaplimg.com` is Dallas,
+`usmes2` is Mesa -- and are now read the same way, undressing only tokens
+that carry an instance number and a known country head, so `atlas` stays a
+word. And an edge that answers a couple of milliseconds *before* the router
+in front of it, which a slow router makes common, is still placed beside it.
+
 ## 0.9.8r202609242233
 
 **The anycast census costs a fiftieth of the memory.** Sixty thousand

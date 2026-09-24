@@ -114,8 +114,14 @@ func placeNear(a *Node, run []*Node) {
 			continue
 		}
 		extra := n.RTT - a.RTT
-		if extra < -0.5 || extra > nearMS+a.RTT*0.1 {
+		// A little before the anchor is allowed: an edge cache answers in
+		// the same metro as the router before it, and a router that is
+		// slow to answer traceroutes is often "further" than its neighbour.
+		if extra < -nearMS || extra > nearMS+a.RTT*0.1 {
 			continue // genuinely further on; nothing honest can be said
+		}
+		if extra < 0 {
+			extra = 0
 		}
 		// An anycast prefix the census has sites for: the site nearest the
 		// anchor is where the instance is, and it is named.

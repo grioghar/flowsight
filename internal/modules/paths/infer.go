@@ -179,6 +179,21 @@ func popCandidates(host string) []popMatch {
 		if len(base) < 2 {
 			continue
 		}
+		// Dressed codes: an instance suffix (dfw07, qro1a) or a country
+		// prefix on a site code (usdal2, usatl1). Offered as well as the
+		// token itself, at the same position.
+		if m := idToken.FindStringSubmatch(x); m != nil && m[3] != "" {
+			// Only a token with an instance number is undressed: "atlas"
+			// is a word, "usdal2" is a country, a site and a number.
+			if p, ok := pops[m[1]+m[2]]; ok {
+				take(m[1]+m[2], p, "code")
+			}
+			if m[1] != "" && countryHeads[m[1]] {
+				if p, ok := pops[m[2]]; ok {
+					take(m[2], p, "code")
+				}
+			}
+		}
 		// Counting only the labels that could have been a place. "link" and
 		// "bb2" are neither, and letting them push kanc-bb2-link two steps
 		// from the domain discounted a reading for being preceded by words
@@ -300,3 +315,9 @@ func (m *Module) placeFromName(host string, rtt float64, h Home) (popMatch, floa
 	}
 	return best.m, best.s, why
 }
+
+// countryHeads are the two-letter country codes operators put in front of a
+// site code -- usdal2, gblon1 -- and nothing else is stripped as one.
+var countryHeads = map[string]bool{"us": true, "ca": true, "gb": true, "uk": true, "de": true, "fr": true, "nl": true, "jp": true,
+	"au": true, "sg": true, "br": true, "mx": true, "in": true, "kr": true, "hk": true, "ie": true, "es": true, "it": true,
+	"se": true, "ch": true, "za": true, "ae": true, "pl": true, "be": true, "at": true, "dk": true, "no": true, "fi": true, "nz": true, "tw": true}
