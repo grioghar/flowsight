@@ -12,11 +12,12 @@ package paths
 // the route a leg took.
 //
 // It comes from the Overpass API, which is a shared public service with
-// rules about use. One region is fetched per run, runs are hours apart, a
-// region is kept a month, and a refusal backs off for a day. Regions are
-// fixed boxes over the populated world, taken in order of how many placed
-// hops fall in each, so the parts of the world this network's traffic
-// actually crosses are covered first.
+// rules about use. One ten-degree tile is fetched per run, runs are twenty
+// minutes apart while tiles are outstanding, a tile is kept a month, a
+// timeout waits an hour and a refusal six. Tiles are taken in order of how
+// many placed hops fall in each, so the parts of the world this network's
+// traffic actually crosses are covered first; the whole populated world is
+// a few hundred tiles and takes about five days the first time.
 
 import (
 	"encoding/json"
@@ -65,15 +66,43 @@ var osmBoxes = []osmBox{
 	{"Russia, east", 45, 60, 78, 180},
 }
 
+// osmTiles cuts the regions into ten-degree tiles. A whole region -- the
+// eastern United States is forty degrees across -- timed out at the public
+// Overpass server; a tile answers in seconds, and there are about a hundred
+// of them over the populated world.
+func osmTiles() []osmBox {
+	var out []osmBox
+	seen := map[string]bool{}
+	for _, b := range osmBoxes {
+		for s := b.S; s < b.N; s += 10 {
+			for w := b.W; w < b.E; w += 10 {
+				n, e := s+10, w+10
+				if n > b.N {
+					n = b.N
+				}
+				if e > b.E {
+					e = b.E
+				}
+				t := osmBox{fmt.Sprintf("%s %+.0f%+.0f", b.Name, s, w), s, w, n, e}
+				if !seen[t.Name] {
+					seen[t.Name] = true
+					out = append(out, t)
+				}
+			}
+		}
+	}
+	return out
+}
+
 func osmFile(b osmBox) string {
-	return fmt.Sprintf("osm-%s.geojson", strings.NewReplacer(" ", "-", ",", "", "&", "and").Replace(strings.ToLower(b.Name)))
+	return fmt.Sprintf("osm-%s.geojson", strings.NewReplacer(" ", "-", ",", "", "&", "and", "+", "p").Replace(strings.ToLower(b.Name)))
 }
 
 // overpassQuery asks for every way tagged as a telecom line in the box, with
 // its geometry. Three tags, because mappers have used all three.
 func overpassQuery(b osmBox) string {
 	bb := fmt.Sprintf("%.2f,%.2f,%.2f,%.2f", b.S, b.W, b.N, b.E)
-	return fmt.Sprintf(`[out:json][timeout:180];(way["telecom"="line"](%s);way["communication"="line"](%s);way["telecom"="cable"](%s););out geom;`, bb, bb, bb)
+	return fmt.Sprintf(`[out:json][timeout:90][maxsize:67108864];(way["telecom"="line"](%s);way["communication"="line"](%s);way["telecom"="cable"](%s););out geom;`, bb, bb, bb)
 }
 
 // overpassToGeoJSON turns an Overpass JSON answer into the GeoJSON shape the
@@ -155,7 +184,7 @@ func (m *Module) nextOSMBox() (osmBox, bool) {
 	}
 	m.mu.Unlock()
 	var stale []osmBox
-	for _, b := range osmBoxes {
+	for _, b := range osmTiles() {
 		st, err := os.Stat(filepath.Join(dir, osmFile(b)))
 		if err != nil || time.Since(st.ModTime()) > 30*24*time.Hour {
 			stale = append(stale, b)
@@ -170,6 +199,17 @@ func (m *Module) nextOSMBox() (osmBox, bool) {
 
 // boxOf is which region a place falls in, for counting hops per region.
 func boxOf(lat, lon float64) string {
+	for _, b := range osmTiles() {
+		if lat >= b.S && lat < b.N && lon >= b.W && lon < b.E {
+			return b.Name
+		}
+	}
+	return ""
+}
+
+// regionOf is the coarse region a place falls in, for tests and for
+// reading a tile name.
+func regionOf(lat, lon float64) string {
 	for _, b := range osmBoxes {
 		if lat >= b.S && lat < b.N && lon >= b.W && lon < b.E {
 			return b.Name
@@ -178,10 +218,8 @@ func boxOf(lat, lon float64) string {
 	return ""
 }
 
-// refreshOSM fetches one stale region, converts it, and reloads the OSM
-// networks. It runs every few hours; the whole world takes a few days the
-// first time and a region a month thereafter, which is the pace a shared
-// public service is owed.
+// refreshOSM fetches one stale tile, converts it, and reloads the OSM
+// networks. Idle once every tile is fresh.
 func (m *Module) refreshOSM() error {
 	if !core.Bool(m.ctx.Settings(), "osm_telecom", true) {
 		m.mu.Lock()
@@ -202,9 +240,16 @@ func (m *Module) refreshOSM() error {
 	}
 	if b, ok := m.nextOSMBox(); ok {
 		if err := m.fetchOSMBox(b); err != nil {
+			// A refusal (429) means asked too often: wait six hours. A
+			// timeout or a server error means the tile or the server was
+			// heavy just now: try again in an hour, with the next tile.
+			wait := time.Hour
+			if strings.Contains(err.Error(), "429") {
+				wait = 6 * time.Hour
+			}
 			m.mu.Lock()
 			m.osm.Error = b.Name + ": " + err.Error()
-			m.osmUntil = time.Now().Add(24 * time.Hour) // a refusal or a timeout: come back tomorrow
+			m.osmUntil = time.Now().Add(wait)
 			m.mu.Unlock()
 		} else {
 			m.mu.Lock()
@@ -287,7 +332,7 @@ func (m *Module) loadOSM() error {
 	if _, edges := netSize(nets); edges > maxNetEdges {
 		m.mu.Lock()
 		m.osmNets = nil
-		m.osm = osmState{On: true, Of: len(osmBoxes), Weight: osmWeight, Error: fmt.Sprintf("%d edges after stitching, more than this daemon will hold; not loaded", edges)}
+		m.osm = osmState{On: true, Of: len(osmTiles()), Weight: osmWeight, Error: fmt.Sprintf("%d edges after stitching, more than this daemon will hold; not loaded", edges)}
 		m.mu.Unlock()
 		return nil
 	}
@@ -298,7 +343,7 @@ func (m *Module) loadOSM() error {
 	m.mu.Lock()
 	prevErr, until := m.osm.Error, m.osmUntil
 	m.osmNets = nets
-	m.osm = osmState{On: true, Ways: ways, Regions: len(files), Of: len(osmBoxes), Next: next, Weight: osmWeight, Error: prevErr}
+	m.osm = osmState{On: true, Ways: ways, Regions: len(files), Of: len(osmTiles()), Next: next, Weight: osmWeight, Error: prevErr}
 	if time.Now().Before(until) {
 		m.osm.Until = until.Unix()
 	}

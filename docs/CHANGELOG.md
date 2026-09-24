@@ -12,6 +12,16 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242046
+
+**OpenStreetMap lines are fetched by ten-degree tile.** The first region
+asked for -- the eastern United States, forty degrees across -- timed out at
+the public Overpass server. Regions are now cut into ten-degree tiles, a few
+hundred over the populated world; one is fetched every twenty minutes
+while any are outstanding, busiest first, and the job idles once all are
+fresh. A timeout waits an hour and moves on; a refusal waits six. The card
+counts tiles rather than regions.
+
 ## 0.9.8r202609242044
 
 **Who was talking, and about what.** A route said where the traffic went;

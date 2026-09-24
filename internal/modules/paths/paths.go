@@ -127,7 +127,7 @@ func (m *Module) Info() core.ModuleInfo {
 			{Section: "Where things are", Key: "terrestrial_urls", Label: "Land-route sources", Type: "text",
 				Help: "One GeoJSON URL per line, replacing the defaults. Lines starting with # or // are ignored, so a source can be kept and turned off."},
 			{Section: "Where things are", Key: "osm_telecom", Label: "Use OpenStreetMap telecom lines (low weight)", Type: "bool",
-				Help: "Fibre and telecom lines where OpenStreetMap mappers have drawn them: dense in a few well-mapped countries, absent elsewhere, and mostly the visible kind. Used at half weight -- where a line offers a route between two hops, the expected time is the average of following it and the plain detour estimate. Never touches the physics floor; never drawn as the route. Fetched from the Overpass API one region per run, a few hours apart, kept a month, starting with the regions your traffic crosses; a refusal backs off for a day."},
+				Help: "Fibre and telecom lines where OpenStreetMap mappers have drawn them: dense in a few well-mapped countries, absent elsewhere, and mostly the visible kind. Used at half weight -- where a line offers a route between two hops, the expected time is the average of following it and the plain detour estimate. Never touches the physics floor; never drawn as the route. Fetched from the Overpass API one ten-degree tile per run, twenty minutes apart while any are outstanding, kept a month, starting with the tiles your traffic crosses; a timeout waits an hour, a refusal six."},
 			{Section: "Where things are", Key: "osm_overpass_url", Label: "Overpass API", Type: "string",
 				Help: "Empty: overpass-api.de. Point it at your own Overpass instance if you run one; the public service is shared and asked gently."},
 			{Section: "Where things are", Key: "learn_corrections", Label: "Remember what the database gets wrong", Type: "bool",
@@ -167,7 +167,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	// Long-haul routes change over years and these datasets are revised
 	// rarely, so the job wakes often and downloads almost never.
 	ctx.Every("terrestrial", 12*time.Hour, m.refreshTerrestrial)
-	ctx.Every("osm", 6*time.Hour, m.refreshOSM, core.Delayed())
+	ctx.Every("osm", 20*time.Minute, m.refreshOSM, core.Delayed())
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/talkers", m.apiTalkers, core.Needs("paths.map"),

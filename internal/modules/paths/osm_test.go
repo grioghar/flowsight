@@ -3,6 +3,7 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -32,11 +33,23 @@ func TestOverpassAnswerBecomesRoutesTheLoaderReads(t *testing.T) {
 	if !names["Openreach"] || !names["Trunk A"] {
 		t.Fatalf("names lost: %v", names)
 	}
-	if osmFile(osmBoxes[0]) != "osm-north-america-east.geojson" {
-		t.Fatal(osmFile(osmBoxes[0]))
+	tiles := osmTiles()
+	if len(tiles) < 200 || len(tiles) > 400 {
+		t.Fatalf("expected a few hundred tiles, got %d", len(tiles))
 	}
-	if boxOf(39.18, -96.57) != "North America, east" || boxOf(37.77, -122.42) != "North America, central" || boxOf(51.5, -0.1) != "Europe, west" || boxOf(-70, 0) != "" {
+	for _, tl := range tiles {
+		if tl.N-tl.S > 10.01 || tl.E-tl.W > 10.01 {
+			t.Fatalf("tile too big: %+v", tl)
+		}
+	}
+	if osmFile(tiles[0]) != "osm-north-america-east-p24-100.geojson" {
+		t.Fatal(osmFile(tiles[0]))
+	}
+	if regionOf(39.18, -96.57) != "North America, east" || regionOf(37.77, -122.42) != "North America, central" || regionOf(51.5, -0.1) != "Europe, west" || boxOf(-70, 0) != "" {
 		t.Fatal("regions misassigned")
+	}
+	if !strings.HasPrefix(boxOf(39.18, -96.57), "North America, east ") {
+		t.Fatal(boxOf(39.18, -96.57))
 	}
 }
 

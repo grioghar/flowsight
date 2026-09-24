@@ -20,8 +20,8 @@ func TestTalkersFoldFlowsIntoDevicesAndServices(t *testing.T) {
 		{now - 120, "192.168.1.119", "1.1.1.1", 443, "udp", "QUIC", "one.one.one.one", 1000, 100},
 		{now - 30, "192.168.1.119", "1.1.1.1", 53, "udp", "DNS", "", 300, 200},
 		{now - 90, "192.168.1.53", "1.1.1.1", 53, "udp", "DNS", "", 100, 50},
-		{now - 3 * 86400, "192.168.1.53", "1.1.1.1", 53, "udp", "DNS", "", 999999, 0}, // outside 24h
-		{now - 10, "192.168.1.7", "8.8.8.8", 53, "udp", "DNS", "", 5, 5},                // another endpoint
+		{now - 3*86400, "192.168.1.53", "1.1.1.1", 53, "udp", "DNS", "", 999999, 0}, // outside 24h
+		{now - 10, "192.168.1.7", "8.8.8.8", 53, "udp", "DNS", "", 5, 5},            // another endpoint
 	}
 	for _, r := range rows {
 		if err := st.Exec(ins, r...); err != nil {

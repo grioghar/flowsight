@@ -466,7 +466,7 @@ built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons
 licence and is the one substantial open set; the comprehensive maps of North
 America, Europe and Asia are sold commercially. Sources are a list of URLs, so
 adding one later is a line of configuration. OpenStreetMap's telecom lines
-are a second, weaker source: fetched region by region from the Overpass API,
+are a second, weaker source: fetched tile by tile from the Overpass API,
 they count at half weight -- the expected time is the average of following
 the line and the plain detour -- because they are mostly the visible kind of
 line and rarely the buried long-haul a packet rides. Road-traced files are thinned to
