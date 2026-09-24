@@ -30,6 +30,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -170,6 +171,9 @@ var cityNames = func() map[string]pop {
 // reverseName asks what a router calls itself. Most do not answer: a hop with
 // no name is the common case, not a fault, and the caller must carry on.
 func reverseName(ip string) string {
+	if !validIP(ip) {
+		return ""
+	}
 	names, err := net.LookupAddr(ip)
 	if err != nil || len(names) == 0 {
 		return ""
@@ -250,7 +254,10 @@ type rdapReply struct {
 // in the "label" parameter, which is why this decodes the raw array instead of
 // unmarshalling into a struct.
 func rdapNet(c *http.Client, ip string) (netName, org, addr string) {
-	resp, err := c.Get("https://rdap.org/ip/" + ip)
+	if !validIP(ip) {
+		return "", "", ""
+	}
+	resp, err := c.Get("https://rdap.org/ip/" + url.PathEscape(ip))
 	if err != nil {
 		return "", "", ""
 	}
@@ -380,8 +387,8 @@ type pdbFac struct {
 // is not, the caller is told so through Scoped and has to present it as the
 // unrelated list that it is.
 func facilitiesFor(c *http.Client, asn, city string) (out []Facility, scoped bool) {
-	if asn == "" {
-		return nil, false
+	if asn == "" || strings.Trim(asn, "0123456789") != "" {
+		return nil, false // an AS number is digits; anything else is not going in a URL
 	}
 	var n pdbNet
 	if !getJSON(c, "https://www.peeringdb.com/api/net?asn="+asn, &n) || len(n.Data) == 0 {

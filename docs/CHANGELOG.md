@@ -12,6 +12,42 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241756
+
+**Settings for the map are in sections, and the map says what feeds it.**
+*Settings > paths* had grown to eighteen switches in one flat list. They now
+sit under four headings -- *Tracing*, *Where things are*, *What the latency
+proves*, and the rest -- and the map page carries a *Data sources* card
+showing what each source has actually produced: how many positions IPmap has
+measured this session and how many are queued, whether it is backing off,
+how many cables and land routes are loaded, and any error a fetch returned.
+Settings say what is on; this says what it has done.
+
+**Traffic per endpoint.** Each endpoint now carries how much was received from
+it and sent to it over the last day, on its card and in the destinations
+table. The key gains *size endpoints by traffic*: a mode rather than a layer,
+off unless asked for, that grows each endpoint's ring by the log of what went
+there -- logarithmic because a megabyte and a terabyte both have to fit on one
+map.
+
+**The daemon will not fetch from inside the network it sits in.** Two settings
+take URLs -- the cable map and the land-route sources -- and a daemon that
+fetches whatever URL it is given is a proxy to everything the network can
+see: the router's own admin page, the hypervisor's management port, the cloud
+metadata address. Those fetches now go through a client that refuses any
+address that is not public, and refuses at dial time after the name has
+resolved, so a redirect or a name that answers differently the second time
+cannot walk it somewhere private. Only http and https; no credentials in the
+URL. Addresses that come off a traceroute are parsed as addresses before they
+are used as a lookup key, a name to resolve or part of a URL, and an AS number
+has to be digits before it goes anywhere near one.
+
+**The graph reply is a fraction of its size.** Hops that never answered were
+six of every seven nodes and nothing draws them; they are needed to build the
+graph and not needed in what is sent. They are counted now and dropped, and the
+reply is built once and kept for twenty seconds so the page's own refresh and
+a second reader do not each walk seven thousand nodes through placement.
+
 ## 0.9.8r202609241742
 
 **FlowSight now asks where routers actually are, and keeps asking.**

@@ -78,6 +78,10 @@ type SettingField struct {
 	Help        string   `json:"help,omitempty"`
 	Restart     bool     `json:"restart,omitempty"`
 	Placeholder string   `json:"placeholder,omitempty"`
+	// Section groups related settings under a heading. Consecutive fields
+	// with the same Section are shown together; the UI writes the heading
+	// once when it changes.
+	Section string `json:"section,omitempty"`
 }
 
 type Health struct {

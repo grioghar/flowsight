@@ -63,6 +63,11 @@ type Node struct {
 	ExpectedVia string  `json:"expected_via,omitempty"`
 	// SlackKM is how much the hard verdict allowed for the origin being wrong.
 	SlackKM float64 `json:"slack_km,omitempty"`
+	// Traffic to this address over the window, for a node that is somewhere
+	// traffic was going. Zero for a router on the way, which is not where any
+	// of it was going.
+	BytesIn  int64 `json:"bytes_in,omitempty"`
+	BytesOut int64 `json:"bytes_out,omitempty"`
 	// Inferred marks a hop that answered but could not be placed, and has
 	// been put between the two placed hops either side of it by where its
 	// round trip falls between theirs. Between names those two and BetweenHow
@@ -121,6 +126,12 @@ type Graph struct {
 	Legs  []Leg  `json:"legs"`
 	Home  *Home  `json:"home,omitempty"`
 	Note  string `json:"note"`
+	// SilentCount stands in for the hops that never answered. They are kept
+	// through the building of the graph, because their position in a route
+	// keeps the numbering honest, and dropped from what is sent: nothing
+	// draws them, and on a real network they were six of every seven nodes
+	// and most of a two-megabyte reply.
+	SilentCount int `json:"silent_count"`
 }
 
 // hopRow is one stored hop.
@@ -358,4 +369,29 @@ func markEndpoints(g *Graph) {
 		}
 		sort.Strings(n.Reaches)
 	}
+}
+
+// dropSilent removes the hops that never answered from what is sent, keeping
+// only their number. Everything that needed their position in a route --
+// bridging, interpolation, the trail's numbering -- has already used it.
+func dropSilent(g *Graph) {
+	silent := map[string]bool{}
+	kept := g.Nodes[:0]
+	for _, n := range g.Nodes {
+		if n.Silent {
+			silent[n.ID] = true
+			g.SilentCount++
+			continue
+		}
+		kept = append(kept, n)
+	}
+	g.Nodes = kept
+	legs := g.Legs[:0]
+	for _, l := range g.Legs {
+		if silent[l.From] || silent[l.To] {
+			continue
+		}
+		legs = append(legs, l)
+	}
+	g.Legs = legs
 }

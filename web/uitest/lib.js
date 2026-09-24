@@ -286,3 +286,19 @@ print('plain table OK');
   this.requestAnimationFrame = realRAF; window.PointerEvent = realPE;
   print('FS.panZoom matches its box and crops about the equator OK');
 })();
+
+
+// Settings under headings: one heading each time the section changes, none
+// for settings that have no section.
+(function () {
+  var html = FS.settingsForm({ name: 'paths', settings: {}, schema: [
+    { section: 'Tracing', key: 'a', label: 'A', type: 'bool' },
+    { section: 'Tracing', key: 'b', label: 'B', type: 'int' },
+    { section: 'Where things are', key: 'c', label: 'C', type: 'bool' },
+    { key: 'd', label: 'D', type: 'string' } ] });
+  var heads = (html.match(/class="fsec"/g) || []).length;
+  if (heads !== 2) throw new Error('two sections should give two headings, got ' + heads);
+  if (html.indexOf('>Tracing<') < 0 || html.indexOf('>Where things are<') < 0) throw new Error('headings should name the sections');
+  if (html.indexOf('>Tracing<') > html.indexOf('name="a"')) throw new Error('a heading comes before its first field');
+  print('FS.settingsForm groups by section OK');
+})();

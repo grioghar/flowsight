@@ -47,13 +47,14 @@ var GRAPH = { nodes: [
       facilities:[{ name:'Equinix LA1 - Los Angeles', address:'600 W 7th St, Los Angeles, CA, 90017-3859, US' }],
       facilities_scoped:true } },
   { id:'h4', index:4, ips:['1.1.1.1'], located:true, lat:-33.86, lon:151.20, country:'AU', city:'Sydney', rtt_ms:18.9,
-    endpoint:true, reaches:['1.1.1.1'],
+    endpoint:true, reaches:['1.1.1.1'], bytes_in: 734003200, bytes_out: 12582912,
     impossible:true, distance_km:15320, floor_ms:153.2, via:'Southern Cross NEXT', why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' },
   // Clears the floor by 4%: physics allows it, a real route does not.
   { id:'h7', index:7, ips:['62.115.143.52'], located:true, lat:51.5072, lon:-0.1276, country:'GB', city:'London', rtt_ms:73.2,
     tight:true, distance_km:7000, floor_ms:70.0, expected_km:9450, expected_ms:95.9,
     why:'answers in 73.2 ms, which light allows over 7000 km but no built route does: 9450 km once fibre\u2019s detours are allowed for comes to 94.5 ms, and 7 hops add 1.4 ms more' },
-  { id:'s5', index:5, ips:[], located:false, silent:true } ],
+  ],
+  silent_count: 1,
   legs: [
     { from:'h2', to:'h3', destinations:['1.1.1.1','8.8.8.8'], shared:true },
     { from:'h3', to:'h4', destinations:['1.1.1.1'], shared:false, straight_km:13500,
@@ -65,7 +66,7 @@ var GRAPH = { nodes: [
     // Stands in for hops that could not be placed; without it h35 is a dot
     // with nothing attached to it.
     { from:'h4', to:'h35', destinations:['1.1.1.1'], shared:false, gap:true, through:3 } ] };
-var DESTS = { destinations: [ { dst:'1.1.1.1', name:'one.one.one.one', country:'AU', city:'Sydney', hops:6, answered:5, complete:1, ts:1790200000 } ] };
+var DESTS = { destinations: [ { dst:'1.1.1.1', name:'one.one.one.one', country:'AU', city:'Sydney', hops:6, answered:5, complete:1, ts:1790200000, bytes_in:734003200, bytes_out:12582912 } ] };
 var DEVS = { devices: [
   { key:'192.168.1.119', name:'MacBookPro', addresses:['192.168.1.119','2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6'], destinations:9 },
   { key:'192.168.2.188', name:'roku-ultra', addresses:['192.168.2.188'], destinations:2 } ] };
@@ -79,7 +80,9 @@ var CAB = { cables: [
   // A run that wraps the antimeridian; it must break, not stripe the map.
   { name:'Pacific Light', km:12800, runs:[[[170.0,20.0],[179.0,21.0],[-179.0,21.5],[-150.0,22.0]]] } ],
   attribution:"Submarine cable routes from TeleGeography's public cable map." };
-var STATUS = { active:true, last_run:1790200000, destinations:2, hops:11, error:'' };
+var STATUS = { active:true, last_run:1790200000, destinations:2, hops:11, error:'',
+  sources:{ router_names:{on:true,codes:210}, ipmap:{on:true,answered:21,queued:300,per_minute:20,backing_off_until:0},
+            registry:{on:true,queued:12}, cables:{on:true,loaded:709,error:''}, land_routes:{on:true,loaded:133,error:''} } };
 
 var ROUTE = { destination:'1.1.1.1',
   inside:{ addresses:['192.168.1.119','2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6'], name:'MacBookPro', vendor:'Apple' },
@@ -117,6 +120,16 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('Not on the map') < 0) throw new Error('unplaced hops need their own section');
   // Silent hops are counted, never drawn.
   if (h.indexOf('never answered') < 0) throw new Error('silent hops should be counted');
+  if (h.indexOf('1 hop never answered') < 0) throw new Error('the count should come from the server, which no longer sends silent nodes');
+  // What feeds the map, and how each source is doing.
+  if (h.indexOf('Data sources') < 0) throw new Error('the page should say what the map is fed by');
+  if (h.indexOf('RIPE IPmap') < 0 || h.indexOf('21 positions measured') < 0) throw new Error('IPmap progress should be shown');
+  if (h.indexOf('709 cables loaded') < 0) throw new Error('cable count should be shown');
+  // Traffic per endpoint, and a way to read the map by it.
+  if (h.indexOf('data-rt="') < 0) throw new Error('endpoints need a traffic-scaled radius');
+  if (h.indexOf('size endpoints by traffic') < 0) throw new Error('the key should offer sizing by traffic');
+  if (h.indexOf('Received from it') < 0 || h.indexOf('700') < 0) throw new Error("an endpoint's card should show its traffic");
+  if (h.indexOf('In / out (24h)') < 0) throw new Error('the destinations table should show traffic');
   // Two addresses at one hop is one circle, not two.
   // The world repeats east and west so a route crossing the antimeridian can
   // be shown whole, so every located node is plotted three times. The heavy

@@ -339,7 +339,9 @@
       const located = nodes.filter(n => n.located);
       const impossible = nodes.filter(n => n.impossible);
       const unlocated = nodes.filter(n => !n.located && !n.silent);
-      const silent = nodes.filter(n => n.silent).length;
+      // Counted by the server. Silent hops are no longer sent -- they were
+      // six of every seven nodes and nothing draws them.
+      const silent = g.silent_count || nodes.filter(n => n.silent).length;
 
       // One colour per destination for the legs only it uses; everything
       // shared takes a single neutral colour, which is what "these are the
@@ -497,7 +499,14 @@
         // An endpoint is somewhere this network was talking to; everything
         // else is a router it crossed on the way. Drawn the same, there was
         // no telling the destination from the plumbing.
-        if (n.endpoint) dots += `<circle class="endpoint" data-r="8" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"/>`;
+        if (n.endpoint) {
+          // A second radius, grown by how much went here, for the reader who
+          // switches the key to size endpoints by traffic. Logarithmic: a
+          // megabyte and a terabyte both have to fit on one map.
+          const mb = ((n.bytes_in || 0) + (n.bytes_out || 0)) / 1e6;
+          const rt = Math.min(22, 8 + Math.log10(1 + mb) * 3.2).toFixed(1);
+          dots += `<circle class="endpoint" data-r="8" data-rt="${rt}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"/>`;
+        }
         dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${n.endpoint ? ' isend' : ''}${n.inferred ? ' guessed' : ''}${n.location_source === 'measured' ? ' measured' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.endpoint ? '\nENDPOINT — traffic was going here' : ''}${n.inferred ? '\nPLACED BY TIMING, not located: ' + esc(n.between_how || '') : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'TOO FAST: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
       });
 
@@ -519,7 +528,12 @@
             + `<div class="endnote">Nothing replied at this position. The traffic still went through it &mdash; a router that does not answer a traceroute forwards perfectly well &mdash; so the step is kept and the numbering stays honest. There is nothing more to know about it: no address came back, so there is no name, no operator and no position.</div>`;
         }
         let h = `<h4>${n.endpoint ? 'Endpoint' : 'Hop ' + n.index} &mdash; <span class="mono">${esc(addrs)}</span></h4>`;
-        if (n.endpoint) h += `<div class="endnote">Traffic was going here; the hops before it are the way in. Click it on the map to follow the whole path from you.</div>`;
+        if (n.endpoint) {
+          h += `<div class="endnote">Traffic was going here; the hops before it are the way in. Click it on the map to follow the whole path from you.</div>`;
+          if (n.bytes_in || n.bytes_out) {
+            h += grp('Traffic, last 24 hours') + r('Received from it', bytes(n.bytes_in || 0)) + r('Sent to it', bytes(n.bytes_out || 0));
+          }
+        }
         h += grp('Measured') + r('Round trip', n.rtt_ms ? n.rtt_ms + ' ms' : '');
         if (n.names && n.names.length) h += grp('Resolved') + r('Router name', n.names.join(', '));
         if (!d.pop_city && d.pop_why) h += r('Name suggests', d.pop_why, 'warn');
@@ -799,6 +813,7 @@
             ${(cab.cables || []).length ? it(sw('cable'), 'submarine cable', 'cable') : ''}
             ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="homering" cx="6" cy="6" r="4.5"/><circle class="home" cx="6" cy="6" r="2"/></svg>`, 'you', 'you')}
             ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="endpoint" cx="6" cy="6" r="4.6"/><circle cx="6" cy="6" r="2.2" fill="${FS.palette[2]}"/></svg>`, 'an endpoint: traffic was going here', 'endpoint')}
+            <button type="button" class="lgi lgmode" data-mode="traffic" aria-pressed="false">${`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="endpoint" cx="6" cy="6" r="5.4"/><circle class="endpoint" cx="6" cy="6" r="2.4"/></svg>`}<span>size endpoints by traffic</span></button>
             ${it(dot(FS.palette[2]), 'a hop it crossed on the way', 'hop')}
             ${it(dot(FS.palette[1], 'measured'), 'position measured, not registered', 'measured')}
             ${it(dot('', 'guessed'), 'answered but unplaceable: put between its neighbours by timing', 'guessed')}
@@ -838,6 +853,23 @@
         ${kpi('Ruled out by latency', num(impossible.length), impossible.length ? 'too far away to have answered that fast' : 'every placement is possible', impossible.length ? 'bad' : '')}
         ${card('Tracing', st.active ? `<div>${pill('on', 'ok')}</div><div class="small muted" style="margin-top:6px">Last run ${st.last_run > 0 ? ago(st.last_run) : 'not yet'}.</div>`
           : `<div>${pill('off', '')}</div><div class="small muted" style="margin-top:6px">Switch it on in <a href="#modules?m=paths">Settings &rsaquo; paths</a>. Nothing is probed that this network has not already contacted.</div>`)}</div>
+
+      ${(() => {
+        // What the map is being fed by, and how each source is getting on.
+        // Settings say what is switched on; this says what it has produced.
+        const S = st.sources || {};
+        const row = (name, on, detail, err) => `<tr><td>${esc(name)}</td><td>${on ? pill('on', 'ok') : pill('off', '')}</td><td class="small">${detail}</td><td class="small sev-high">${esc(err || '')}</td></tr>`;
+        const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {};
+        const backoff = ipm.backing_off_until && ipm.backing_off_until * 1000 > Date.now() ? ` — backing off until ${FS.when(ipm.backing_off_until)}` : '';
+        return `<div style="margin-top:14px">${card('Data sources', `<table>
+          <tr><th>Source</th><th></th><th>State</th><th></th></tr>
+          ${row('Router names', nm.on, `${num(nm.codes || 0)} site codes known, plus spelled-out and shortened forms`)}
+          ${row('RIPE IPmap', ipm.on, `${num(ipm.answered || 0)} positions measured this session, ${num(ipm.queued || 0)} waiting, ${num(ipm.per_minute || 0)} a minute${backoff}`)}
+          ${row('Routing table &amp; registry', reg.on, `${num(reg.queued || 0)} addresses waiting for their operator`)}
+          ${row('Submarine cables', cab.on, cab.on ? `${num(cab.loaded || 0)} cables loaded` : 'not loaded', cab.error)}
+          ${row('Land routes', land.on, land.on ? `${num(land.loaded || 0)} routes loaded` : 'not loaded', land.error)}
+        </table>`, `each is a setting under <a href="#modules/paths">Settings › paths</a>, grouped under <em>Where things are</em>`)}</div>`;
+      })()}
 
       <div style="margin-top:14px">${card('Your location', `
         <div class="small">${home.ok
@@ -884,6 +916,7 @@
         { t: 'Destination', f: r => `<a href="#paths?${esc(routeQ(r.dst))}"><b>${esc(r.name || r.dst)}</b></a>${r.name ? `<div class="muted small mono">${esc(r.dst)}</div>` : ''}`, sort: 'dst' },
         { t: 'Where', f: r => esc([r.city, r.country].filter(Boolean).join(', ')) || '<span class="muted">unknown</span>', sort: 'country' },
         { t: 'Hops', f: r => num(r.hops), num: true, sort: 'hops' },
+        { t: 'In / out (24h)', f: r => (r.bytes_in || r.bytes_out) ? `${bytes(r.bytes_in || 0)} / ${bytes(r.bytes_out || 0)}` : '<span class="muted">—</span>', num: true, sort: 'bytes_in' },
         { t: 'Answered', f: r => num(r.answered), num: true, sort: 'answered' },
         { t: 'Reached', f: r => r.complete ? pill('yes', 'ok') : pill('no', ''), sort: 'complete' },
         { t: 'Traced', f: r => ago(r.ts), sort: 'ts' }],
@@ -944,6 +977,27 @@
           };
         });
         paint();
+        // Sizing endpoints by traffic is a way of reading the map rather than
+        // a layer of it, so it is a mode: off unless asked for, remembered.
+        const tb = el.querySelector('.lgmode[data-mode="traffic"]');
+        if (tb) {
+          let onT = false;
+          try { onT = localStorage.getItem('fs.maptraffic') === '1'; } catch (e) { }
+          const setT = (v) => {
+            onT = v;
+            svgEl.classList.toggle('traffic', v);
+            tb.setAttribute('aria-pressed', v ? 'true' : 'false');
+            try { localStorage.setItem('fs.maptraffic', v ? '1' : '0'); } catch (e) { }
+            // Re-run the sizing at the current zoom so the change shows now.
+            const byTraffic = v;
+            svgEl.querySelectorAll('[data-r]').forEach(c => {
+              const base = byTraffic && c.hasAttribute('data-rt') ? c.getAttribute('data-rt') : c.getAttribute('data-r');
+              c.setAttribute('r', (parseFloat(base) / lastZ).toFixed(2));
+            });
+          };
+          tb.onclick = () => setT(!onT);
+          setT(onT);
+        }
       }
 
       // Folded or not is a per-reader preference, so it is remembered here and
@@ -1168,6 +1222,7 @@
       // Read before the map is built, because building it lays down a full
       // view of its own and publishes that -- which overwrote the very thing
       // being restored, a second before it was wanted.
+      let lastZ = 1;
       const savedFor = FS.pathsView && FS.pathsView.key === viewKey ? FS.pathsView : null;
       const savedBox = savedFor && savedFor.box;
       const savedFocus = savedFor && savedFor.focus;
@@ -1175,7 +1230,12 @@
       FS.panZoomHandle = FS.panZoom(svg, MAPW, MAPH, {
         wrapX: true,
         onZoom: (z) => {
-          sized.forEach(c => c.setAttribute('r', (parseFloat(c.getAttribute('data-r')) / z).toFixed(2)));
+          lastZ = z;
+          const byTraffic = svg.classList.contains('traffic');
+          sized.forEach(c => {
+            const base = byTraffic && c.hasAttribute('data-rt') ? c.getAttribute('data-rt') : c.getAttribute('data-r');
+            c.setAttribute('r', (parseFloat(base) / z).toFixed(2));
+          });
         },
         onView: (v) => { FS.pathsView = { key: viewKey, box: v, focus: FS.pathsView && FS.pathsView.focus }; }
       });

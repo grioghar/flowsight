@@ -648,7 +648,18 @@ FS.settingsForm = (mod) => {
     }
     return `<label>${FS.esc(f.label)}${f.restart ? ' <span class="muted">(restart)</span>' : ''}</label>${input}${f.help ? `<div class="help">${FS.esc(f.help)}</div>` : ''}${using(f)}`;
   };
-  return `<form class="f" data-module="${FS.esc(mod.name)}">${(mod.schema || []).map(field).join('')}<div class="actions"><button class="btn primary" type="submit">Save</button></div></form>`;
+  // A heading each time the section changes. Eighteen settings in one flat
+  // list read as noise; the same eighteen under four headings read as a form.
+  let lastSection = null;
+  const withHeadings = (f) => {
+    let head = '';
+    if (f.section && f.section !== lastSection) {
+      head = `<h4 class="fsec">${FS.esc(f.section)}</h4>`;
+      lastSection = f.section;
+    }
+    return head + field(f);
+  };
+  return `<form class="f" data-module="${FS.esc(mod.name)}">${(mod.schema || []).map(withHeadings).join('')}<div class="actions"><button class="btn primary" type="submit">Save</button></div></form>`;
 };
 FS.readForm = (form, schema) => {
   const out = {};

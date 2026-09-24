@@ -29,19 +29,33 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	if rows, e := m.ctx.Store.Rows(`SELECT COUNT(*) AS n FROM path_hops WHERE ip <> ''`); e == nil && len(rows) > 0 {
 		hops = asInt(rows[0]["n"])
 	}
+	m.mu.Lock()
+	sources := map[string]any{
+		"cables":       map[string]any{"on": core.Bool(m.ctx.Settings(), "cables", false), "loaded": len(m.cables), "error": m.cableErr},
+		"land_routes":  map[string]any{"on": core.Bool(m.ctx.Settings(), "terrestrial", false), "loaded": m.landRoutes, "error": m.landErr},
+		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
+		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
+		"facilities":   map[string]any{"on": m.facilitiesOK()},
+		"router_names": map[string]any{"on": true, "codes": len(pops)},
+	}
+	m.mu.Unlock()
 	return map[string]any{
 		"active":   core.Bool(m.ctx.Settings(), "active", false),
 		"last_run": epoch(last), "traced_this_session": traced,
 		"destinations": dsts, "hops": hops, "error": err,
-		"note": "Routes are measured to destinations this network has already contacted. Nothing else is probed.",
+		"sources": sources,
+		"note":    "Routes are measured to destinations this network has already contacted. Nothing else is probed.",
 	}, nil
 }
 
 func (m *Module) apiDestinations(r *core.Req) (any, error) {
+	since := time.Now().Add(-time.Duration(r.QInt("hours", 24, 1, 24*30)) * time.Hour).Unix()
 	rows, err := m.ctx.Store.Rows(`
 		SELECT r.dst AS dst, r.ts AS ts, r.hops AS hops, r.complete AS complete, r.err AS err,
-		       (SELECT COUNT(*) FROM path_hops h WHERE h.dst = r.dst AND h.ip <> '') AS answered
-		FROM path_runs r ORDER BY r.ts DESC LIMIT ?`, r.QInt("limit", 200, 1, 2000))
+		       (SELECT COUNT(*) FROM path_hops h WHERE h.dst = r.dst AND h.ip <> '') AS answered,
+		       (SELECT COALESCE(SUM(bytes_in),0) FROM flows f WHERE f.dst_ip = r.dst AND f.ts > ?) AS bytes_in,
+		       (SELECT COALESCE(SUM(bytes_out),0) FROM flows f WHERE f.dst_ip = r.dst AND f.ts > ?) AS bytes_out
+		FROM path_runs r ORDER BY r.ts DESC LIMIT ?`, since, since, r.QInt("limit", 200, 1, 2000))
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +175,19 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 		where = `WHERE dst IN (SELECT DISTINCT dst_ip FROM flows WHERE dst_ip <> '' AND src_ip IN (` +
 			strings.Join(ph, ",") + `))`
 	}
+	// Built once and kept briefly. The page asks for this every couple of
+	// minutes on its own, several readers may be looking at once, and the
+	// build walks seven thousand nodes through placement, interpolation and
+	// the plausibility check. Twenty seconds is short enough that a settings
+	// change is felt at once and long enough to absorb a burst.
+	key := strings.Join([]string{r.Q("device", ""), r.Q("country", ""), r.Q("max_latency", ""), r.Q("max_hops", ""), r.Q("hours", "")}, "|")
+	m.mu.Lock()
+	if c, ok := m.graphCache[key]; ok && time.Since(c.at) < 20*time.Second {
+		m.mu.Unlock()
+		return c.g, nil
+	}
+	m.mu.Unlock()
+
 	rows, err := m.hops(where, args...)
 	if err != nil {
 		return nil, err
@@ -168,18 +195,60 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	g := buildGraph(rows)
 	h := m.home()
 	m.locate(g.Nodes, h)
-	// Before anything measures the legs: a placed hop whose neighbours could
-	// not be placed would otherwise be drawn with nothing attached to it.
-	// Before the legs are bridged: a hop put between two others is a hop, and
-	// the route should run through it rather than over it.
+	// Interpolate before bridging: a hop put between two others is a hop, and
+	// the route should run through it rather than over it. Bridge before
+	// anything measures the legs: a placed hop whose neighbours could not be
+	// placed would otherwise be drawn with nothing attached.
 	interpolateGaps(&g)
 	bridgeGaps(&g)
 	markEndpoints(&g)
+	m.attachTraffic(&g, r.QInt("hours", 24, 1, 24*30))
 	m.checkPlausible(g.Nodes, h)
 	m.annotateCables(g)
 	g = filterGraph(g, r.Q("country", ""), float64(r.QInt("max_latency", 0, 0, 100000)), r.QInt("max_hops", 0, 0, 64))
+	dropSilent(&g)
 	g.Home = &h
+
+	m.mu.Lock()
+	if m.graphCache == nil || len(m.graphCache) > 32 {
+		m.graphCache = map[string]cachedGraph{} // a filter typed once should not live forever
+	}
+	m.graphCache[key] = cachedGraph{at: time.Now(), g: g}
+	m.mu.Unlock()
 	return g, nil
+}
+
+type cachedGraph struct {
+	at time.Time
+	g  Graph
+}
+
+// attachTraffic puts the traffic that went to each endpoint on the endpoint.
+// A router on the way carries none as a destination, which makes the
+// difference between the two kinds of node visible.
+func (m *Module) attachTraffic(g *Graph, hours int) {
+	rows, err := m.ctx.Store.Rows(`
+		SELECT dst_ip AS ip, COALESCE(SUM(bytes_in),0) AS bi, COALESCE(SUM(bytes_out),0) AS bo
+		FROM flows WHERE ts > ? AND dst_ip IN (SELECT dst FROM path_runs)
+		GROUP BY dst_ip`, time.Now().Add(-time.Duration(hours)*time.Hour).Unix())
+	if err != nil {
+		return
+	}
+	in, out := map[string]int64{}, map[string]int64{}
+	for _, row := range rows {
+		ip, _ := row["ip"].(string)
+		in[ip], out[ip] = asInt(row["bi"]), asInt(row["bo"])
+	}
+	for i := range g.Nodes {
+		n := &g.Nodes[i]
+		if !n.Endpoint {
+			continue
+		}
+		for _, d := range n.Reaches {
+			n.BytesIn += in[d]
+			n.BytesOut += out[d]
+		}
+	}
 }
 
 // apiCables hands the map over for drawing, thinned to the number of points

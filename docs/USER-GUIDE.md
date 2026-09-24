@@ -292,7 +292,15 @@ is the way the packets went. A key to the marks sits under the map.
 
 **The key is a set of switches.** Click any entry to turn that thing off and
 click again to bring it back; the choice is remembered. *Operator known* and
-*the route you picked* switch the emphasis rather than hiding anything.
+*the route you picked* switch the emphasis rather than hiding anything. *Size
+endpoints by traffic* is a mode rather than a layer: off unless you ask, it
+grows each endpoint's ring by how much went there over the last day.
+
+**What feeds the map.** The *Data sources* card lists each source and what it
+has produced -- positions measured by RIPE IPmap this session and how many are
+queued, cables and land routes loaded, any fetch error. The switches
+themselves are under *Settings › paths*, grouped as *Tracing*, *Where
+things are* and *What the latency proves*.
 
 **A selected route shows what each leg cost** -- the difference in round trip
 between one hop and the next -- written along the leg with the hop it arrives
@@ -341,8 +349,9 @@ right of it gives, in this order and under these headings:
 - *Resolved* -- the router's own name, from reverse DNS.
 - *Endpoint* -- if the hop is one. An endpoint is an address this network was
   talking to; every other hop is a router it crossed on the way. Endpoints
-  carry a ring of their own on the map, and clicking one opens the whole
-  journey to it.
+  carry a ring of their own on the map, show how much was received from and
+  sent to them over the last day, and clicking one opens the whole journey to
+  it.
 - *Position, measured* -- where RIPE's IPmap puts the address, worked out by
   measuring it from thousands of probes rather than by looking it up. This is
   the only source here that is measurement rather than paperwork, and it

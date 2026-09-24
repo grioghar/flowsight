@@ -126,14 +126,14 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/paths/status` | Whether tracing is on, how many destinations have a route, and when |  |
+| GET | `/api/paths/status` | Tracing state plus `sources`: per data source, whether it is on and what it has produced (IPmap answered/queued/back-off, cables and land routes loaded, registry queue) |  |
 | GET | `/api/paths/destinations` | Destinations with a measured route | limit (rows) |
 | GET | `/api/paths/path` | Every hop to one destination, in order, with names, locations and operator detail, plus `inside`: the device on this network that used the route | dst (destination), device (whose flows to count) |
 | GET | `/api/paths/devices` | Devices whose traffic has a measured route, one entry per device |  |
 | GET | `/api/paths/cables` | The submarine cable map, simplified for drawing | detail (points per cable) |
 | GET | `/api/paths/home` | The origin the map is drawn from, this gateway's own public addresses (`public_v4`, `public_v6`, and `public_address` for the one the origin was worked out from), and what could be detected for it |  |
 | POST | `/api/paths/home` | Declare your location ({lat, lon}), or {clear:true} to go back to detecting it |  |
-| GET | `/api/paths/graph` | The whole picture as nodes and legs, with shared legs collapsed | device (source address), country (filter), max_latency (ms), max_hops |
+| GET | `/api/paths/graph` | The whole picture as nodes and legs, with shared legs collapsed. Hops that never answered are not sent; `silent_count` gives their number. Endpoints carry `bytes_in`/`bytes_out` over the window. Built once and cached for 20 s per distinct query. | device (source address), country (filter), max_latency (ms), max_hops, hours (traffic window, default 24) |
 
 ### policy
 

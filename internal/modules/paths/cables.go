@@ -119,10 +119,15 @@ func (m *Module) downloadCables(path string) error {
 // once the whole thing has arrived: a half-written copy is worse than a
 // month-old one.
 func (m *Module) downloadTo(url, path string) error {
+	if err := checkFetchURL(url); err != nil {
+		return err
+	}
 	// Generous overall, tight on the parts that hang: the same shape the
 	// updater uses, after a thirty-second overall limit once failed a
-	// fourteen-megabyte download on an ordinary connection.
-	client := &http.Client{Timeout: 10 * time.Minute}
+	// fourteen-megabyte download on an ordinary connection. Public hosts only:
+	// this URL is operator-supplied, and a daemon that fetches whatever it is
+	// told is a proxy into the network it sits in.
+	client := safeClient(10 * time.Minute)
 	resp, err := client.Get(url)
 	if err != nil {
 		return err

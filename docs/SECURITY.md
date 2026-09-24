@@ -160,3 +160,33 @@ name a destination.
 Write to <flowsight@grio.co>. Please include the version (System page),
 the platform, and steps to reproduce. Fixes ship as signed releases and
 the release notes name the issue once a fix is out.
+
+## Fetching operator-supplied URLs
+
+Two settings under *paths* take URLs: the submarine cable map and the
+land-route sources. A daemon that fetches whatever URL it is given is a proxy
+into the network it sits in -- the router's own administrative interface, a
+hypervisor's management port, a printer, the cloud metadata address at
+169.254.169.254 -- and the person entering the URL need not be the person who
+owns the network.
+
+Those fetches therefore go through a client that:
+
+- accepts only `http` and `https`, with no credentials in the URL;
+- resolves the host and **refuses to dial** any address that is loopback,
+  private (RFC 1918, ULA), link-local, carrier-grade NAT (100.64/10), the IETF
+  protocol range (192.0.0/24), multicast or unspecified;
+- applies that check at dial time, after resolution, so a redirect or a name
+  that resolves differently on the second lookup cannot lead it somewhere
+  private;
+- follows at most five redirects, each re-checked;
+- ignores proxy environment variables, so the operator's URL is the whole of
+  the request;
+- reads at most 64 MB and replaces the local copy only once the whole file has
+  arrived.
+
+Addresses read from a traceroute are parsed as IP addresses before they are
+used as a cache key, a name to resolve, or a path component in a request to a
+public service; an AS number must be digits before it is placed in a URL.
+The fixed public services asked -- RIPE IPmap, rdap.org, PeeringDB, Team Cymru
+over DNS -- are asked at bounded rates and their answers cached for weeks.

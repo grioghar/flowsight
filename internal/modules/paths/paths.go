@@ -41,20 +41,22 @@ type Module struct {
 	rdns     lookup
 	identity core.Identity
 
-	mu         sync.Mutex
-	lastRun    time.Time
-	traced     int
-	lastErr    string
-	cables     []Cable
-	nets       []cableNet // the same cables stitched back into connected systems
-	landNets   []cableNet // mapped terrestrial routes, where anyone publishes them
-	landRoutes int
-	landErr    string
-	cableErr   string
-	pending    map[string]bool // addresses still needing the slow registry lookup
-	geoPending map[string]bool // addresses still to be asked about at IPmap
-	ipmapUntil time.Time       // do not ask IPmap again before this
-	floors     *floorMemo      // cable-route distances, worked out once per place
+	mu            sync.Mutex
+	lastRun       time.Time
+	traced        int
+	lastErr       string
+	cables        []Cable
+	nets          []cableNet // the same cables stitched back into connected systems
+	landNets      []cableNet // mapped terrestrial routes, where anyone publishes them
+	landRoutes    int
+	landErr       string
+	cableErr      string
+	pending       map[string]bool // addresses still needing the slow registry lookup
+	geoPending    map[string]bool // addresses still to be asked about at IPmap
+	ipmapUntil    time.Time       // do not ask IPmap again before this
+	ipmapAnswered int             // answers kept this session, for the status page
+	graphCache    map[string]cachedGraph
+	floors        *floorMemo // cable-route distances, worked out once per place
 }
 
 // lookup is the part of the enrich module this needs.
@@ -91,40 +93,40 @@ func (m *Module) Info() core.ModuleInfo {
 			"facilities":       true,
 		},
 		Schema: []core.SettingField{
-			{Key: "active", Label: "Trace paths", Type: "bool",
+			{Section: "Tracing", Key: "active", Label: "Trace paths", Type: "bool",
 				Help: "Off: nothing is traced. On: FlowSight runs a traceroute to a few of the destinations this network has actually contacted, on a timer, and keeps the route it finds. It never probes anything the network has not already talked to."},
-			{Key: "per_run", Label: "Destinations traced per run", Type: "int",
+			{Section: "Tracing", Key: "per_run", Label: "Destinations traced per run", Type: "int",
 				Help: "A traceroute takes seconds and the runs are spread out, so this is deliberately small. Raising it finds new paths sooner and costs more outbound probes."},
-			{Key: "retrace_hours", Label: "Trace a destination again after (hours)", Type: "int",
+			{Section: "Tracing", Key: "retrace_hours", Label: "Trace a destination again after (hours)", Type: "int",
 				Help: "Paths change. This decides how stale a route is allowed to get before it is measured again."},
-			{Key: "max_destinations", Label: "Destinations kept", Type: "int",
+			{Section: "Tracing", Key: "max_destinations", Label: "Destinations kept", Type: "int",
 				Help: "The busiest destinations are traced first; beyond this the long tail is left alone."},
-			{Key: "trace_ipv6", Label: "Trace IPv6 destinations too", Type: "bool"},
-			{Key: "cables", Label: "Show submarine cables", Type: "bool",
+			{Section: "Tracing", Key: "trace_ipv6", Label: "Trace IPv6 destinations too", Type: "bool"},
+			{Section: "Where things are", Key: "cables", Label: "Show submarine cables", Type: "bool",
 				Help: "Downloads TeleGeography's public cable map (about a megabyte, refreshed monthly) and draws it behind the routes. A traceroute never names a cable, so no leg is claimed to follow one; what this gives is the cables that could have carried a leg, minus the ones too long to have produced the latency measured."},
-			{Key: "cable_near_km", Label: "A cable serves a place within (km)", Type: "int",
+			{Section: "Where things are", Key: "cable_near_km", Label: "A cable serves a place within (km)", Type: "int",
 				Help: "How close a cable has to pass to count. Landfalls are rarely where a router is, and a router is rarely exactly where the database says, so this is deliberately loose."},
-			{Key: "origin_slack_km", Label: "Your own position could be wrong by (km)", Type: "int",
+			{Section: "What the latency proves", Key: "origin_slack_km", Label: "Your own position could be wrong by (km)", Type: "int",
 				Help: "Every distance on the map is measured from your origin, and unless you declared it that origin came from the address database, which is routinely tens of kilometres out. A placement is only called impossible if it misses its floor by more than this, because calling one impossible on a thinner margin claims a precision the origin does not have. It only ever withdraws accusations. A declared origin gets no allowance."},
-			{Key: "land_detour_pct", Label: "Fibre on land runs longer than the crow flies by (%)", Type: "int",
+			{Section: "What the latency proves", Key: "land_detour_pct", Label: "Fibre on land runs longer than the crow flies by (%)", Type: "int",
 				Help: "Cable does not go straight overland: it follows roads, railways and rights of way, and detours around whatever could not be dug through. This is how much longer, and it decides the second of the two numbers each hop is judged against -- not what light forbids, which is a separate and harder bound, but what a route that actually exists could manage. A hop faster than that is doing better than anything anyone has built. Zero turns the category off."},
-			{Key: "hop_delay_us", Label: "Each hop adds (microseconds)", Type: "int",
+			{Section: "What the latency proves", Key: "hop_delay_us", Label: "Each hop adds (microseconds)", Type: "int",
 				Help: "A router has to finish receiving a packet before it can start sending it on, and that time is spent at every hop. Small individually; over twenty hops it is worth counting."},
-			{Key: "terrestrial", Label: "Use published land-route maps", Type: "bool",
+			{Section: "Where things are", Key: "terrestrial", Label: "Use published land-route maps", Type: "bool",
 				Help: "Downloads open maps of long-haul fibre on land and measures along them where they reach, instead of estimating the detour. These never raise the impossible threshold: over water a cable is the only way across, so its length is a real bound, but on land a straight line is merely something nobody built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons licence and is the one substantial open set; the comprehensive maps of North America, Europe and Asia are sold commercially. Refreshed monthly."},
-			{Key: "terrestrial_urls", Label: "Land-route sources", Type: "text",
+			{Section: "Where things are", Key: "terrestrial_urls", Label: "Land-route sources", Type: "text",
 				Help: "One GeoJSON URL per line, replacing the defaults. Lines starting with # or // are ignored, so a source can be kept and turned off."},
-			{Key: "ipmap", Label: "Ask RIPE where each router is", Type: "bool",
+			{Section: "Where things are", Key: "ipmap", Label: "Ask RIPE where each router is", Type: "bool",
 				Help: "RIPE's IPmap publishes where addresses are, worked out by measuring them from thousands of probes and narrowing by latency \u2014 the same argument FlowSight makes about impossibility, run at scale. It is the one source here that is measurement rather than paperwork, and it outranks the address database. Asked slowly and remembered for a month; a refusal backs off for half an hour."},
-			{Key: "ipmap_per_minute", Label: "Addresses asked about per minute", Type: "int",
+			{Section: "Where things are", Key: "ipmap_per_minute", Label: "Addresses asked about per minute", Type: "int",
 				Help: "Deliberately small. There is no hurry \u2014 answers last a month and routers do not move \u2014 and the service belongs to somebody else."},
-			{Key: "registry", Label: "Look up who runs each hop", Type: "bool",
+			{Section: "Where things are", Key: "registry", Label: "Look up who runs each hop", Type: "bool",
 				Help: "Asks the public routing table which network announces a hop's address, and the regional registry who that block is allocated to. The registry's postal address is a head office, not the room the router is in, and is labelled that way. Results are kept for a month, because none of it changes quickly."},
-			{Key: "facilities", Label: "List buildings the operator occupies", Type: "bool",
+			{Section: "Where things are", Key: "facilities", Label: "List buildings the operator occupies", Type: "bool",
 				Help: "Adds street addresses from PeeringDB, where operators publish which data centres they are in. This is only narrowed to a hop when the router's own name gave away its city; otherwise it is every building that operator occupies anywhere, and is shown as such rather than as an answer."},
-			{Key: "cables_url", Label: "Cable map URL", Type: "string",
+			{Section: "Where things are", Key: "cables_url", Label: "Cable map URL", Type: "string",
 				Help: "Empty: TeleGeography's published map. Their data is a free public resource but is not openly licensed, so it is fetched by each installation rather than shipped with FlowSight."},
-			{Key: "home", Label: "Your location", Type: "string", Placeholder: "39.1836,-96.5717",
+			{Section: "Where things are", Key: "home", Label: "Your location", Type: "string", Placeholder: "39.1836,-96.5717",
 				Help: "Latitude and longitude, comma separated. The map is drawn from here, and it is the reference for checking whether a hop could really be where the database says: nothing can answer faster than light in fibre takes to get there and back. Empty: worked out from this gateway's public address, which is usually the right town and sometimes the wrong state. The Map page can fill it in from your browser, which knows precisely."},
 		},
 	}

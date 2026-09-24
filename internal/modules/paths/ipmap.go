@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -175,6 +176,11 @@ func (m *Module) locateBatch() error {
 			return nil
 		}
 		_ = m.ctx.Store.KVSet(ipmapKV+ip, ipmapCache{At: time.Now(), P: p, La: lat, Lo: lon})
+		if p.OK {
+			m.mu.Lock()
+			m.ipmapAnswered++
+			m.mu.Unlock()
+		}
 		time.Sleep(gap)
 	}
 	return nil
@@ -182,7 +188,10 @@ func (m *Module) locateBatch() error {
 
 // askIPmap asks about one address. The second return says whether to stop.
 func (m *Module) askIPmap(c *http.Client, ip string) (Placed, float64, float64, bool) {
-	req, err := http.NewRequest("GET", ipmapURL+ip+"/best", nil)
+	if !validIP(ip) {
+		return Placed{}, 0, 0, false // never came off a traceroute we would trust
+	}
+	req, err := http.NewRequest("GET", ipmapURL+url.PathEscape(ip)+"/best", nil)
 	if err != nil {
 		return Placed{}, 0, 0, false
 	}
