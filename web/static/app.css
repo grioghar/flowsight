@@ -170,10 +170,23 @@ tr.clickable:hover { background: var(--hover, rgba(127,127,127,.08)); }
 tr.flagged td { background: color-mix(in srgb, var(--warn) 12%, transparent); }
 tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 
-/* Path map: a coordinate grid, deliberately not a map of land. */
+/* Path map: land, a coordinate grid, and the routes measured over them. */
 .grat { stroke: var(--line); stroke-width: .5; fill: none; }
 .gratlabel { fill: var(--muted); font-size: 4px; }
 .pathmap { width: 100%; height: auto; background: var(--panel); border-radius: 10px; touch-action: none; }
+
+/* Zoom rewrites the viewBox, which scales the drawing and everything drawn on
+   it alike. The coastlines should scale -- that is the point of zooming. The
+   ink used to annotate them should not, or at four times in, a hairline
+   coastline is four pixels wide and the hop you were inspecting is under a dot
+   three times its old size. Strokes are pinned to screen pixels; type divides
+   by the zoom factor panZoom publishes. Radii cannot be done here and are set
+   in pages3.js, which has the base size for each dot. */
+.pathmap .land, .pathmap .grat, .pathmap .cable, .pathmap .leg,
+.pathmap .hop, .pathmap .ruledout, .pathmap .corrected, .pathmap .ghost {
+  vector-effect: non-scaling-stroke;
+}
+.pathmap .gratlabel { font-size: calc(4px / var(--z, 1)); }
 .pathmap .leg { fill: none; stroke-width: 1.2; stroke-linecap: round; opacity: .85; }
 .pathmap .leg.shared { stroke-width: 2.2; opacity: .55; }
 .pathmap .hop { stroke: var(--panel); stroke-width: .6; }

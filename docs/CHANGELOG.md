@@ -12,6 +12,20 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241502
+
+**Zooming the map now shows more, rather than more ink.**
+
+The map zooms by rewriting its viewBox, which scales everything inside it.
+That is right for the coastlines and the routes -- scaling them is the whole
+point -- and wrong for everything drawn on top. At four times in, a hairline
+coast was four pixels wide, a three-pixel hop marker was twelve, and the
+detail you had zoomed in to look at was underneath the dot pointing at it.
+
+Strokes are now pinned to screen pixels, graticule type divides by the zoom
+factor, and hop markers are redrawn from the size they started at. Zooming in
+separates hops that overlapped instead of merging them into a blob.
+
 ## 0.9.8r202609240803
 
 **The map has land, and every hop says who runs it.**

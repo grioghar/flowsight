@@ -246,7 +246,12 @@ parallel links, that is one point carrying several addresses rather than
 several points.
 
 **Filters** on country, latency, distance in hops and device. Wheel to zoom,
-drag to pan.
+drag to pan, and *Reset zoom* to go back.
+
+Zooming scales the map, not the marks on it. Coastlines and routes grow, while
+line thickness, hop markers and the grid's labels hold their size on screen, so
+zooming in separates hops that overlapped rather than merging them into a
+larger blob.
 
 The device filter is a list of devices, not a box for typing an address, and
 it has one entry per device however many addresses that device holds.

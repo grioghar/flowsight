@@ -287,10 +287,24 @@ FS.graticule = (w, h, step) => {
 
 // Wheel to zoom, drag to pan, by rewriting the viewBox. Kept here because
 // more than one page will want it.
-FS.panZoom = (svg, w, h) => {
+//
+// Rewriting the viewBox scales everything inside it, which is right for the
+// geography and wrong for everything drawn on top of it. Zoomed in four times,
+// a one-pixel coastline becomes four and a three-pixel dot becomes twelve, so
+// the detail you zoomed in to see is covered by the markers pointing at it.
+// The scale is therefore published two ways: as --z on the element, for stroke
+// widths and type to divide by, and to an onZoom callback for anything that
+// has to be set as an attribute. Callers that ignore both get the old
+// behaviour.
+FS.panZoom = (svg, w, h, onZoom) => {
   if (!svg) return;
   const view = { x: 0, y: 0, w: w, h: h };
-  const apply = () => svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+  const apply = () => {
+    svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+    const z = w / view.w;
+    svg.style.setProperty('--z', z);
+    if (onZoom) onZoom(z);
+  };
   svg.addEventListener('wheel', (e) => {
     e.preventDefault();
     const k = e.deltaY > 0 ? 1.15 : 1 / 1.15;

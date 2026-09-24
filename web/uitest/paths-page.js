@@ -3,7 +3,7 @@ window.addEventListener = function(){};
 var FAILURE = null;
 function fail(e){ FAILURE = e; }
 var navigator = { geolocation: { getCurrentPosition: function(){} } };
-function mkEl(){ var o = { innerHTML:'', style:{}, hidden:true, onclick:null, value:'', dataset:{},
+function mkEl(){ var o = { innerHTML:'', style:{ setProperty:function(){} }, hidden:true, onclick:null, value:'', dataset:{},
   addEventListener:function(){}, appendChild:function(){}, setAttribute:function(){},
   getBoundingClientRect:function(){ return {left:0,top:0,width:100,height:50,bottom:0}; },
   querySelector:function(){ return mkEl(); }, querySelectorAll:function(){ return []; }, parentNode:null };
@@ -111,6 +111,14 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('London, England, GB') < 0) throw new Error('the overruled answer must be quoted');
   if (h.indexOf('the router\u2019s own name') < 0) throw new Error('the placement source should be named');
   if (h.indexOf('hoppanel') < 0) throw new Error('there should be a panel for hop detail');
+  // Zooming shrinks the viewBox, which would scale the dots along with the
+  // geography and bury the detail the zoom was for. Every circle has to carry
+  // the size it was drawn at so the zoom can divide it back down.
+  var sized = (h.match(/data-r="/g) || []).length;
+  var circles2 = (h.match(/<circle/g) || []).length;
+  if (sized !== circles2) throw new Error('every circle needs data-r, got ' + sized + ' of ' + circles2);
+  if (h.indexOf('data-r="7"') < 0) throw new Error('the ruled-out ring should carry its base radius');
+  if (h.indexOf('data-r="2.5"') < 0) throw new Error('the ghost should carry its base radius');
   // Scoped and unscoped facility lists are different claims.
   if (h.indexOf('Buildings this operator occupies in Los Angeles') < 0)
     throw new Error('a scoped building list should name the city it was narrowed to');

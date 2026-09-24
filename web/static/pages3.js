@@ -368,14 +368,18 @@
       located.forEach(n => {
         const [x, y] = xy(n);
         const label = [n.city, n.region, n.country].filter(Boolean).join(', ');
-        if (n.impossible) dots += `<circle class="ruledout" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7"/>`;
+        // data-r is the radius at 1x. Zooming rewrites r from it, so a dot
+        // stays the same size on screen however far in you go and stops
+        // swallowing the neighbours it is meant to distinguish.
+        if (n.impossible) dots += `<circle class="ruledout" data-r="7" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7"/>`;
         if (n.moved_km && n.db_lat) {
           // Drawn from where the database put it to where the name says it is,
           // so a reader can see the size of the correction rather than take it.
           const [px, py] = xy({ lat: n.db_lat, lon: n.db_lon });
-          dots += `<path class="corrected" d="M${px.toFixed(1)},${py.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}"/><circle class="ghost" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5"/>`;
+          dots += `<path class="corrected" d="M${px.toFixed(1)},${py.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}"/><circle class="ghost" data-r="2.5" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5"/>`;
         }
-        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}" data-hop="${esc(n.id)}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2 + Math.min(3, n.ips.length)).toFixed(1)}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\nRULED OUT: ' + esc(n.why) : ''}\nclick for detail</title></circle>`;
+        const hr = (2 + Math.min(3, n.ips.length)).toFixed(1);
+        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\nRULED OUT: ' + esc(n.why) : ''}\nclick for detail</title></circle>`;
       });
 
       // What a hop is, told in the order the evidence deserves: what was
@@ -539,7 +543,13 @@
         c.addEventListener('mouseenter', show);
       });
 
-      FS.panZoomHandle = FS.panZoom(FS.$('#pathmap', el), MAPW, MAPH);
+      // Radii are attributes, not styles, so the zoom factor has to be applied
+      // to them by hand. Everything else holds its size through CSS.
+      const svg = FS.$('#pathmap', el);
+      const sized = svg ? svg.querySelectorAll('[data-r]') : [];
+      FS.panZoomHandle = FS.panZoom(svg, MAPW, MAPH, (z) => {
+        sized.forEach(c => c.setAttribute('r', (parseFloat(c.getAttribute('data-r')) / z).toFixed(2)));
+      });
       const go = () => {
         const p = [];
         const c = FS.$('#f-country', el).value, la = FS.$('#f-lat', el).value,
