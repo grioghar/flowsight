@@ -12,6 +12,16 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242137
+
+**The status call could deadlock the Map.** In revisions 2116 to 2123 the
+status endpoint gathered three new figures while holding the module's lock,
+from helpers that take that same lock. The first status request after start
+then waited forever, and so did every graph build behind it: the Map page
+would not load and the *Data sources* card never answered. The figures are
+now gathered before the lock is taken, and a test calls the endpoint under a
+timeout so this cannot come back.
+
 ## 0.9.8r202609242123
 
 **Anycast servers are asked where they are.** Root servers and large

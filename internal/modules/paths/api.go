@@ -30,15 +30,18 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	if rows, e := m.ctx.Store.Rows(`SELECT COUNT(*) AS n FROM path_hops WHERE ip <> ''`); e == nil && len(rows) > 0 {
 		hops = asInt(rows[0]["n"])
 	}
+	// These take the module lock themselves; gathered before it is held
+	// here, or the status call deadlocks and takes every graph build with it.
+	gf, ai, idn := m.geofeedStatus(), m.assistStatus(), m.identifyStatus()
 	m.mu.Lock()
 	sources := map[string]any{
 		"cables":       map[string]any{"on": core.Bool(m.ctx.Settings(), "cables", false), "loaded": len(m.cables), "error": m.cableErr},
 		"land_routes":  map[string]any{"on": core.Bool(m.ctx.Settings(), "terrestrial", false), "loaded": m.landRoutes, "error": m.landErr},
 		"osm_telecom":  m.osm,
 		"providers":    m.provider,
-		"geofeeds":     m.geofeedStatus(),
-		"assistant":    m.assistStatus(),
-		"identify":     m.identifyStatus(),
+		"geofeeds":     gf,
+		"assistant":    ai,
+		"identify":     idn,
 		"reputation":   map[string]any{"on": m.abuseKey() != "", "asked_this_session": m.abuseAsked, "known": m.ctx.Store.KVCount(abuseKV), "error": m.abuseErr},
 		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
