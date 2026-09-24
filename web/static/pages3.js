@@ -787,15 +787,29 @@
       const doubtOut = doubtful.length ? `<div style="margin-top:14px">${card('Placements too fast for any built route', table(doubtful.map(plRow), doubtfulCols),
           'read the middle two columns together: each answered sooner than the route to it could deliver, which is the whole verdict. The last column is the speed-of-light floor and sits below the time measured, because that is not what ruled on them. Being slow is never suspicious — congestion and indirect routing explain themselves. Being too fast is, because the only thing that makes a reply quicker is the place being nearer. So these are wrong in the same direction as the table above, and for the same reason: the coordinates, not the measurement — just not provably')}</div>` : '';
 
-      const rulesOut = impossible.length ? `<div style="margin-top:14px">${card('Placements the physics rules out', table(impossible.map(n => ({
+      // Two kinds of ruled-out placement share the table. One came from a
+      // router's own name and is still drawn where the name says, as an
+      // accusation to be read. The other came from a database, a
+      // measurement service or a learned correction, and has been taken off
+      // the map: the source was simply wrong, and the hop is placed by
+      // timing instead.
+      const rejected = (g.rejected || []).map(r => ({
+          index: r.index, ips: (r.ips || []).join(', '), where: r.where, rtt: r.rtt_ms, floor: r.floor_ms, km: 0, via: '',
+          by: { database: 'address database', measured: 'RIPE IPmap', corrected: 'learned correction', provider: 'provider range list' }[r.source] || r.source,
+          now: 'set aside — not drawn there' }));
+      const accused = impossible.map(n => ({
           index: n.index, ips: n.ips.join(', '),
           where: [n.city, n.region, n.country].filter(Boolean).join(', '),
-          rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km, via: n.via || '' })), [
+          rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km, via: n.via || '',
+          by: 'the router\u2019s own name', now: 'still drawn there; the name is first-hand' }));
+      const rulesOut = (impossible.length || rejected.length) ? `<div style="margin-top:14px">${card('Placements the physics rules out', table(accused.concat(rejected), [
           { t: 'Hop', f: r => num(r.index), num: true, sort: 'index' },
           { t: 'Address', f: r => `<span class="mono small">${esc(r.ips)}</span>`, sort: 'ips' },
-          { t: 'Database says', f: r => esc(r.where) || '<span class="muted">unknown</span>', sort: 'where' },
+          { t: 'Said to be at', f: r => esc(r.where) || '<span class="muted">unknown</span>', sort: 'where' },
+          { t: 'Said by', f: r => esc(r.by), sort: 'by' },
           { t: 'Answered in', f: r => `${r.rtt} ms`, num: true, sort: 'rtt' },
           { t: 'Light alone needs', f: r => `${r.floor} ms`, num: true, sort: 'floor' },
+          { t: 'Now', f: r => `<span class="small ${r.now.indexOf('set aside') === 0 ? 'muted' : 'sev-med'}">${esc(r.now)}</span>`, sort: 'now' },
           { t: 'Short by', f: r => r.floor > 0 ? `${(r.floor - r.rtt).toFixed(1)} ms` : '—', num: true, sort: 'floor' },
           { t: 'Away', f: r => `${num(r.km)} km`, num: true, sort: 'km' },
           { t: 'Measured', f: r => r.via ? `<span class="small">along ${esc(r.via)}</span>` : '<span class="muted small">straight line</span>', sort: 'via' }]),

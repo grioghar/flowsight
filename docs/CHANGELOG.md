@@ -12,6 +12,33 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242053
+
+**A placement the physics rules out is no longer drawn.** A Microsoft
+backbone router in Quincy, Washington was on the map in Singapore because
+the address database said so, with a red ring and a note that 58 ms cannot
+reach Singapore -- a correct verdict, drawn in the wrong place. When a
+database, a measurement service or a learned correction puts a hop where
+its own round trip proves it cannot be, the placement is now set aside: the
+hop is left for the timing to place between its neighbours, its card says
+what claimed what and why it was not believed, and the *Placements the
+physics rules out* table keeps the evidence with a *Said by* column and a
+*Now* column. A placement from the router's own name is the exception and
+stays drawn where the name says, because that is first-hand and worth
+reading as an accusation.
+
+**Microsoft's site codes.** Router names under `ntwk.msn.net` use
+Microsoft's own codes -- `co` is Columbia, the Quincy, Washington campus,
+which is Colorado or Colombia in anyone else's naming -- so the decoder now
+carries operator-scoped code lists consulted only under that operator's
+domain: co/mwh Quincy, cy Cheyenne, dm Des Moines, sn San Antonio, bn/bl
+Boydton, by San Jose, ch Chicago, db Dublin, am Amsterdam, hk, sg, tk/ty.
+
+**A learned correction is applied only where the hop's timing allows it.**
+The same reachability gate that governs what is learned now governs where
+it is used, so a correction for a prefix cannot move a sibling somewhere its
+own round trip rules out.
+
 ## 0.9.8r202609242046
 
 **OpenStreetMap lines are fetched by ten-degree tile.** The first region

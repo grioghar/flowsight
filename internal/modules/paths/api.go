@@ -97,6 +97,7 @@ func (m *Module) apiPath(r *core.Req) (any, error) {
 	h := m.home()
 	m.locate(g.Nodes, h)
 	m.checkPlausible(g.Nodes, h)
+	setAsideImpossible(&g)
 	sort.Slice(g.Nodes, func(i, j int) bool { return g.Nodes[i].Index < g.Nodes[j].Index })
 	out := map[string]any{"destination": dst, "hops": g.Nodes, "home": h,
 		"note": "A hop with several addresses answered from more than one router, which is how a carrier balances across parallel links. A silent hop did not answer; the traffic still passed through it."}
@@ -239,6 +240,10 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	m.locate(g.Nodes, h)
 	m.tallyHopBoxes(g.Nodes)
 	stage("locate")
+	// The physics first, so a placement it rules out is set aside before
+	// anything is interpolated from it or drawn through it.
+	m.checkPlausible(g.Nodes, h)
+	setAsideImpossible(&g)
 	// Interpolate before bridging: a hop put between two others is a hop, and
 	// the route should run through it rather than over it. Bridge before
 	// anything measures the legs: a placed hop whose neighbours could not be
@@ -590,7 +595,7 @@ func (m *Module) describe(nodes []Node, h Home) {
 			// the same prefix was shown to be; a distrusted coordinate is
 			// the registrant's address and is not used at all.
 			if n.Located && n.Source == "database" {
-				if c := m.correctionFor(ip); c != nil && greatCircleKM(n.Lat, n.Lon, c.Lat, c.Lon) > 250 {
+				if c := m.correctionFor(ip); c != nil && greatCircleKM(n.Lat, n.Lon, c.Lat, c.Lon) > 250 && (n.RTT <= 0 || reachable(h, c.Lat, c.Lon, n.RTT)) {
 					n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
 					n.MovedKM = greatCircleKM(n.Lat, n.Lon, c.Lat, c.Lon)
 					n.DBLat, n.DBLon = n.Lat, n.Lon

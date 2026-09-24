@@ -135,6 +135,15 @@ func popCandidates(host string) []popMatch {
 	if host == "" {
 		return nil
 	}
+	// The operator's own codes, when the host is under a domain that has
+	// them; the longest matching domain wins.
+	var scoped map[string]pop
+	best := 0
+	for dom, codes := range domainPops {
+		if (host == dom || strings.HasSuffix(host, "."+dom)) && len(dom) > best {
+			scoped, best = codes, len(dom)
+		}
+	}
 	labels := strings.Split(host, ".")
 	if len(labels) > 2 {
 		labels = labels[:len(labels)-2]
@@ -176,6 +185,9 @@ func popCandidates(host string) []popMatch {
 		// that were never candidates.
 		before := pos
 		pos = before
+		if p, ok := scoped[base]; ok {
+			take(base, p, "code")
+		}
 		if p, ok := pops[base]; ok {
 			take(base, p, "code")
 		}

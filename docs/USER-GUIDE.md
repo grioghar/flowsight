@@ -524,7 +524,11 @@ second. Twice that distance divided by that speed is therefore a bound no
 route of any kind can undercut -- not the shortest route FlowSight could find,
 but the shortest that could exist. A reply that beats it means the coordinates
 are wrong, because the round trip is the one thing here that was measured
-directly.
+directly. When the placement came from the address
+database, RIPE IPmap or a learned correction, it is set aside rather than
+drawn: the hop is placed by timing instead and its card says what claimed
+what. A placement from the router's own name stays drawn, because that is
+first-hand; the table's *Said by* and *Now* columns tell the two apart.
 
 The floor is taken from the nearest point your own origin could honestly be
 (*Settings › paths › Your own position could be wrong by*, 100 km by default,

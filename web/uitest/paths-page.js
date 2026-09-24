@@ -34,7 +34,7 @@ var tl = FS.project(90, -180, 720, 360);
 if (tl[0] !== 0 || tl[1] !== 0) throw new Error('north-west corner wrong: ' + tl);
 print('FS.project OK');
 
-var GRAPH = { nodes: [
+var GRAPH = { rejected: [ { id:'h30', index:30, ips:['51.10.6.166'], names:['be1013.rwa02.co8.ntwk.msn.net'], source:'database', where:'Singapore, SG', lat:1.35, lon:103.82, rtt_ms:58, floor_ms:162.6, why:'answers in 58.0 ms, but 16360 km away cannot answer in less than 163 ms', now:'not drawn there' } ], nodes: [
   { id:'h9', index:9, ips:['104.119.40.200'], rtt_ms:183, located:true, lat:37.5665, lon:126.978, city:'Seoul', country:'KR',
     location_source:'corrected', database_said:'Cambridge, Massachusetts, US', moved_km:11000, db_lat:42.3649, db_lon:-71.0888,
     corrected_by:'ae10.r02.rio01.icn.netarch.akamai.com', corrected_at:1790000000, detail:{ asn:'20940', prefix:'104.119.40.0/21' } },
@@ -140,6 +140,7 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('1 hop never answered') < 0) throw new Error('the count should come from the server, which no longer sends silent nodes');
   // What feeds the map, and how each source is doing.
   if (h.indexOf('Data sources') < 0) throw new Error('the page should say what the map is fed by');
+  if (h.indexOf('51.10.6.166') < 0 || h.indexOf('set aside') < 0 || h.indexOf('Said by') < 0) throw new Error('a rejected placement should be in the ruled-out table with what said it');
   if (h.indexOf('RIPE IPmap') < 0 || h.indexOf('21 positions known') < 0) throw new Error('IPmap progress should be shown');
   if (h.indexOf('OpenStreetMap telecom lines') < 0 || h.indexOf('1,234 lines from 3 of 16 regions, counted at 50%') < 0) throw new Error('OSM lines should be on the sources card with their weight');
   if (h.indexOf('709 cables loaded') < 0) throw new Error('cable count should be shown');

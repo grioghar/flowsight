@@ -247,6 +247,36 @@ var pops = map[string]pop{
 // and are not places: interface and link-aggregation prefixes, mostly. Without
 // this, "ae10" reads as nothing but "be" and "so" and "ge" would collide with
 // real codes, and every Juniper interface would land somewhere.
+// domainPops are site codes that mean one thing under one operator's domain
+// and nothing, or something else, anywhere else. Microsoft names its
+// backbone routers <interface>.<role>.<site>.ntwk.msn.net with its own site
+// codes: "co" is Columbia -- the Quincy, Washington campus -- which no
+// airport list would give, and which would be Colorado or Colombia in
+// anyone else's name. Looked up before the general list, only for hosts
+// under the domain.
+var domainPops = map[string]map[string]pop{
+	"ntwk.msn.net": {
+		"co":  {"Quincy, WA, US", 47.2343, -119.8526}, // Microsoft "Columbia"
+		"mwh": {"Quincy, WA, US", 47.2343, -119.8526},
+		"cy":  {"Cheyenne, WY, US", 41.1400, -104.8202},
+		"cys": {"Cheyenne, WY, US", 41.1400, -104.8202},
+		"dm":  {"Des Moines, IA, US", 41.5868, -93.6250},
+		"dsm": {"Des Moines, IA, US", 41.5868, -93.6250},
+		"sn":  {"San Antonio, TX, US", 29.4241, -98.4936},
+		"sat": {"San Antonio, TX, US", 29.4241, -98.4936},
+		"bn":  {"Boydton, VA, US", 36.6676, -78.3875},
+		"bl":  {"Boydton, VA, US", 36.6676, -78.3875}, // "Blue Ridge"
+		"by":  {"San Jose, CA, US", 37.3382, -121.8863},
+		"ch":  {"Chicago, IL, US", 41.8781, -87.6298},
+		"db":  {"Dublin, IE", 53.3498, -6.2603},
+		"am":  {"Amsterdam, NL", 52.3676, 4.9041},
+		"hk":  {"Hong Kong, HK", 22.3193, 114.1694},
+		"sg":  {"Singapore, SG", 1.3521, 103.8198},
+		"tk":  {"Tokyo, JP", 35.6762, 139.6503},
+		"ty":  {"Tokyo, JP", 35.6762, 139.6503},
+	},
+}
+
 var skip = map[string]bool{
 	"net": true, "com": true, "org": true, "www": true, "arpa": true,
 	"ip": true, "ip4": true, "ip6": true, "v4": true, "v6": true,

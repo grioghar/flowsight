@@ -139,6 +139,27 @@ type Graph struct {
 	// draws them, and on a real network they were six of every seven nodes
 	// and most of a two-megabyte reply.
 	SilentCount int `json:"silent_count"`
+	// Rejected are placements the round trip proved impossible and which
+	// were therefore not drawn: the source said one place, light says it
+	// cannot be, so the hop is left for the timing to place. Kept so the
+	// verdict and its evidence stay on the page.
+	Rejected []Rejected `json:"rejected,omitempty"`
+}
+
+// Rejected is one such placement.
+type Rejected struct {
+	ID      string   `json:"id"`
+	Index   int      `json:"index"`
+	IPs     []string `json:"ips"`
+	Names   []string `json:"names,omitempty"`
+	Source  string   `json:"source"` // database, measured, corrected, provider
+	Where   string   `json:"where"`
+	Lat     float64  `json:"lat"`
+	Lon     float64  `json:"lon"`
+	RTT     float64  `json:"rtt_ms"`
+	FloorMS float64  `json:"floor_ms"`
+	Why     string   `json:"why"`
+	Now     string   `json:"now"` // what became of the hop
 }
 
 // hopRow is one stored hop.
@@ -401,4 +422,44 @@ func dropSilent(g *Graph) {
 		legs = append(legs, l)
 	}
 	g.Legs = legs
+}
+
+// setAsideImpossible unplaces every hop whose placement the round trip has
+// ruled out, unless the placement came from the router's own name -- that
+// is first-hand and stays on the map as an accusation to be read. A
+// database, a measurement service or a learned correction saying "Singapore"
+// about a router that answers in 58 ms is simply wrong, and drawing it
+// there put a Microsoft router in Quincy on the far side of the Pacific.
+// The hop keeps its verdict in the graph's Rejected list and is left for the
+// timing to place between its neighbours.
+func setAsideImpossible(g *Graph) {
+	for i := range g.Nodes {
+		n := &g.Nodes[i]
+		if !n.Impossible || !n.Located || n.Source == "name" || n.Source == "between" {
+			continue
+		}
+		where := strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
+		g.Rejected = append(g.Rejected, Rejected{ID: n.ID, Index: n.Index, IPs: n.IPs, Names: n.Names,
+			Source: n.Source, Where: where, Lat: n.Lat, Lon: n.Lon, RTT: n.RTT, FloorMS: n.FloorMS, Why: n.Why,
+			Now: "not drawn there; placed by timing between its neighbours where they allow, else left off the map"})
+		n.SetAside = fmt.Sprintf("the %s put it at %s, but it %s; not believed", sourceNoun(n.Source), where, n.Why)
+		n.DBLat, n.DBLon = n.Lat, n.Lon
+		n.Lat, n.Lon, n.Located, n.Source = 0, 0, false, ""
+		n.City, n.Region, n.Country = "", "", ""
+		n.Impossible, n.Tight, n.Why = false, false, ""
+		n.FloorMS, n.ExpectedMS, n.ExpectedKM, n.ExpectedVia, n.DistanceKM, n.Via, n.SlackKM = 0, 0, 0, "", 0, "", 0
+		n.CorrectedBy, n.CorrectedAt, n.DatabaseSaid, n.MovedKM = "", 0, "", 0
+	}
+}
+
+func sourceNoun(src string) string {
+	switch src {
+	case "measured":
+		return "measurement service (RIPE IPmap)"
+	case "corrected":
+		return "learned correction"
+	case "provider":
+		return "provider's published range list"
+	}
+	return "address database"
 }
