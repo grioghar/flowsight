@@ -589,21 +589,35 @@
       // Two tables, because the claims differ. One says a reading is
       // disproved; the other says it is only doubted, and running them
       // together would either accuse the doubtful or excuse the disproved.
-      const plCols = [
+      // Each table is measured against the number its own verdict used.
+      //
+      // They shared one set of columns and the shared column was the
+      // speed-of-light floor, so the doubtful table showed a hop answering in
+      // 19.4 ms against a floor of 19.3 and called it too fast. The verdict
+      // was right and the arithmetic printed beside it said the opposite,
+      // which is worse than printing nothing.
+      const plHead = [
           { t: 'Hop', f: r => num(r.index), num: true, sort: 'index' },
           { t: 'Address', f: r => `<span class="mono small">${esc(r.ips)}</span>`, sort: 'ips' },
           { t: 'Placed at', f: r => esc(r.where) || '<span class="muted">unknown</span>', sort: 'where' },
-          { t: 'Answered in', f: r => `${r.rtt} ms`, num: true, sort: 'rtt' },
-          { t: 'Floor', f: r => `${r.floor} ms`, num: true, sort: 'floor' },
-          { t: 'Over floor', f: r => r.floor > 0 ? `${((r.rtt / r.floor - 1) * 100).toFixed(0)}%` : '—', num: true, sort: 'rtt' },
+          { t: 'Answered in', f: r => `${r.rtt} ms`, num: true, sort: 'rtt' }];
+      const plTail = [
           { t: 'Away', f: r => `${num(r.km)} km`, num: true, sort: 'km' },
           { t: 'Measured', f: r => r.via ? `<span class="small">along ${esc(r.via)}</span>` : '<span class="muted small">straight line</span>', sort: 'via' }];
+      const shortBy = (k) => ({ t: 'Short by', num: true, sort: 'rtt',
+          f: r => r[k] > 0 ? `${(r[k] - r.rtt).toFixed(1)} ms` : '—' });
+      const impossibleCols = plHead.concat(
+          [{ t: 'Light alone needs', f: r => `${r.floor} ms`, num: true, sort: 'floor' }, shortBy('floor')], plTail);
+      const doubtfulCols = plHead.concat(
+          [{ t: 'A built route needs', f: r => r.expected ? `${r.expected} ms` : '—', num: true, sort: 'expected' },
+           shortBy('expected'),
+           { t: 'Light alone allows', f: r => `${r.floor} ms`, num: true, sort: 'floor' }], plTail);
       const plRow = (n) => ({ index: n.index, ips: n.ips.join(', '),
           where: [n.city, n.region, n.country].filter(Boolean).join(', '),
-          rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km, via: n.via || '' });
+          rtt: n.rtt_ms, floor: n.floor_ms, expected: n.expected_ms, km: n.distance_km, via: n.via || '' });
       const doubtful = nodes.filter(n => n.tight);
-      const doubtOut = doubtful.length ? `<div style="margin-top:14px">${card('Placements too fast for any built route', table(doubtful.map(plRow), plCols),
-          'these answer sooner than any route anyone has built could manage, while still slower than light alone would forbid. Being slow is never suspicious — congestion and indirect routing explain themselves. Being too fast is, because the only thing that makes a reply quicker is the place being nearer. So these are wrong in the same direction as the table above, and for the same reason: the coordinates, not the measurement — just not provably')}</div>` : '';
+      const doubtOut = doubtful.length ? `<div style="margin-top:14px">${card('Placements too fast for any built route', table(doubtful.map(plRow), doubtfulCols),
+          'read the middle two columns together: each answered sooner than the route to it could deliver, which is the whole verdict. The last column is the speed-of-light floor and sits below the time measured, because that is not what ruled on them. Being slow is never suspicious — congestion and indirect routing explain themselves. Being too fast is, because the only thing that makes a reply quicker is the place being nearer. So these are wrong in the same direction as the table above, and for the same reason: the coordinates, not the measurement — just not provably')}</div>` : '';
 
       const rulesOut = impossible.length ? `<div style="margin-top:14px">${card('Placements the physics rules out', table(impossible.map(n => ({
           index: n.index, ips: n.ips.join(', '),
@@ -613,7 +627,8 @@
           { t: 'Address', f: r => `<span class="mono small">${esc(r.ips)}</span>`, sort: 'ips' },
           { t: 'Database says', f: r => esc(r.where) || '<span class="muted">unknown</span>', sort: 'where' },
           { t: 'Answered in', f: r => `${r.rtt} ms`, num: true, sort: 'rtt' },
-          { t: 'Could not beat', f: r => `${r.floor} ms`, num: true, sort: 'floor' },
+          { t: 'Light alone needs', f: r => `${r.floor} ms`, num: true, sort: 'floor' },
+          { t: 'Short by', f: r => r.floor > 0 ? `${(r.floor - r.rtt).toFixed(1)} ms` : '—', num: true, sort: 'floor' },
           { t: 'Away', f: r => `${num(r.km)} km`, num: true, sort: 'km' },
           { t: 'Measured', f: r => r.via ? `<span class="small">along ${esc(r.via)}</span>` : '<span class="muted small">straight line</span>', sort: 'via' }]),
           'light in fibre covers about 200,000 km/s, so nothing can answer sooner than twice the distance divided by that. Between continents the distance is measured along the shortest cable that joins the two, not across the map: cables follow shelves and come ashore where there is a station, so the real journey is longer than the straight line and the floor correspondingly higher')}</div>` : '';

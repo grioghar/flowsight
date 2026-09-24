@@ -12,6 +12,33 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241657
+
+**The doubtful table was showing the wrong number, and the complaint was
+right.** It listed hops answering in 19.4 ms against a floor of 19.3 and
+called them too fast, which is nonsense on its face. The verdict was sound --
+it is made against what a *built route* needs, around 26 ms for that hop --
+but the two tables shared one set of columns and the shared column was the
+speed-of-light floor. So the arithmetic printed beside each verdict flatly
+contradicted it.
+
+Each table is now measured against the bound its own verdict used. The
+impossible table gives what light alone needs and how far short the reply
+fell; the doubtful table gives what a built route needs, how far short of
+*that* it fell, and the speed-of-light floor last, where it is visibly below
+the time measured and plainly not the thing that ruled.
+
+**Interface names had started becoming cities.** `port-channel8121` is a Cisco
+bundle, and read as a prefix it is Portland -- sitting four labels from the
+domain while the real site code, `jan02` for Jackson, sat one label away. A
+reading is now discounted for every *candidate* label it sits away from the
+domain, since a router's name is written interface first and site last, and
+interface words are refused outright.
+
+Counting only candidate labels matters: an earlier version counted every
+label, so `kanc-bb2-link` was penalised for being preceded by `bb2` and
+`link`, neither of which was ever a contender.
+
 ## 0.9.8r202609241650
 
 **The name proposes; the clock disposes.**

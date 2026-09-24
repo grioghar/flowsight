@@ -252,6 +252,16 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     throw new Error('the legend should explain the bridging leg');
   if (h.indexOf('Placements too fast for any built route') < 0) throw new Error('doubtful placements need their own table');
   if (h.indexOf('just not provably') < 0) throw new Error('the doubtful table must say what it is not claiming');
+  // Each verdict must be shown against the number that produced it. Sharing
+  // one column set meant the doubtful table compared a hop to the
+  // speed-of-light floor it had comfortably cleared, and called it too fast.
+  if (h.indexOf('A built route needs') < 0)
+    throw new Error('the doubtful table must compare against what a built route needs');
+  if (h.indexOf('Short by') < 0) throw new Error('say how far short it fell');
+  if (h.indexOf('Light alone needs') < 0)
+    throw new Error('the impossible table should name the bound it used');
+  if (h.indexOf('Over floor') >= 0)
+    throw new Error('the old shared column measured the wrong thing and should be gone');
   if (h.indexOf('Being slow is never suspicious') < 0)
     throw new Error('the table must say that slowness is not what is being flagged');
   // Both numbers, kept apart: one is a proof, the other an expectation.

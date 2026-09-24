@@ -50,7 +50,7 @@ var matchWeight = map[string]float64{
 	"code":        1.00, // dfw, lax -- in the published list
 	"name":        0.95, // Dallas3, SanJose1 -- spelled out
 	"prefix":      0.75, // palo -> Palo Alto
-	"contraction": 0.60, // sjo -> San Jose, kanc -> Kansas City
+	"contraction": 0.70, // sjo -> San Jose, kanc -> Kansas City
 }
 
 var wordSplit = regexp.MustCompile(`[^a-z]+`)
@@ -163,7 +163,6 @@ func popCandidates(host string) []popMatch {
 	// Back to front: the site sits nearer the domain than the interface does.
 	for i := len(parts) - 1; i >= 0; i-- {
 		x := parts[i]
-		pos = len(parts) - 1 - i
 		if skip[x] {
 			continue
 		}
@@ -171,6 +170,12 @@ func popCandidates(host string) []popMatch {
 		if len(base) < 2 {
 			continue
 		}
+		// Counting only the labels that could have been a place. "link" and
+		// "bb2" are neither, and letting them push kanc-bb2-link two steps
+		// from the domain discounted a reading for being preceded by words
+		// that were never candidates.
+		before := pos
+		pos = before
 		if p, ok := pops[base]; ok {
 			take(base, p, "code")
 		}
@@ -186,6 +191,7 @@ func popCandidates(host string) []popMatch {
 				}
 			}
 		}
+		pos++
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Base > out[j].Base })
 	return out
