@@ -72,6 +72,7 @@ func (m *Module) refreshTerrestrial() error {
 		m.mu.Lock()
 		m.landNets, m.landErr, m.landRoutes = nil, "", 0
 		m.mu.Unlock()
+		m.routes.reset()
 		return nil
 	}
 	dir := m.terrestrialDir()
@@ -110,6 +111,7 @@ func (m *Module) refreshTerrestrial() error {
 	m.landNets, m.landRoutes = nets, len(nets)
 	m.landErr = strings.Join(problems, "; ")
 	m.mu.Unlock()
+	m.routes.reset() // answers were for the old networks
 	return nil
 }
 

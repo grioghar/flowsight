@@ -12,6 +12,24 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241821
+
+**The map's graph builds in a fraction of the time.** Every rebuild -- once
+per twenty seconds when the page is open -- asked, for every leg, which of
+842 cable and land networks offered the shortest crossing, and asked it three
+times: once for the floor, once for the expectation, once to draw the shape.
+Only the first was remembered. On the gateway that was a 21-second build and a
+core kept busy for as long as anyone had the page open. All three now share
+one memory keyed on the pair of places, emptied when the cable files reload
+and bounded so a long-running daemon cannot hoard. Two tabs asking in the same
+second used to each build the graph; now the first builds and the second finds
+it waiting. Cable files are stitched before the module's lock is taken, so a
+monthly reload never stalls a request.
+
+**A slow build says where it was slow.** A graph that takes over three seconds
+to build logs the time spent in each stage -- reading, placing, shaping,
+checking, cables -- so the next slow one is a log line rather than a guess.
+
 ## 0.9.8r202609241816
 
 **The land-route job was eating the gateway.** Turning on *Use published

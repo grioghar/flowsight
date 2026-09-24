@@ -63,22 +63,68 @@ type cableRoute struct {
 	OK       bool
 }
 
-type floorMemo struct {
+// routeMemo remembers the answer to "shortest way between these two places
+// over this set of networks". The graph asks the same few hundred questions
+// every time it is rebuilt, and each one is a scan of every network's every
+// point; answered once, the rebuild is a lookup.
+//
+// The zero value is ready to use. It is emptied when the networks it answered
+// for are replaced, and when it grows past a bound nobody's graph should
+// reach, so a long-running daemon cannot be walked into hoarding.
+type routeMemo struct {
 	mu sync.Mutex
 	m  map[string]cableRoute
 }
 
-func (f *floorMemo) key(aLat, aLon, bLat, bLon float64) string {
+const routeMemoMax = 20000
+
+func (f *routeMemo) key(kind byte, aLat, aLon, bLat, bLon float64) string {
 	// Half a degree is about fifty kilometres, far finer than the placements
 	// this is applied to, and coarse enough that a graph full of hops in one
 	// city asks once.
 	r := func(v float64) float64 { return math.Round(v*2) / 2 }
 	var b strings.Builder
+	b.WriteByte(kind)
+	b.WriteByte(':')
 	for _, v := range []float64{r(aLat), r(aLon), r(bLat), r(bLon)} {
 		b.WriteString(ftoa(v))
 		b.WriteByte(',')
 	}
 	return b.String()
+}
+
+func (f *routeMemo) get(key string) (cableRoute, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.m[key]
+	return r, ok
+}
+
+func (f *routeMemo) put(key string, r cableRoute) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.m == nil || len(f.m) >= routeMemoMax {
+		f.m = map[string]cableRoute{}
+	}
+	f.m[key] = r
+}
+
+// reset forgets everything; called when the networks change underneath.
+func (f *routeMemo) reset() {
+	f.mu.Lock()
+	f.m = nil
+	f.mu.Unlock()
+}
+
+// memoRoute answers through the memo, computing on a miss.
+func (f *routeMemo) memoRoute(kind byte, nets []cableNet, aLat, aLon, bLat, bLon float64) cableRoute {
+	key := f.key(kind, aLat, aLon, bLat, bLon)
+	if r, ok := f.get(key); ok {
+		return r
+	}
+	r := cableRouteKM(nets, aLat, aLon, bLat, bLon, maxAshoreKM)
+	f.put(key, r)
+	return r
 }
 
 func ftoa(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
@@ -171,22 +217,10 @@ func (m *Module) pathKM(aLat, aLon, bLat, bLon float64) (km float64, via string)
 	if len(nets) == 0 {
 		return km, ""
 	}
-	if m.floors == nil {
-		m.floors = &floorMemo{m: map[string]cableRoute{}}
-	}
-	key := m.floors.key(aLat, aLon, bLat, bLon)
-	m.floors.mu.Lock()
-	r, seen := m.floors.m[key]
-	m.floors.mu.Unlock()
-	if !seen {
-		// Not cable_near_km: that setting answers "did this cable carry the
-		// leg", where being close matters. Here the overland run is part of
-		// the distance, and the shortest total decides.
-		r = cableRouteKM(nets, aLat, aLon, bLat, bLon, maxAshoreKM)
-		m.floors.mu.Lock()
-		m.floors.m[key] = r
-		m.floors.mu.Unlock()
-	}
+	// Not cable_near_km: that setting answers "did this cable carry the
+	// leg", where being close matters. Here the overland run is part of
+	// the distance, and the shortest total decides.
+	r := m.routes.memoRoute('c', nets, aLat, aLon, bLat, bLon)
 	if !r.OK || r.KM <= km || r.KM > km*cableFloorMaxRatio {
 		return km, ""
 	}
@@ -274,7 +308,7 @@ func (m *Module) crossing(aLat, aLon, bLat, bLon float64) cableRoute {
 	if len(nets) == 0 {
 		return cableRoute{}
 	}
-	r := cableRouteKM(nets, aLat, aLon, bLat, bLon, maxAshoreKM)
+	r := m.routes.memoRoute('c', nets, aLat, aLon, bLat, bLon)
 	straight := greatCircleKM(aLat, aLon, bLat, bLon)
 	if !r.OK || r.KM <= straight || r.KM > straight*cableFloorMaxRatio {
 		return cableRoute{}
@@ -298,7 +332,7 @@ func (m *Module) overland(aLat, aLon, bLat, bLon float64) cableRoute {
 	if len(nets) == 0 {
 		return cableRoute{}
 	}
-	r := cableRouteKM(nets, aLat, aLon, bLat, bLon, maxAshoreKM)
+	r := m.routes.memoRoute('l', nets, aLat, aLon, bLat, bLon)
 	straight := greatCircleKM(aLat, aLon, bLat, bLon)
 	if !r.OK || r.KM <= straight || r.KM > straight*cableFloorMaxRatio {
 		return cableRoute{}

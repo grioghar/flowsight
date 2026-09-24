@@ -156,6 +156,16 @@ func (m *Module) insideFor(dst, device string) *Inside {
 	return in
 }
 
+func (m *Module) cachedGraph(key string) (Graph, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.graphCache[key]
+	if !ok || time.Since(c.at) >= 20*time.Second {
+		return Graph{}, false
+	}
+	return c.g, true
+}
+
 func (m *Module) apiGraph(r *core.Req) (any, error) {
 	where, args := "", []any{}
 	// A device filter is a join: the device's flows name destinations, and
@@ -181,20 +191,36 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	// the plausibility check. Twenty seconds is short enough that a settings
 	// change is felt at once and long enough to absorb a burst.
 	key := strings.Join([]string{r.Q("device", ""), r.Q("country", ""), r.Q("max_latency", ""), r.Q("max_hops", ""), r.Q("hours", "")}, "|")
-	m.mu.Lock()
-	if c, ok := m.graphCache[key]; ok && time.Since(c.at) < 20*time.Second {
-		m.mu.Unlock()
-		return c.g, nil
+	if g, ok := m.cachedGraph(key); ok {
+		return g, nil
 	}
-	m.mu.Unlock()
+	// One build at a time. Several tabs asking in the same second used to
+	// each walk the whole graph; now the first builds and the rest find it
+	// waiting when their turn comes.
+	m.graphBuild.Lock()
+	defer m.graphBuild.Unlock()
+	if g, ok := m.cachedGraph(key); ok {
+		return g, nil
+	}
+	buildStart := time.Now()
 
+	// Each stage is timed. A build that takes longer than a page load should
+	// say which part did, or the next slow one is guesswork again.
+	started := time.Now()
+	var stages []any
+	stage := func(name string) {
+		stages = append(stages, name, time.Since(started).Round(time.Millisecond).String())
+		started = time.Now()
+	}
 	rows, err := m.hops(where, args...)
 	if err != nil {
 		return nil, err
 	}
 	g := buildGraph(rows)
+	stage("read")
 	h := m.home()
 	m.locate(g.Nodes, h)
+	stage("locate")
 	// Interpolate before bridging: a hop put between two others is a hop, and
 	// the route should run through it rather than over it. Bridge before
 	// anything measures the legs: a placed hop whose neighbours could not be
@@ -203,11 +229,17 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	bridgeGaps(&g)
 	markEndpoints(&g)
 	m.attachTraffic(&g, r.QInt("hours", 24, 1, 24*30))
+	stage("shape")
 	m.checkPlausible(g.Nodes, h)
+	stage("check")
 	m.annotateCables(g)
+	stage("cables")
 	g = filterGraph(g, r.Q("country", ""), float64(r.QInt("max_latency", 0, 0, 100000)), r.QInt("max_hops", 0, 0, 64))
 	dropSilent(&g)
 	g.Home = &h
+	if total := time.Since(buildStart); total > 3*time.Second && m.ctx != nil && m.ctx.Log != nil {
+		m.ctx.Log.Info("slow graph build", append([]any{"total", total.Round(time.Millisecond).String(), "nodes", len(g.Nodes)}, stages...)...)
+	}
 
 	m.mu.Lock()
 	if m.graphCache == nil || len(m.graphCache) > 32 {
