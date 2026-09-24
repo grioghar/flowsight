@@ -495,7 +495,15 @@
         const d = n.detail || {};
         const r = (k, v, cls) => v ? `<div class="hr ${cls || ''}"><span>${esc(k)}</span><b>${esc(v)}</b></div>` : '';
         const grp = (t) => `<div class="hg">${esc(t)}</div>`;
-        let h = `<h4>${n.endpoint ? 'Endpoint' : 'Hop ' + n.index} &mdash; <span class="mono">${esc(n.ips.join(', '))}</span></h4>`;
+        const addrs = (n.ips || []).join(', ');
+        // A hop that never answered still has a card. It is a real step on
+        // the route and a reader who picks it deserves to be told what it is,
+        // not handed an empty panel that reads like a fault.
+        if (n.silent) {
+          return `<h4>Hop ${n.index} &mdash; <span class="muted">no answer</span></h4>`
+            + `<div class="endnote">Nothing replied at this position. The traffic still went through it &mdash; a router that does not answer a traceroute forwards perfectly well &mdash; so the step is kept and the numbering stays honest. There is nothing more to know about it: no address came back, so there is no name, no operator and no position.</div>`;
+        }
+        let h = `<h4>${n.endpoint ? 'Endpoint' : 'Hop ' + n.index} &mdash; <span class="mono">${esc(addrs)}</span></h4>`;
         if (n.endpoint) h += `<div class="endnote">Traffic was going here; the hops before it are the way in. Click it on the map to follow the whole path from you.</div>`;
         h += grp('Measured') + r('Round trip', n.rtt_ms ? n.rtt_ms + ' ms' : '');
         if (n.names && n.names.length) h += grp('Resolved') + r('Router name', n.names.join(', '));
@@ -520,8 +528,13 @@
             ? 'One of these, most likely. An operator publishes which buildings it occupies; it does not publish which rack answers a traceroute.'
             : 'The router name gave no site, so this is everywhere that operator is. It is not evidence about this hop.'}</div>`;
         }
-        h += grp('Placement') + r('Shown at', [n.city, n.region, n.country].filter(Boolean).join(', '))
-           + r('Source', n.location_source === 'name' ? 'the router\u2019s own name' : 'address database');
+        h += grp('Placement');
+        if (!n.located) {
+          h += `<div class="muted small">It answered, but nothing places it: no site in its name, and the address database has no coordinates for the block. It is listed under <em>Not on the map</em> rather than drawn somewhere invented.</div>`;
+        } else {
+          h += r('Shown at', [n.city, n.region, n.country].filter(Boolean).join(', '))
+            + r('Source', n.location_source === 'name' ? 'the router\u2019s own name' : 'address database');
+        }
         if (n.distance_km) h += r('Distance used', `${num(n.distance_km)} km${n.via ? ' along ' + n.via : ' (straight line)'}`);
         if (n.floor_ms) h += r('Light alone allows', `${n.floor_ms} ms — nothing can beat this`);
         if (n.expected_ms) h += r('A built route needs', `${n.expected_ms} ms${n.expected_via ? ' along ' + n.expected_via : ` over ${num(n.expected_km)} km once fibre's detours are allowed for`}`);
@@ -531,8 +544,34 @@
       // Every card is rendered into the page rather than built on click, so
       // the detail is in the document a reader can search, print or save, and
       // the panel is never empty on arrival.
-      const hopCards = located.map((n, i) =>
+      // Anything that can be picked needs a card. Building them only for
+      // placed hops meant clicking a silent step, or an unplaceable one, or
+      // your own location emptied the panel -- which reads as a fault rather
+      // than as an answer.
+      const carded = [];
+      const seenCard = {};
+      located.concat(routeHops).forEach(n => {
+        if (!n || seenCard[n.id]) return;
+        seenCard[n.id] = 1;
+        carded.push(n);
+      });
+      let hopCards = carded.map((n, i) =>
         `<div class="hopcard" data-for="${esc(n.id)}"${i ? ' hidden' : ''}>${hopCard(n)}</div>`).join('');
+      if (home.ok) {
+        const ins = route && route.inside;
+        const where = home.detected ? [home.detected.city, home.detected.region, home.detected.country].filter(Boolean).join(', ') : '';
+        hopCards += `<div class="hopcard" data-for="__origin" hidden>`
+          + `<h4>You &mdash; <span class="mono">${esc(home.lat.toFixed(4))}, ${esc(home.lon.toFixed(4))}</span></h4>`
+          + `<div class="endnote">Where every route on this map starts, and the point each hop's distance is measured from.</div>`
+          + `<div class="hg">Origin</div>`
+          + `<div class="hr"><span>Position</span><b>${esc(where || 'declared')}</b></div>`
+          + `<div class="hr"><span>Source</span><b>${esc(home.source)}</b></div>`
+          + ((home.public_v4 || []).length ? `<div class="hr"><span>Public IPv4</span><b class="mono">${esc((home.public_v4 || []).join(', '))}</b></div>` : '')
+          + ((home.public_v6 || []).length ? `<div class="hr"><span>Public IPv6</span><b class="mono">${esc((home.public_v6 || []).join(', '))}</b></div>` : '')
+          + (ins ? `<div class="hg">On this network</div><div class="hr"><span>Device</span><b>${esc(ins.name || ins.addresses[0])}</b></div>`
+              + `<div class="hr"><span>Addresses</span><b class="mono">${esc(ins.addresses.slice(0, 3).join(', '))}${ins.addresses.length > 3 ? ` +${ins.addresses.length - 3}` : ''}</b></div>` : '')
+          + `</div>`;
+      }
 
       // The route as a trail, beginning inside the network.
       //

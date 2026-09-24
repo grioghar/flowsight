@@ -12,6 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241701
+
+**Picking a hop that never answered no longer empties the panel.** Cards were
+built only for hops with a position, so a silent step -- or your own location,
+or a hop that replied from an address nothing can place -- selected nothing
+and left a blank panel, which reads as a fault rather than as an answer.
+
+Each now says what it is. A silent hop: nothing replied here, the traffic went
+through it anyway, a router that ignores a traceroute forwards perfectly well,
+and there is nothing further to know because no address came back. A hop that
+answered but cannot be placed: it is listed under *Not on the map* rather than
+drawn somewhere invented. And the origin gets a card of its own -- where every
+route starts, the point each distance is measured from, with the public
+addresses and the device that made the connection.
+
 ## 0.9.8r202609241657
 
 **The doubtful table was showing the wrong number, and the complaint was

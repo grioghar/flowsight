@@ -346,6 +346,14 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     if (!(endAt > gwAt)) throw new Error('the endpoint must come last');
     // A hop that never answered still carried the traffic and keeps its place.
     if (t.indexOf('no answer') < 0) throw new Error('a silent hop should still occupy its step');
+    // And picking it must say something. An empty panel reads as a fault
+    // rather than as the answer it is.
+    if (t.indexOf('data-for="s3"') < 0) throw new Error('a silent hop needs a card of its own');
+    if (t.indexOf('Nothing replied at this position') < 0)
+      throw new Error("the silent hop's card should say what silence means");
+    if (t.indexOf('data-for="__origin"') < 0) throw new Error('the origin needs a card too');
+    if (t.indexOf('Where every route on this map starts') < 0)
+      throw new Error("the origin's card should say what it is");
     if (t.indexOf('crumb silent') < 0) throw new Error('a silent step should be marked as such');
     // An impossible placement stays flagged inside the trail.
     if (t.indexOf('bad') < 0) throw new Error('a ruled-out hop should be flagged in the trail');
