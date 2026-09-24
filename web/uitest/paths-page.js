@@ -9,7 +9,14 @@ function mkEl(){ var o = { innerHTML:'', style:{ setProperty:function(){} }, hid
     toggle:function(c,on){ if(on===undefined) on=!this._s[c]; if(on) this.add(c); else this.remove(c); return on; } },
   addEventListener:function(){}, appendChild:function(){}, setAttribute:function(){},
   getBoundingClientRect:function(){ return {left:0,top:0,width:100,height:50,bottom:0}; },
-  querySelector:function(){ return mkEl(); }, querySelectorAll:function(){ return []; }, parentNode:null };
+  getAttribute:function(a){ return this._a && this._a[a] != null ? this._a[a] : (a === 'data-r' ? '3' : null); },
+  hasAttribute:function(a){ return a === 'data-r' || !!(this._a && a in this._a); },
+  querySelector:function(){ return mkEl(); },
+  // A sized marker is always found, so the code that rescales markers runs
+  // in the test as it does in the page; it was skipped here once while it
+  // read a variable declared further down, and only the browser noticed.
+  querySelectorAll:function(sel){ return sel === '[data-r]' ? [mkEl()] : []; }, parentNode:null };
+  o.setAttribute = function(a, v){ (o._a = o._a || {})[a] = String(v); };
   return o; }
 var document = { getElementById:function(){ return mkEl(); }, querySelector:function(){ return mkEl(); },
   querySelectorAll:function(){ return []; }, addEventListener:function(){},

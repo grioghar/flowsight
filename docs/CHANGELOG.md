@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241945
+
+**The Map page failed to load in revisions 1805 through 1850.** The key's
+*size endpoints by traffic* switch, added in 1805, rescaled the markers on
+the map when the page opened, and in doing so read the current zoom from a
+variable that was declared further down the page code. Browsers refuse that
+(`can't access lexical declaration 'lastZ' before initialization`) and the
+page stopped there. The variable is now declared ahead of everything that
+reads it. The page test harness missed it because it found no markers to
+rescale; it now finds one, and fails on the old code.
+
 ## 0.9.8r202609241850
 
 **A route file cannot take the gateway down.** The daemon steers its heap

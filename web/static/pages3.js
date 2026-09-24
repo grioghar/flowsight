@@ -957,6 +957,10 @@
       // work is one class change rather than a walk over twelve hundred
       // elements.
       const svgEl = FS.$('#pathmap', el);
+      // The current zoom, kept up to date by the pan/zoom handler below and
+      // read by the key's traffic switch, which runs before that handler is
+      // built -- so it is declared here, ahead of both.
+      let lastZ = 1;
       if (svgEl) {
         let off = {};
         try { off = JSON.parse(localStorage.getItem('fs.maplayers') || '{}') || {}; } catch (e) { }
@@ -1222,7 +1226,6 @@
       // Read before the map is built, because building it lays down a full
       // view of its own and publishes that -- which overwrote the very thing
       // being restored, a second before it was wanted.
-      let lastZ = 1;
       const savedFor = FS.pathsView && FS.pathsView.key === viewKey ? FS.pathsView : null;
       const savedBox = savedFor && savedFor.box;
       const savedFocus = savedFor && savedFor.focus;
