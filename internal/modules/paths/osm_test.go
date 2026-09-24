@@ -35,7 +35,7 @@ func TestOverpassAnswerBecomesRoutesTheLoaderReads(t *testing.T) {
 	if osmFile(osmBoxes[0]) != "osm-north-america-east.geojson" {
 		t.Fatal(osmFile(osmBoxes[0]))
 	}
-	if boxOf(39.18, -96.57) != "North America, central" || boxOf(51.5, -0.1) != "Europe, west" || boxOf(-70, 0) != "" {
+	if boxOf(39.18, -96.57) != "North America, east" || boxOf(37.77, -122.42) != "North America, central" || boxOf(51.5, -0.1) != "Europe, west" || boxOf(-70, 0) != "" {
 		t.Fatal("regions misassigned")
 	}
 }
@@ -44,18 +44,19 @@ func TestOverpassAnswerBecomesRoutesTheLoaderReads(t *testing.T) {
 // estimate towards the mapped length, and no further.
 func TestSuggestiveLandRoutesCountAtHalfWeight(t *testing.T) {
 	m := &Module{}
-	// A mapped line that wanders: Paris to Berlin by way of Munich.
-	line := Cable{Name: "osm", Legs: [][]LatLon{{{Lat: 48.86, Lon: 2.35}, {Lat: 48.14, Lon: 11.58}, {Lat: 52.52, Lon: 13.40}}}}
+	// A mapped line that wanders: Lisbon to Warsaw by way of Rome. Long
+	// enough to clear the gate below which no route is consulted.
+	line := Cable{Name: "osm", Legs: [][]LatLon{{{Lat: 38.72, Lon: -9.14}, {Lat: 41.90, Lon: 12.50}, {Lat: 52.23, Lon: 21.01}}}}
 	n := buildNet(line)
 	n.Weight = osmWeight
 	m.osmNets = []cableNet{n}
-	straight := greatCircleKM(48.86, 2.35, 52.52, 13.40)
+	straight := greatCircleKM(38.72, -9.14, 52.23, 21.01)
 	detour := straight * m.landDetour()
-	km, via := m.expectedKM(48.86, 2.35, 52.52, 13.40)
+	km, via := m.expectedKM(38.72, -9.14, 52.23, 21.01)
 	if via != "osm" {
 		t.Fatalf("the line should be used, via=%q", via)
 	}
-	full := m.overland(48.86, 2.35, 52.52, 13.40)
+	full := m.overland(38.72, -9.14, 52.23, 21.01)
 	along := full.AlongKM + full.AshoreKM*m.landDetour()
 	want := along*osmWeight + detour*(1-osmWeight)
 	if diff := km - want; diff > 1 || diff < -1 {
@@ -69,7 +70,7 @@ func TestSuggestiveLandRoutesCountAtHalfWeight(t *testing.T) {
 	n.Weight = 1
 	m.landNets = []cableNet{n}
 	m.routes.reset()
-	km2, _ := m.expectedKM(48.86, 2.35, 52.52, 13.40)
+	km2, _ := m.expectedKM(38.72, -9.14, 52.23, 21.01)
 	if diff := km2 - along; diff > 1 || diff < -1 {
 		t.Fatalf("a measured route should count in full: %.0f vs %.0f", km2, along)
 	}
