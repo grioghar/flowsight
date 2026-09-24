@@ -498,7 +498,7 @@
         // else is a router it crossed on the way. Drawn the same, there was
         // no telling the destination from the plumbing.
         if (n.endpoint) dots += `<circle class="endpoint" data-r="8" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"/>`;
-        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${n.endpoint ? ' isend' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.endpoint ? '\nENDPOINT — traffic was going here' : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'TOO FAST: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
+        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${n.endpoint ? ' isend' : ''}${n.inferred ? ' guessed' : ''}${n.location_source === 'measured' ? ' measured' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.endpoint ? '\nENDPOINT — traffic was going here' : ''}${n.inferred ? '\nPLACED BY TIMING, not located: ' + esc(n.between_how || '') : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'TOO FAST: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
       });
 
       // What a hop is, told in the order the evidence deserves: what was
@@ -544,11 +544,18 @@
             : 'The router name gave no site, so this is everywhere that operator is. It is not evidence about this hop.'}</div>`;
         }
         h += grp('Placement');
-        if (!n.located) {
+        if (n.inferred) {
+          h += `<div class="endnote">Nothing places this hop: no site in its name and no coordinates for its address block. It answered, though, and the hops either side of it are placed &mdash; so it has been put between them at the point its round trip falls between theirs. That is a guess about where, not about whether: the hop is certainly on this route.</div>`
+            + r('Put between', (n.between || []).join(' and '))
+            + r('By', n.between_how, 'soft')
+            + r('Source', 'inferred from timing; it is not drawn as a located hop', 'soft');
+        } else if (!n.located) {
           h += `<div class="muted small">It answered, but nothing places it: no site in its name, and the address database has no coordinates for the block. It is listed under <em>Not on the map</em> rather than drawn somewhere invented.</div>`;
         } else {
           h += r('Shown at', [n.city, n.region, n.country].filter(Boolean).join(', '))
-            + r('Source', n.location_source === 'name' ? 'the router\u2019s own name' : 'address database');
+            + r('Source', { name: 'the router\u2019s own name',
+                             measured: 'RIPE IPmap \u2014 measured from thousands of probes, not registered',
+                             between: 'inferred from timing' }[n.location_source] || 'address database');
         }
         if (n.distance_km) h += r('Distance used', `${num(n.distance_km)} km${n.via ? ' along ' + n.via : ' (straight line)'}`);
         if (n.floor_ms) h += r('Light alone allows', `${n.floor_ms} ms — nothing can beat this${n.slack_km ? `, measured from ${num(n.slack_km)} km nearer in case your own position is out` : ''}`);
@@ -793,6 +800,8 @@
             ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="homering" cx="6" cy="6" r="4.5"/><circle class="home" cx="6" cy="6" r="2"/></svg>`, 'you', 'you')}
             ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="endpoint" cx="6" cy="6" r="4.6"/><circle cx="6" cy="6" r="2.2" fill="${FS.palette[2]}"/></svg>`, 'an endpoint: traffic was going here', 'endpoint')}
             ${it(dot(FS.palette[2]), 'a hop it crossed on the way', 'hop')}
+            ${it(dot(FS.palette[1], 'measured'), 'position measured, not registered', 'measured')}
+            ${it(dot('', 'guessed'), 'answered but unplaceable: put between its neighbours by timing', 'guessed')}
             ${it(dot(FS.palette[2], 'rich'), 'operator known', 'rich')}
             ${it(dot('', 'ruledout'), 'the latency rules this placement out', 'ruledout')}
             ${it(dot('', 'doubtful'), 'too fast for any built route', 'doubtful')}

@@ -29,6 +29,10 @@ print('FS.project OK');
 
 var GRAPH = { nodes: [
   { id:'h1', index:1, ips:['192.168.1.254'], located:false, silent:false },
+  // Answered, unplaceable, put between its neighbours by timing.
+  { id:'h25', index:25, ips:['203.0.113.9'], located:true, lat:40.0, lon:-60.0, rtt_ms:58.0,
+    location_source:'between', inferred:true, between:['172.11.154.1','1.1.1.1'],
+    between_how:'24.6 ms of the 41.2 ms between them' },
   { id:'h2', index:2, ips:['172.11.154.1'], located:true, lat:39.18, lon:-96.57, country:'US', city:'Manhattan', region:'Kansas', rtt_ms:3.4 },
   { id:'h3', index:3, ips:['32.130.107.216','32.130.107.218'], located:true, lat:32.78, lon:-96.80, country:'US', city:'Dallas', rtt_ms:16.7 },
   // Placed by its own hostname, against a database that said London.
@@ -119,7 +123,7 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // backdrop is referenced rather than repeated; the markers are real, because
   // a <use> copy cannot be clicked.
   var circles = (h.match(/class="hop /g) || []).length;
-  if (circles !== 15) throw new Error('want 5 located nodes across 3 copies of the world, got ' + circles);
+  if (circles !== 18) throw new Error('want 6 located nodes across 3 copies of the world, got ' + circles);
   if ((h.match(/href="#fs-world"/g) || []).length !== 3)
     throw new Error('the backdrop should be referenced three times, not redrawn');
   // The copies either side are marked so they can be taken away when the view
@@ -220,6 +224,15 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('ENDPOINT') < 0) throw new Error('the hover should say it is an endpoint');
   if (h.indexOf('an endpoint: traffic was going here') < 0)
     throw new Error('the legend should explain the endpoint mark');
+  // A hop placed by timing is a guess about where, and must not be drawn as a
+  // hop that was actually located.
+  if (h.indexOf('hop  guessed') < 0 && h.indexOf(' guessed"') < 0)
+    throw new Error('a hop placed by timing needs a mark of its own');
+  if (h.indexOf('PLACED BY TIMING') < 0) throw new Error('the hover should say it was inferred');
+  if (h.indexOf('That is a guess about where, not about whether') < 0)
+    throw new Error("the card should say what kind of claim it is");
+  if (h.indexOf('answered but unplaceable') < 0)
+    throw new Error('the legend should explain the inferred mark');
   if (h.indexOf('Traffic was going here; the hops before it are the way in') < 0)
     throw new Error("the endpoint's card should say what it is");
   // And the inference has to show its working, not just its answer.

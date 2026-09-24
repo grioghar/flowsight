@@ -170,6 +170,9 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	m.locate(g.Nodes, h)
 	// Before anything measures the legs: a placed hop whose neighbours could
 	// not be placed would otherwise be drawn with nothing attached to it.
+	// Before the legs are bridged: a hop put between two others is a hop, and
+	// the route should run through it rather than over it.
+	interpolateGaps(&g)
 	bridgeGaps(&g)
 	markEndpoints(&g)
 	m.checkPlausible(g.Nodes, h)
@@ -430,6 +433,7 @@ func (m *Module) describe(nodes []Node, h Home) {
 	// A reader waits for this, so it gets a budget rather than a promise.
 	detail, cold := m.describeFast(pairs, 6*time.Second)
 	m.note(cold)
+	var want []string
 	for i := range nodes {
 		n := &nodes[i]
 		for _, ip := range n.IPs {
@@ -444,6 +448,26 @@ func (m *Module) describe(nodes []Node, h Home) {
 			if d.Name != "" && !contains(n.Names, d.Name) {
 				n.Names = append(n.Names, d.Name)
 			}
+			// What somebody measured, if they have. This outranks the address
+			// database -- which says where a block was registered -- and is
+			// asked for whenever nothing better is known.
+			if p, plat, plon, known := m.knownPlace(ip); known {
+				if p.OK && (!n.Located || n.Source == "database") {
+					if n.Located && n.Source == "database" {
+						if km := greatCircleKM(n.Lat, n.Lon, plat, plon); km > 250 {
+							n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
+							n.MovedKM = km
+							n.DBLat, n.DBLon = n.Lat, n.Lon
+						}
+					}
+					n.Lat, n.Lon, n.Located, n.Source = plat, plon, true, "measured"
+					n.City, n.Region, n.Country = p.City, p.Region, p.Country
+					n.Inferred = false
+				}
+			} else {
+				want = append(want, ip)
+			}
+
 			// Where the name points is decided here, against the clock.
 			// A name is a proposal; the round trip is evidence, and a
 			// reading it rules out is not used however well it reads.
@@ -475,12 +499,16 @@ func (m *Module) describe(nodes []Node, h Home) {
 			}
 			n.Lat, n.Lon, n.Located, n.Source = match.Pop.Lat, match.Pop.Lon, true, "name"
 			n.City, n.Region, n.Country = splitPlace(match.Pop.City)
+			n.Inferred = false
 			break
 		}
 	}
+	m.wantPlace(want)
 }
 
 // splitPlace turns "Los Angeles, CA, US" back into its parts.
+// (describe ends by queueing whatever has not been asked about yet.)
+
 func splitPlace(s string) (city, region, country string) {
 	f := strings.Split(s, ",")
 	for i := range f {

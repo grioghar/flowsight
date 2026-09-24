@@ -12,6 +12,45 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241742
+
+**FlowSight now asks where routers actually are, and keeps asking.**
+
+Everything else here is inference: the address database says where a block was
+registered, the router's name says where its operator files it, the timing
+says where it must roughly be. RIPE's IPmap is different in kind -- it is the
+published result of measuring addresses from thousands of Atlas probes and
+narrowing them by latency, which is the argument this module already makes
+about impossibility, run at scale by people with thousands of vantage points
+instead of one. It outranks the address database.
+
+It corroborates the rest, which is the reassuring part. `4.68.39.1` is `dal2`
+in Lumen's naming and Dallas to IPmap. `129.250.5.57` is `londen12` to NTT and
+London to IPmap, against a database that puts it in Ashburn, Virginia. And
+`62.115.139.15`, which the database places in Singapore and the speed of light
+rules out at 33 ms from Kansas, IPmap puts in New York.
+
+A background job asks about twenty addresses a minute, keeps each answer for a
+month because routers do not move, remembers "they do not know either" for a
+week because coverage grows, and on any refusal backs off for half an hour
+rather than retrying into a wall.
+
+**Hops that answered but could not be placed are now put between the two that
+could.** A great many routers reply and have no coordinates anywhere -- 338 on
+this network, against 628 that could be placed -- so the route appeared to
+jump from one country to the next with nothing in between. Their position is
+not unknown: the hops either side are placed, and the one in question
+answered, so its round trip sits somewhere between theirs. Where it sits in
+time is a fair guess at where it sits on the ground.
+
+They are drawn hollow and dashed, marked as placed by inference, and carry the
+two hops they were put between and what decided the spot. An inference is
+never used to anchor another, because that drift would be invisible.
+
+What this deliberately does not do is place the hops that never answered.
+There are 6,197 of those and no measurement behind any of them; spacing them
+along a line would be drawing six thousand routers out of nothing.
+
 ## 0.9.8r202609241734
 
 **Each leg of a chosen route is labelled with the hop it arrives at as well as

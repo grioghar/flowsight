@@ -62,8 +62,15 @@ type Node struct {
 	ExpectedMS  float64 `json:"expected_ms,omitempty"`
 	ExpectedVia string  `json:"expected_via,omitempty"`
 	// SlackKM is how much the hard verdict allowed for the origin being wrong.
-	SlackKM    float64 `json:"slack_km,omitempty"`
-	DistanceKM float64 `json:"distance_km,omitempty"`
+	SlackKM float64 `json:"slack_km,omitempty"`
+	// Inferred marks a hop that answered but could not be placed, and has
+	// been put between the two placed hops either side of it by where its
+	// round trip falls between theirs. Between names those two and BetweenHow
+	// says what decided the spot.
+	Inferred   bool     `json:"inferred,omitempty"`
+	Between    []string `json:"between,omitempty"`
+	BetweenHow string   `json:"between_how,omitempty"`
+	DistanceKM float64  `json:"distance_km,omitempty"`
 	// Via names the cable the distance was measured along, when the straight
 	// line was not the honest measure. Empty means the great circle was used.
 	Via     string  `json:"via,omitempty"`

@@ -541,3 +541,15 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
   text-anchor: middle; paint-order: stroke; stroke: var(--panel);
   stroke-width: calc(2.4px / var(--z, 1)); stroke-linejoin: round; pointer-events: none; }
 .pathmap .legms.onpath { display: block; }
+
+/* A hop that answered but could not be placed, put between the two either
+   side of it by where its round trip falls between theirs. Hollow and dashed,
+   because that is a guess about where it is, not about whether it is there. */
+.pathmap .hop.guessed { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 1.6; }
+.pathmap.off-guessed .hop.guessed { display: none; }
+.legend .lg .guessed { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 2 1.6; }
+
+/* A position somebody measured rather than one registered in a database. */
+.pathmap .hop.measured { stroke: var(--ok); stroke-width: 1.1; }
+.pathmap.off-measured .hop.measured { stroke: var(--panel); stroke-width: .8; }
+.legend .lg .measured { stroke: var(--ok); stroke-width: 1.3; }

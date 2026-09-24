@@ -52,6 +52,8 @@ type Module struct {
 	landErr    string
 	cableErr   string
 	pending    map[string]bool // addresses still needing the slow registry lookup
+	geoPending map[string]bool // addresses still to be asked about at IPmap
+	ipmapUntil time.Time       // do not ask IPmap again before this
 	floors     *floorMemo      // cable-route distances, worked out once per place
 }
 
@@ -79,6 +81,8 @@ func (m *Module) Info() core.ModuleInfo {
 			"cables_url":       "",
 			"cable_near_km":    400,
 			"registry":         true,
+			"ipmap":            true,
+			"ipmap_per_minute": 20,
 			"land_detour_pct":  35,
 			"origin_slack_km":  100,
 			"hop_delay_us":     200,
@@ -110,6 +114,10 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Downloads open maps of long-haul fibre on land and measures along them where they reach, instead of estimating the detour. These never raise the impossible threshold: over water a cable is the only way across, so its length is a real bound, but on land a straight line is merely something nobody built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons licence and is the one substantial open set; the comprehensive maps of North America, Europe and Asia are sold commercially. Refreshed monthly."},
 			{Key: "terrestrial_urls", Label: "Land-route sources", Type: "text",
 				Help: "One GeoJSON URL per line, replacing the defaults. Lines starting with # or // are ignored, so a source can be kept and turned off."},
+			{Key: "ipmap", Label: "Ask RIPE where each router is", Type: "bool",
+				Help: "RIPE's IPmap publishes where addresses are, worked out by measuring them from thousands of probes and narrowing by latency \u2014 the same argument FlowSight makes about impossibility, run at scale. It is the one source here that is measurement rather than paperwork, and it outranks the address database. Asked slowly and remembered for a month; a refusal backs off for half an hour."},
+			{Key: "ipmap_per_minute", Label: "Addresses asked about per minute", Type: "int",
+				Help: "Deliberately small. There is no hurry \u2014 answers last a month and routers do not move \u2014 and the service belongs to somebody else."},
 			{Key: "registry", Label: "Look up who runs each hop", Type: "bool",
 				Help: "Asks the public routing table which network announces a hop's address, and the regional registry who that block is allocated to. The registry's postal address is a head office, not the room the router is in, and is labelled that way. Results are kept for a month, because none of it changes quickly."},
 			{Key: "facilities", Label: "List buildings the operator occupies", Type: "bool",
@@ -139,6 +147,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 	// Long-haul routes change over years and these datasets are revised
 	// rarely, so the job wakes often and downloads almost never.
 	ctx.Every("terrestrial", 12*time.Hour, m.refreshTerrestrial)
+	// Asking where routers really are, slowly and forever. See ipmap.go.
+	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/status", m.apiStatus, core.Needs("paths.map"),
 		core.Doc("Whether tracing is on, how many destinations have a route, and when"))
 	ctx.Route("GET", "/api/paths/destinations", m.apiDestinations, core.Needs("paths.map"),

@@ -343,6 +343,11 @@ right of it gives, in this order and under these headings:
   talking to; every other hop is a router it crossed on the way. Endpoints
   carry a ring of their own on the map, and clicking one opens the whole
   journey to it.
+- *Position, measured* -- where RIPE's IPmap puts the address, worked out by
+  measuring it from thousands of probes rather than by looking it up. This is
+  the only source here that is measurement rather than paperwork, and it
+  outranks the address database. FlowSight asks about twenty addresses a
+  minute and keeps each answer for a month.
 - *Site, read from the router name* -- carriers write the site into the
   hostname. `po1.owr03.lax31.ntwk.msn.net` says Los Angeles; `ae10.edge1.dal2.
   sp.lumen.tech` says Dallas; `172-11-154-1.lightspeed.tpkaks.sbcglobal.net`
@@ -411,6 +416,15 @@ coordinates, and marks which one the coordinates were worked out from. On a
 dual-stack line that is always the IPv4 address: the two families geolocate to
 different places, and an origin that changed between restarts would quietly
 move the line between a placement being ruled out and one standing.
+
+**Hops put between their neighbours.** A router that answers but has no
+coordinates anywhere used to be left off the map, so a route appeared to jump
+from one country to the next with nothing in between. Those are now placed
+between the two hops either side of them, at the point where their round trip
+falls between the neighbours' -- drawn hollow and dashed, and saying on the
+card what decided the spot. Hops that never answered at all are still left
+off: there is no measurement behind them, and spacing them along a line would
+be drawing routers out of nothing.
 
 **Placements too fast for any built route.** Every hop is judged against two
 numbers. The floor is what light forbids, and it is a proof. Above it a reply
