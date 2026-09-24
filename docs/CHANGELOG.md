@@ -12,6 +12,25 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241617
+
+**The key is a panel on the map, and it folds.** It had been a band across the
+foot of the map: near-white on near-white ocean, the full width of the
+picture, which read as a separate strip below rather than as part of it. It is
+now a small opaque panel in the bottom-left corner, over empty ocean, and it
+collapses to its title for anyone who would rather have the map.
+
+It does not move when you zoom. It never did -- it is drawn beside the map
+rather than inside it, so the viewBox cannot touch it -- but at ten times in
+it was covering the thing being looked at, which is a fair complaint about a
+key that is always open.
+
+**Three cable names arrive from the published map with their punctuation
+mangled** -- UTF-8 read as Latin-1 somewhere upstream and encoded again, which
+turns Sta'O'Nuk into something that looks like a decoding error because it is
+one. The damage is exactly reversible and is now undone on load. Worth doing:
+a reader who sees a mangled name reasonably doubts the numbers next to it.
+
 ## 0.9.8r202609241608
 
 **Two numbers per hop, answering two different questions.**

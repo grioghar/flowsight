@@ -4,6 +4,9 @@ var FAILURE = null;
 function fail(e){ FAILURE = e; }
 var navigator = { geolocation: { getCurrentPosition: function(){} } };
 function mkEl(){ var o = { innerHTML:'', style:{ setProperty:function(){} }, hidden:true, onclick:null, value:'', dataset:{},
+  classList:{ _s:{}, add:function(c){this._s[c]=1;}, remove:function(c){delete this._s[c];},
+    contains:function(c){return !!this._s[c];},
+    toggle:function(c,on){ if(on===undefined) on=!this._s[c]; if(on) this.add(c); else this.remove(c); return on; } },
   addEventListener:function(){}, appendChild:function(){}, setAttribute:function(){},
   getBoundingClientRect:function(){ return {left:0,top:0,width:100,height:50,bottom:0}; },
   querySelector:function(){ return mkEl(); }, querySelectorAll:function(){ return []; }, parentNode:null };
@@ -162,6 +165,12 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   var frame = h.indexOf('class="mapframe"'), lgd = h.indexOf('class="legend onmap"'), svgEnd = h.indexOf('</svg>');
   if (!(frame >= 0 && frame < svgEnd && svgEnd < lgd))
     throw new Error('the legend should be inside the map frame, over the map');
+  // Always available, never stuck open: it is drawn beside the map rather
+  // than inside it, so no amount of zooming can move or clip it, and it folds
+  // when it is covering the thing being looked at.
+  if (h.indexOf('id="lgtoggle"') < 0) throw new Error('the key should fold away');
+  if (h.indexOf('class="lgitems"') < 0) throw new Error('the key needs a body to fold');
+  if (h.indexOf('aria-expanded') < 0) throw new Error('a fold control has to say whether it is open');
   ['a leg several destinations share', 'a leg used by one destination', 'submarine cable',
    'the latency rules this placement out'].forEach(function (k) {
     if (h.indexOf(k) < 0) throw new Error('the legend should explain: ' + k);

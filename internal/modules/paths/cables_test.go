@@ -303,3 +303,31 @@ func TestUnconnectedRunsAreNotJoined(t *testing.T) {
 		t.Error("two pieces thousands of kilometres apart were treated as one cable")
 	}
 }
+
+// Three cables arrive from the published map with their punctuation mangled:
+// UTF-8 that was read as Latin-1 somewhere upstream and encoded again. A
+// reader who sees a name like that reasonably doubts the numbers beside it.
+func TestMangledCableNamesAreRepaired(t *testing.T) {
+	cases := []struct{ got, want string }{
+		{"Staâ\u0080\u0099Oâ\u0080\u0099Nuk", "Sta’O’Nuk"},
+		{"Sharm El Sheikhâ\u0080\u0093Taba", "Sharm El Sheikh–Taba"},
+		{"Sir Abu Nuâ\u0080\u0099ayr Cable", "Sir Abu Nu’ayr Cable"},
+	}
+	for _, c := range cases {
+		if out := repairMojibake(c.got); out != c.want {
+			t.Errorf("repair(%q) = %q, want %q", c.got, out, c.want)
+		}
+	}
+	// Names that are already right, or that were never this kind of damage,
+	// must come back untouched.
+	for _, ok := range []string{
+		"Southern Cross NEXT", "Asia Africa Europe-1 (AAE-1)",
+		"Sta’O’Nuk", // already repaired
+		"東京ケーブル",    // never a Latin-1 round trip
+		"", "2Africa",
+	} {
+		if out := repairMojibake(ok); out != ok {
+			t.Errorf("repair(%q) changed it to %q", ok, out)
+		}
+	}
+}

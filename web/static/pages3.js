@@ -672,7 +672,14 @@
           const sw = (cls, style) => `<svg class="lg" viewBox="0 0 22 10" aria-hidden="true"><line class="${cls}" style="${style || ''}" x1="1" y1="5" x2="21" y2="5"/></svg>`;
           const dot = (fill, cls) => `<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="${cls || ''}" cx="6" cy="6" r="3.4" fill="${fill || 'none'}"/></svg>`;
           const it = (mark, text) => `<span class="lgi">${mark}${esc(text)}</span>`;
-          return `<div class="legend onmap">
+          // Always there, never in the way. It stays put through any zoom --
+          // it is drawn beside the map rather than inside it, so the viewBox
+          // cannot move it -- but at ten times in it was covering the thing
+          // being looked at, so it folds down to its title and remembers
+          // which the reader preferred.
+          return `<div class="legend onmap" id="maplegend">
+            <button type="button" class="lgtoggle" id="lgtoggle" aria-expanded="true">Key</button>
+            <div class="lgitems">
             ${it(sw('leg shared', 'stroke:var(--muted)'), 'a leg several destinations share')}
             ${it(sw('leg', 'stroke:' + FS.palette[0]), 'a leg used by one destination')}
             ${(cab.cables || []).length ? it(sw('cable'), 'submarine cable') : ''}
@@ -684,6 +691,7 @@
             ${it(sw('leg', 'stroke:' + FS.palette[4]), 'a sea crossing, drawn along its likeliest cable')}
             ${it(sw('corrected'), 'correction: database \u2192 the site in the router\u2019s name')}
             ${picked ? it(sw('leg onroute', 'stroke:' + FS.palette[0]), 'the route you picked; the rest is dimmed') : ''}
+            </div>
           </div>`;
         })()}
         </div>
@@ -747,6 +755,21 @@
         FS.toast(r.error || 'Back to detecting it', !!r.error);
         if (!r.error) FS.render();
       };
+
+      // Folded or not is a per-reader preference, so it is remembered here and
+      // nowhere else; losing it costs nothing.
+      const lgd = FS.$('#maplegend', el), lgb = FS.$('#lgtoggle', el);
+      if (lgd && lgb) {
+        const set = (open) => {
+          lgd.classList.toggle('folded', !open);
+          lgb.setAttribute('aria-expanded', open ? 'true' : 'false');
+          try { localStorage.setItem('fs.mapkey', open ? '1' : '0'); } catch (e) { }
+        };
+        let open = true;
+        try { open = localStorage.getItem('fs.mapkey') !== '0'; } catch (e) { }
+        set(open);
+        lgb.onclick = () => set(lgd.classList.contains('folded'));
+      }
 
       const rc = FS.$('#r-clear', el);
       if (rc) rc.onclick = () => FS.go('paths?' + routeQ(''));

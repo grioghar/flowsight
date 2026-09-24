@@ -30,6 +30,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/grioghar/flowsight/internal/core"
 )
@@ -187,7 +188,7 @@ func loadCables(path string) ([]Cable, error) {
 		}
 		c := byID[f.Properties.ID]
 		if c == nil {
-			c = &Cable{ID: f.Properties.ID, Name: f.Properties.Name}
+			c = &Cable{ID: f.Properties.ID, Name: repairMojibake(f.Properties.Name)}
 			byID[f.Properties.ID] = c
 		}
 		for _, run := range runs {
@@ -318,4 +319,36 @@ func (m *Module) annotateCables(g Graph) {
 			l.Via, l.ViaKM, l.Route = r.Name, math.Round(r.KM), r.Route
 		}
 	}
+}
+
+// repairMojibake undoes one round of UTF-8 having been read as Latin-1.
+//
+// Three cables in the published map arrive this way: Sta'O'Nuk, Sharm El
+// Sheikh-Taba and the Sir Abu Nu'ayr Cable, each with a punctuation mark that
+// was decoded as single bytes somewhere upstream and encoded again. The
+// damage is exactly reversible -- take the string's runes back to the bytes
+// they came from and read those as UTF-8 -- and doing so is worth it, because
+// a reader who sees a mangled name reasonably doubts everything next to it.
+//
+// It only acts where the result is a genuine improvement: every rune has to
+// fit in a byte, the bytes have to be valid UTF-8, and the answer has to
+// differ. Anything else is returned untouched.
+func repairMojibake(s string) string {
+	if !strings.ContainsRune(s, 'â') && !strings.ContainsRune(s, 'Ã') {
+		return s
+	}
+	b := make([]byte, 0, len(s))
+	for _, r := range s {
+		if r > 0xFF {
+			return s // never was a Latin-1 round trip
+		}
+		b = append(b, byte(r))
+	}
+	if !utf8.Valid(b) {
+		return s
+	}
+	if out := string(b); out != s {
+		return out
+	}
+	return s
 }
