@@ -163,8 +163,10 @@ func (m *Module) downloadTo(url, path string) error {
 type geoJSON struct {
 	Features []struct {
 		Properties struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+			Operator string `json:"operator"` // AfTerFibre names routes this way instead
+			Country  string `json:"country"`
 		} `json:"properties"`
 		Geometry struct {
 			Type        string          `json:"type"`
@@ -183,18 +185,37 @@ func loadCables(path string) ([]Cable, error) {
 		return nil, fmt.Errorf("cable data: %w", err)
 	}
 	byID := map[string]*Cable{}
-	for _, f := range doc.Features {
+	for i, f := range doc.Features {
 		if f.Geometry.Type != "MultiLineString" {
 			continue
 		}
-		var runs [][][2]float64
+		// Positions may carry a third element -- GIS exports write
+		// [lon, lat, elevation] -- and decoding into pairs rejected every one
+		// of them without a word. That is how a 5 MB file of 133 routes loaded
+		// as nothing and reported no error.
+		var runs [][][]float64
 		if err := json.Unmarshal(f.Geometry.Coordinates, &runs); err != nil {
 			continue
 		}
-		c := byID[f.Properties.ID]
+		// TeleGeography gives every feature an id and a name. AfTerFibre gives
+		// neither, so keyed on the id all 133 of its routes became one cable
+		// with no name. A feature with no id is its own route; a route with no
+		// name is called after who runs it and where.
+		id := f.Properties.ID
+		if id == "" {
+			id = fmt.Sprintf("feature-%d", i)
+		}
+		name := repairMojibake(f.Properties.Name)
+		if name == "" {
+			name = strings.TrimSpace(strings.Join(nonEmptyStrings(f.Properties.Operator, f.Properties.Country), ", "))
+		}
+		if name == "" {
+			name = "route " + fmt.Sprint(i+1)
+		}
+		c := byID[id]
 		if c == nil {
-			c = &Cable{ID: f.Properties.ID, Name: repairMojibake(f.Properties.Name)}
-			byID[f.Properties.ID] = c
+			c = &Cable{ID: id, Name: name}
+			byID[id] = c
 		}
 		for _, run := range runs {
 			if len(run) < 2 {
@@ -202,7 +223,13 @@ func loadCables(path string) ([]Cable, error) {
 			}
 			pts := make([]LatLon, 0, len(run))
 			for _, p := range run {
-				pts = append(pts, LatLon{Lat: p[1], Lon: p[0]}) // GeoJSON is lon,lat
+				if len(p) < 2 {
+					continue
+				}
+				pts = append(pts, LatLon{Lat: p[1], Lon: p[0]}) // GeoJSON is lon,lat; anything after is ignored
+			}
+			if len(pts) < 2 {
+				continue
 			}
 			c.Legs = append(c.Legs, pts)
 			c.KM += runLengthKM(pts)
@@ -356,4 +383,14 @@ func repairMojibake(s string) string {
 		return out
 	}
 	return s
+}
+
+func nonEmptyStrings(xs ...string) []string {
+	var out []string
+	for _, x := range xs {
+		if x = strings.TrimSpace(x); x != "" {
+			out = append(out, x)
+		}
+	}
+	return out
 }

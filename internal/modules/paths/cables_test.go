@@ -331,3 +331,37 @@ func TestMangledCableNamesAreRepaired(t *testing.T) {
 		}
 	}
 }
+
+// A file shaped like AfTerFibre: no ids, no names, and positions with an
+// elevation on the end. Keyed on the id, all its routes merged into one
+// nameless cable; decoded into pairs, every position was rejected and the
+// file loaded as nothing with no error.
+func TestLoaderTakesFilesWithoutIDsOrNamesOrPairs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "land.geojson")
+	doc := `{"type":"FeatureCollection","features":[
+	 {"type":"Feature","properties":{"operator":"Liquid Telecom Kenya","country":"Kenya"},
+	  "geometry":{"type":"MultiLineString","coordinates":[[[36.8,-1.3,1600],[37.0,-1.0,1500],[39.6,-4.0,10]]]}},
+	 {"type":"Feature","properties":{"operator":"SALCAB","country":"Sierra Leone"},
+	  "geometry":{"type":"MultiLineString","coordinates":[[[-13.2,8.5,5],[-12.0,8.9,200]]]}}]}`
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	routes, err := loadCables(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(routes) != 2 {
+		t.Fatalf("two features should be two routes, got %d", len(routes))
+	}
+	names := map[string]bool{}
+	for _, r := range routes {
+		names[r.Name] = true
+		if len(r.Legs) != 1 || len(r.Legs[0]) < 2 {
+			t.Errorf("%s: positions with an elevation should still load, got %v", r.Name, r.Legs)
+		}
+	}
+	if !names["Liquid Telecom Kenya, Kenya"] || !names["SALCAB, Sierra Leone"] {
+		t.Errorf("routes without a name should be named after operator and country, got %v", names)
+	}
+}

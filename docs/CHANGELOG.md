@@ -12,6 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241805
+
+**The land-route file was loading as nothing, and saying nothing about it.**
+AfTerFibre gives its features no id and no name. Keyed on the id, all 133 of
+its routes merged into a single nameless cable; the loader was written for
+TeleGeography's file, which has both. A feature without an id is now its own
+route, and a route without a name is named after its operator and country.
+Positions with a third element -- GIS exports write elevation -- are accepted
+too, which this file did not need but the next one may.
+
+**The IPmap count survives a restart.** The *Data sources* card reported how
+many positions had been measured since the daemon last started, which after
+every deploy read as zero while sixty-odd hops sat placed by it. It now counts
+what is actually known; the per-session figure is kept alongside.
+
 ## 0.9.8r202609241756
 
 **Settings for the map are in sections, and the map says what feeds it.**

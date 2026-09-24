@@ -308,6 +308,16 @@ func (s *Store) KVGet(key string, into any) bool {
 	return json.Unmarshal([]byte(raw), into) == nil
 }
 
+// KVCount is how many keys sit under a prefix. It answers "how much do we
+// know" where a counter in memory would answer "how much since the restart",
+// which is a different and less useful question.
+func (s *Store) KVCount(prefix string) int64 {
+	var n int64
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM kv WHERE key LIKE ? ESCAPE '\\'`,
+		strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix)+"%").Scan(&n)
+	return n
+}
+
 func (s *Store) KVSet(key string, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {

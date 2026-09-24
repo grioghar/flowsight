@@ -33,7 +33,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	sources := map[string]any{
 		"cables":       map[string]any{"on": core.Bool(m.ctx.Settings(), "cables", false), "loaded": len(m.cables), "error": m.cableErr},
 		"land_routes":  map[string]any{"on": core.Bool(m.ctx.Settings(), "terrestrial", false), "loaded": m.landRoutes, "error": m.landErr},
-		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
+		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
 		"facilities":   map[string]any{"on": m.facilitiesOK()},
 		"router_names": map[string]any{"on": true, "codes": len(pops)},
