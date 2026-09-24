@@ -12,6 +12,30 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240658
+
+**Location lookup can now answer with coordinates, not just a country.**
+*Settings › enrich › How much detail* chooses between the country database,
+which is a few megabytes, and the city database, which is a much larger
+download and adds the city, the region and the latitude and longitude a map
+needs. Country stays the default: the larger file is only worth fetching if
+something is going to draw with it.
+
+The two are kept in separate files on disk. Sharing one name would let a
+country database already downloaded stand in for the city one that was asked
+for, and the only symptom would be a map with nothing on it.
+
+Both still come from DB-IP's free files by default, and a configured URL
+still wins, so a licensed MaxMind database works as before.
+
+**Worth knowing before trusting a map built on this.** Geolocation is
+accurate for end-user addresses and unreliable for infrastructure. In
+testing, 1.1.1.1 resolves to Sydney because that is where Cloudflare
+registered the block, while the server actually answering is whichever one
+is nearest you. Coordinates are absent for a great many addresses, and zero
+is reported rather than a guess, so anything drawing a map has to handle
+"unknown" as a real answer.
+
 ## 0.9.8r202609232121
 
 **Every device was being classified as the first rule in the list.** The rule

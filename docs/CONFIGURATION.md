@@ -84,8 +84,9 @@ Names and countries for bare addresses: reverse DNS and an IP geolocation databa
 | Key | Setting | Type | Default | Notes |
 |---|---|---|---|---|
 | `reverse_dns` | Reverse DNS names | bool | `true` | Look up PTR records for addresses shown without a name, through the gateway's own resolver. Results are cached. |
-| `geoip` | Country lookup | bool | `true` | Show the country of public addresses. Downloads a country database (DB-IP Lite by default, refreshed monthly) into the data directory. |
-| `geoip_url` | Country database URL | string | `"https://download.db-ip.com/free/dbip-country-lite-{YYYY-MM}.mmdb.gz"` | A MaxMind-format (.mmdb, optionally .gz) country database. {YYYY-MM} is replaced by the current month. Empty: DB-IP Lite. |
+| `geoip` | Location lookup | bool | `false` | Downloads a database (DB-IP Lite by default, refreshed monthly) into the data directory. |
+| `geoip_detail` | How much detail | choice (country, city) | `"country"` | Country is a few megabytes. City is a much larger download (about 60 MB compressed) and adds the city, region and the coordinates a map needs. |
+| `geoip_url` | Database URL | string | `""` | A MaxMind-format (.mmdb, optionally .gz) database. `{YYYY-MM}` is replaced by the current month. Empty: the DB-IP Lite file matching the detail level. |
 | `cache_hours` | Name cache (hours) | int | `24` |  |
 
 ### enroll

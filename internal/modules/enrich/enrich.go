@@ -26,19 +26,35 @@ import (
 
 func init() { core.Register(func() core.Module { return &Module{} }) }
 
-// Default country database: DB-IP's free country database (CC BY 4.0,
-// attribution shown in the UI while it is in use). {YYYY-MM} is replaced by
-// the current month, and the previous month is tried when the current one
-// is not published yet. Any MaxMind-format country database works here,
-// including GeoLite2-Country with your own licence key in the URL.
-const defaultGeoURL = "https://download.db-ip.com/free/dbip-country-lite-{YYYY-MM}.mmdb.gz"
+// Default databases: DB-IP's free files (CC BY 4.0, attribution shown in the
+// UI while one is in use). {YYYY-MM} is replaced by the current month, and
+// the previous month is tried when the current one is not published yet. Any
+// MaxMind-format database works here, including GeoLite2 with your own
+// licence key in the URL.
+//
+// Two levels, because they are not the same size. The country file is a few
+// megabytes and answers "where is this". The city file is far larger and is
+// only worth downloading if something needs coordinates, which today means
+// drawing a path on a map.
+const (
+	defaultGeoURL     = "https://download.db-ip.com/free/dbip-country-lite-{YYYY-MM}.mmdb.gz"
+	defaultGeoCityURL = "https://download.db-ip.com/free/dbip-city-lite-{YYYY-MM}.mmdb.gz"
+)
 
 // Info is what a lookup returns for one address.
 type Info struct {
 	IP      string `json:"ip"`
 	Name    string `json:"name,omitempty"`    // reverse DNS, without the trailing dot
 	Country string `json:"country,omitempty"` // ISO 3166-1 alpha-2
-	Local   bool   `json:"local,omitempty"`
+	// City-level fields, present only while the city database is in use.
+	// Lat and Lon are zero when unknown, which is a real answer here: a great
+	// many addresses have no coordinates and inventing some would put points
+	// on a map that mean nothing.
+	City   string  `json:"city,omitempty"`
+	Region string  `json:"region,omitempty"`
+	Lat    float64 `json:"lat,omitempty"`
+	Lon    float64 `json:"lon,omitempty"`
+	Local  bool    `json:"local,omitempty"`
 }
 
 // Enricher is the service other modules and the UI use.
@@ -77,19 +93,22 @@ func (m *Module) Info() core.ModuleInfo {
 		Description: "Names and countries for bare addresses: reverse DNS and an IP geolocation database. Both off by default.",
 		After:       []string{"identity"},
 		Defaults: map[string]any{
-			"enabled":     true,
-			"reverse_dns": false,
-			"geoip":       false,
-			"geoip_url":   defaultGeoURL,
-			"cache_hours": 24,
+			"enabled":      true,
+			"reverse_dns":  false,
+			"geoip":        false,
+			"geoip_detail": "country",
+			"geoip_url":    "",
+			"cache_hours":  24,
 		},
 		Schema: []core.SettingField{
 			{Key: "reverse_dns", Label: "Reverse DNS names", Type: "bool",
 				Help: "Look up PTR records for addresses shown without a name, through the gateway's own resolver. Results are cached."},
-			{Key: "geoip", Label: "Country lookup", Type: "bool",
-				Help: "Show the country of public addresses. Downloads a country database (DB-IP Lite by default, refreshed monthly) into the data directory."},
-			{Key: "geoip_url", Label: "Country database URL", Type: "string",
-				Help: "A MaxMind-format (.mmdb, optionally .gz) country database. {YYYY-MM} is replaced by the current month. Empty: DB-IP Lite."},
+			{Key: "geoip", Label: "Location lookup", Type: "bool",
+				Help: "Show where public addresses are. Downloads a database (DB-IP Lite by default, refreshed monthly) into the data directory."},
+			{Key: "geoip_detail", Label: "How much detail", Type: "choice", Choices: []string{"country", "city"},
+				Help: "Country is a few megabytes and answers which country an address is in. City is a much larger download and adds the city, the region and the coordinates a map needs. Choose city only if something is going to draw one; the accuracy for anything other than end-user addresses is poor either way."},
+			{Key: "geoip_url", Label: "Database URL", Type: "string",
+				Help: "A MaxMind-format (.mmdb, optionally .gz) database. {YYYY-MM} is replaced by the current month. Empty: the DB-IP Lite file matching the detail above."},
 			{Key: "cache_hours", Label: "Name cache (hours)", Type: "int"},
 		},
 	}
@@ -178,7 +197,7 @@ func (m *Module) Lookup(ips []string) map[string]Info {
 		}
 		info.Local = local
 		if geo && !local && m.geo != nil {
-			info.Country = m.country(addr)
+			m.place(addr, &info)
 		}
 		if rd {
 			e := m.cache[key]
@@ -240,21 +259,68 @@ func (m *Module) prune() error {
 
 // ---------------------------------------------------------------- country
 
-type countryRecord struct {
+// geoRecord decodes both file shapes. A country database simply leaves the
+// city, subdivision and location fields at their zero values, so the same
+// struct reads either one and no switch is needed at lookup time.
+type geoRecord struct {
 	Country struct {
 		ISOCode string `maxminddb:"iso_code"`
 	} `maxminddb:"country"`
+	City struct {
+		Names map[string]string `maxminddb:"names"`
+	} `maxminddb:"city"`
+	Subdivisions []struct {
+		ISOCode string            `maxminddb:"iso_code"`
+		Names   map[string]string `maxminddb:"names"`
+	} `maxminddb:"subdivisions"`
+	Location struct {
+		Latitude  float64 `maxminddb:"latitude"`
+		Longitude float64 `maxminddb:"longitude"`
+	} `maxminddb:"location"`
 }
 
-func (m *Module) country(ip net.IP) string {
-	var rec countryRecord
+// place fills in whatever the loaded database knows about an address.
+func (m *Module) place(ip net.IP, info *Info) {
+	var rec geoRecord
 	if err := m.geo.Lookup(ip, &rec); err != nil {
-		return ""
+		return
 	}
-	return rec.Country.ISOCode
+	info.Country = rec.Country.ISOCode
+	info.City = rec.City.Names["en"]
+	if len(rec.Subdivisions) > 0 {
+		info.Region = rec.Subdivisions[0].Names["en"]
+		if info.Region == "" {
+			info.Region = rec.Subdivisions[0].ISOCode
+		}
+	}
+	info.Lat, info.Lon = rec.Location.Latitude, rec.Location.Longitude
 }
 
-func (m *Module) dbPath() string { return filepath.Join(m.ctx.Platform.DataDir, "geoip-country.mmdb") }
+// detail is the level the operator asked for: "country" or "city".
+func (m *Module) detail() string {
+	if core.Str(m.ctx.Settings(), "geoip_detail", "country") == "city" {
+		return "city"
+	}
+	return "country"
+}
+
+// geoURL is the configured URL, or the DB-IP file matching the detail level.
+func (m *Module) geoURL() string {
+	if u := strings.TrimSpace(core.Str(m.ctx.Settings(), "geoip_url", "")); u != "" {
+		return u
+	}
+	if m.detail() == "city" {
+		return defaultGeoCityURL
+	}
+	return defaultGeoURL
+}
+
+// dbPath carries the detail level in its name. Sharing one filename across
+// both would let a country file already on disk stand in for the city one
+// that was asked for, and the only symptom would be a map with nothing on it.
+func (m *Module) dbPath() string {
+	return filepath.Join(m.ctx.Platform.DataDir, "geoip-"+m.detail()+".mmdb")
+}
 
 // refreshGeo opens the database on disk and downloads a fresh one when the
 // switch is on and the file is missing or older than 25 days.
@@ -309,10 +375,7 @@ func modTime(p string) time.Time {
 }
 
 func (m *Module) download(dest string) error {
-	tmpl := strings.TrimSpace(core.Str(m.ctx.Settings(), "geoip_url", defaultGeoURL))
-	if tmpl == "" {
-		tmpl = defaultGeoURL
-	}
+	tmpl := m.geoURL()
 	now := time.Now().UTC()
 	var last error
 	for _, month := range []time.Time{now, now.AddDate(0, -1, 0)} {
@@ -395,7 +458,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		out["database_updated"] = st.ModTime().Unix()
 		out["database_bytes"] = st.Size()
 	}
-	src := strings.TrimSpace(core.Str(m.ctx.Settings(), "geoip_url", defaultGeoURL))
+	src := m.geoURL()
 	out["attribution"] = ""
 	if geo && (src == "" || strings.Contains(src, "db-ip.com")) {
 		out["attribution"] = "IP geolocation by DB-IP (db-ip.com), CC BY 4.0"
