@@ -436,14 +436,17 @@ func (s *Store) AddFlows(flows []Flow) error {
 				var pin, pout int64
 				if err := prevQ.QueryRow(f.Key).Scan(&pin, &pout); err == nil {
 					d.newFlow = false
-					d.bytesIn, d.bytesOut = f.BytesIn-pin, f.BytesOut-pout
-					if d.bytesIn < 0 {
-						d.bytesIn = f.BytesIn // counters reset (flow re-created upstream)
-					}
-					if d.bytesOut < 0 {
-						d.bytesOut = f.BytesOut
-					}
+					d.bytesIn, d.bytesOut = flowDelta(pin, pout, f.BytesIn, f.BytesOut)
 				}
+			}
+			// A proxy log line describes a transfer the flow probe already
+			// counted live, byte for byte, as it happened. It still counts
+			// as a request (and carries the verdict and the domain), but its
+			// bytes must not be added a second time.
+			if f.Source == "squid" {
+				d.bytesIn, d.bytesOut = 0, 0
+			}
+			if f.Key != "" {
 				res, err := upd.Exec(end, f.BytesIn, f.BytesOut, f.Packets, f.Duration,
 					nz(f.App), nz(f.Category), nz(f.Domain), f.Verdict, nz(f.Policy),
 					nz(f.TLSVersion), nz(f.TLSSNI), nz(f.TLSJA3), jsonOrNil(f.Attrs), f.Key)
@@ -467,6 +470,30 @@ func (s *Store) AddFlows(flows []Flow) error {
 		return accumulateRollups(tx, deltas)
 	})
 }
+
+// flowDelta is how many bytes a flow moved since it was last seen, split by
+// direction. The probe's counters are cumulative per flow, but its split by
+// direction is derived from a percentage that shifts as the mix changes, so
+// one direction can read lower than last time while the flow grew. Judging
+// a reset by one direction credited the whole cumulative total again each
+// time that happened, which put hundreds of gigabytes an hour on a tunnel
+// that moved a few. Only the total says whether the counter reset; the
+// growth is then split the way the flow currently splits.
+func flowDelta(pin, pout, in, out int64) (int64, int64) {
+	total, prev := in+out, pin+pout
+	if total < prev {
+		return in, out // re-created upstream: the counters started over
+	}
+	grow := total - prev
+	if grow <= 0 || total <= 0 {
+		return 0, 0
+	}
+	dIn := grow * in / total
+	return dIn, grow - dIn
+}
+
+// FlowDelta is flowDelta for the modules that keep their own counters.
+func FlowDelta(pin, pout, in, out int64) (int64, int64) { return flowDelta(pin, pout, in, out) }
 
 // accumulateRollups adds observation deltas to the three flow rollups.
 func accumulateRollups(tx *sql.Tx, deltas []rollupDelta) error {

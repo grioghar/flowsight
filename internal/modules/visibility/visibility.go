@@ -382,13 +382,10 @@ func (m *Module) poll() error {
 		prev, had := m.seen[f.Key]
 		dIn, dOut := f.BytesIn, f.BytesOut
 		if had {
-			dIn, dOut = f.BytesIn-prev.bytesIn, f.BytesOut-prev.bytesOut
-			if dIn < 0 {
-				dIn = f.BytesIn
-			}
-			if dOut < 0 {
-				dOut = f.BytesOut
-			}
+			// Judge growth by the total: the per-direction split comes from
+			// a shifting percentage and one side can read lower while the
+			// flow grew (see core.FlowDelta).
+			dIn, dOut = core.FlowDelta(prev.bytesIn, prev.bytesOut, f.BytesIn, f.BytesOut)
 		}
 		m.seen[f.Key] = flowState{bytesIn: f.BytesIn, bytesOut: f.BytesOut, seenAt: time.Now()}
 		for _, ip := range []string{f.SrcIP, f.DstIP} {

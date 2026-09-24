@@ -70,6 +70,13 @@ and out, sessions, blocked requests, last seen. Sort by any column; filter
 by name or address. A host that stops appearing is not deleted, it just
 falls out of the window.
 
+**One row per device.** The checkbox beside the count folds every address
+behind the same hardware address into one row: traffic summed, the other
+addresses listed under the name, the IPv4 address as the link. Addresses
+with no known device stay their own rows. The range bar shows *since <date>*
+when the window reaches back past the oldest record, so 7d and 30d reading
+the same on a young installation is expected, not a fault.
+
 Hosts and Devices overlap on purpose and answer different questions.
 **Hosts** is what the traffic shows: one row per address seen in flows and
 DNS within the window, with its traffic, and it includes far ends and
@@ -956,6 +963,28 @@ file** for air-gapped installations (the installation id to quote is shown
 here). The tier comparison lists every gated feature and the limits. *Remove
 license* returns to Community and frees the seat. See
 [Licensing](LICENSING.md).
+
+### API
+
+Interactive explorer for the FlowSight REST API. Operations are organized by
+area: Monitor (visibility, hosts, flows, applications, web, DNS, map, data
+out), Inventory (devices, zones), Protect (policy, QoS, categories, TLS,
+threats, firewall), and Administration (reports, alerts, updates, license,
+API itself).
+
+Click any operation to expand it and see its parameters, request body
+template, and examples. The **Send request** button calls the API through
+your session; write operations (POST, PUT, DELETE) ask for confirmation.
+**Copy as curl** exports the request with your token for use in scripts or
+other tools.
+
+The **Download OpenAPI JSON** link on the right fetches the machine-readable
+specification for use with API clients, code generators, or documentation
+tools (Swagger UI, Insomnia, Postman, etc.).
+
+Every write is recorded in the audit log (Status › Events › Audit) with the
+user and client address. Bearer token authentication and X-Flowsight-Token
+headers are supported in addition to session cookies.
 
 ## Keyboard and browser notes
 

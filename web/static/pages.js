@@ -60,15 +60,36 @@
       let rows = d.hosts || [];
       const q = (ctx.params.q || '').toLowerCase();
       if (q) rows = rows.filter(h => JSON.stringify(h).toLowerCase().includes(q));
-      el.innerHTML = `<div class="actions"><span class="muted">${rows.length} hosts seen in the last ${FS.state.hours}h</span><span class="spacer" style="flex:1"></span><a class="btn" href="#hosts?all=1">Include inactive</a></div>` +
+      // One row per device: every address behind the same hardware address
+      // folds into one, traffic summed, the addresses listed under the name.
+      // Addresses with no known device stay their own rows.
+      let byDevice = false; try { byDevice = localStorage.getItem('fs.hostsByDevice') === '1'; } catch (e) {}
+      const seen = rows.length;
+      if (byDevice) {
+        const dev = new Map(); const out = [];
+        rows.forEach(r => {
+          if (!r.mac) { out.push(r); return; }
+          let g = dev.get(r.mac);
+          if (!g) { g = Object.assign({}, r, { addrs: [], bytes_in: 0, bytes_out: 0, flows: 0, blocked: 0, alerts: 0, last_seen: 0 }); dev.set(r.mac, g); out.push(g); }
+          g.addrs.push(r.ip);
+          if (!g.name && r.name) g.name = r.name;
+          if (g.ip.includes(':') && !r.ip.includes(':')) g.ip = r.ip; // prefer the IPv4 address as the row's link
+          g.bytes_in += r.bytes_in || 0; g.bytes_out += r.bytes_out || 0; g.flows += r.flows || 0; g.blocked += r.blocked || 0; g.alerts += r.alerts || 0;
+          if ((r.last_seen || 0) > g.last_seen) g.last_seen = r.last_seen;
+        });
+        rows = out;
+      }
+      el.innerHTML = `<div class="actions"><span class="muted">${byDevice ? `${rows.length} devices (${seen} addresses)` : `${rows.length} hosts`} seen in the last ${FS.state.hours}h</span><label class="small" style="margin-left:12px;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="by-device" ${byDevice ? 'checked' : ''}> one row per device</label><span class="spacer" style="flex:1"></span><a class="btn" href="#hosts?all=1">Include inactive</a></div>` +
         card('Hosts', table(rows, [
-          { t: 'Host', f: r => hostLink(r.ip, r.name), sort: 'name' },
+          { t: 'Host', f: r => hostLink(r.ip, r.name) + (r.addrs && r.addrs.length > 1 ? `<div class="muted small mono">${r.addrs.filter(a => a !== r.ip).map(a => `<a href="#host/${encodeURIComponent(a)}">${esc(a)}</a>`).join(' · ')}</div>` : ''), sort: 'name' },
           { t: 'MAC', f: r => `<span class="mono">${esc(r.mac || '')}</span>${r.randomized ? ' ' + pill('private', '') : ''}`, sort: 'mac' },
           { t: 'Vendor', k: 'vendor' }, { t: 'Zone', f: r => r.zone ? pill(r.zone, 'info') : '', sort: 'zone' },
           { t: 'Down', f: r => bytes(r.bytes_in), num: true, sort: 'bytes_in' }, { t: 'Up', f: r => bytes(r.bytes_out), num: true, sort: 'bytes_out' },
           { t: 'Flows', f: r => num(r.flows), num: true, sort: 'flows' }, { t: 'Blocked', f: r => r.blocked ? `<span class="sev-high">${num(r.blocked)}</span>` : '0', num: true, sort: 'blocked' },
           { t: 'Alerts', f: r => r.alerts ? `<span class="sev-high">${num(r.alerts)}</span>` : '0', num: true, sort: 'alerts' },
           { t: 'Last seen', f: r => ago(r.last_seen), sort: 'last_seen' }]));
+      const cb = FS.$('#by-device', el);
+      if (cb) cb.onchange = () => { try { localStorage.setItem('fs.hostsByDevice', cb.checked ? '1' : '0'); } catch (e) {} FS.render(); };
     }
   });
 

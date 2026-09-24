@@ -12,6 +12,42 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242333
+
+**Traffic totals were inflated, badly.** The flow probe reports a cumulative
+byte count per flow and a percentage split by direction; as the split
+shifted, one direction could read lower than last time while the flow grew,
+and that was taken for a counter reset, crediting the whole cumulative total
+again. A long-lived WireGuard tunnel was booked at 900 GB an hour on a link
+that moved 74 GB. Growth is now judged on the total and split by the current
+mix, for the rollups and the per-host counters alike. Separately, every
+proxied transfer was counted twice: live by the probe and again from the
+proxy log when it completed; proxy lines still count as requests, with their
+verdict and domain, but add no bytes. Historic rollups keep the old numbers;
+they age out with retention.
+
+**The window says where the history starts.** With six days of records, 7d
+and 30d showed the same thing and looked broken. The range bar now shows
+*since <date>* whenever the window reaches back past the oldest record
+(`data_since` on `/api/system/info`).
+
+**Hosts, one row per device.** A checkbox beside the count folds every
+address behind the same hardware address into one row, traffic summed and
+the other addresses listed under the name, so a laptop with an IPv4 lease
+and five IPv6 addresses sorts as one host. Addresses with no known device
+stay their own rows. The choice is remembered.
+
+## 0.9.8r202609242330
+
+**Complete OpenAPI documentation and interactive API explorer.** Every API route
+now has proper OpenAPI tags organized into four areas: Monitor (visibility, hosts,
+flows, applications, web, DNS, map, data out), Inventory (devices, zones),
+Protect (policy, QoS, categories, TLS, threats, firewall), and Administration
+(reports, alerts, updates, license, API). The in-product API explorer at the API
+page (Administration group) provides grouped operations, request/response templates,
+live testing, and curl export. All 122+ routes emit proper operationIds and are
+downloadable as an OpenAPI 3.0 JSON specification.
+
 ## 0.9.8r202609242323
 
 **The echo is cleared from every address of the device.** The name a

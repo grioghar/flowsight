@@ -26,6 +26,9 @@ type Core struct {
 	profileMu   sync.Mutex // guards lastGC
 	lastGC      time.Time  // when a heap profile last forced a collection
 	lastMemWarn time.Time  // when watchMemory last complained
+	sinceMu     sync.Mutex // guards the data-since cache
+	sinceAt     time.Time
+	sinceVal    int64
 	Version     string
 	Platform    *Platform
 	Config      *Config
@@ -49,6 +52,41 @@ var registry []func() Module
 
 // Register adds a module constructor. Called from each module's init().
 func Register(ctor func() Module) { registry = append(registry, ctor) }
+
+// TagMap maps module names to OpenAPI tag hierarchies (area/page).
+// Two-level hierarchy: Area / Page matching the sidebar structure.
+var TagMap = map[string][]string{
+	// Monitor
+	"visibility": {"Monitor", "Overview"},
+	"identity":   {"Monitor", "Hosts"},
+	"flows":      {"Monitor", "Sessions"},
+	"apps":       {"Monitor", "Applications"},
+	"appcontrol": {"Monitor", "Applications"},
+	"web":        {"Monitor", "Web"},
+	"dns":        {"Monitor", "DNS"},
+	"paths":      {"Monitor", "Map"},
+	"egress":     {"Monitor", "Data out"},
+	// Inventory
+	"enroll": {"Inventory", "Devices"},
+	// Protect
+	"policy":      {"Protect", "Policies"},
+	"qos":         {"Protect", "Priority"},
+	"categories":  {"Protect", "Categories"},
+	"tls":         {"Protect", "TLS"},
+	"mitm":        {"Protect", "Deep inspection"},
+	"ids":         {"Protect", "Threats"},
+	"firewall":    {"Protect", "Firewall"},
+	"rulehygiene": {"Protect", "Firewall"},
+	// Administration
+	"reports":   {"Administration", "Reports"},
+	"alerting":  {"Administration", "Alerts"},
+	"updater":   {"Administration", "Updates"},
+	"license":   {"Administration", "License"},
+	"ui":        {"Administration", "Settings"},
+	"pihole":    {"Administration", "Settings"},
+	"enrich":    {"Administration", "Settings"},
+	"telemetry": {"Administration", "Settings"},
+}
 
 // New builds a Core. configPath "" means the platform default.
 func New(version, configPath, dataDir string, static fs.FS, log *slog.Logger) (*Core, error) {
@@ -276,6 +314,28 @@ func (c *Core) systemRoutes() {
 		"system", Doc("Drop the session"))
 }
 
+// dataSince is when the oldest traffic record starts, so a window wider than
+// the history can say so instead of looking broken. Read once an hour.
+func (c *Core) dataSince() int64 {
+	c.sinceMu.Lock()
+	defer c.sinceMu.Unlock()
+	if time.Since(c.sinceAt) < time.Hour && c.sinceVal != 0 {
+		return c.sinceVal
+	}
+	c.sinceAt = time.Now()
+	if c.Store != nil {
+		if row, err := c.Store.Row(`SELECT MIN(bucket) AS b FROM rollup_app`); err == nil && row != nil {
+			switch v := row["b"].(type) {
+			case int64:
+				c.sinceVal = v
+			case float64:
+				c.sinceVal = int64(v)
+			}
+		}
+	}
+	return c.sinceVal
+}
+
 func (c *Core) apiInfo(r *Req) (any, error) {
 	host, _ := os.Hostname()
 	cs := c.Config.Core()
@@ -287,7 +347,8 @@ func (c *Core) apiInfo(r *Req) (any, error) {
 	runtime.ReadMemStats(&ms)
 	return map[string]any{"version": c.Version, "platform": c.Platform, "hostname": host,
 		"site": site, "started": c.Started.Unix(), "uptime": int(time.Since(c.Started).Seconds()),
-		"user": r.User, "go": runtime.Version(), "auth": cs.APIToken != "",
+		"data_since": c.dataSince(),
+		"user":       r.User, "go": runtime.Version(), "auth": cs.APIToken != "",
 		"read_only": c.ReadOnly(), "goroutines": runtime.NumGoroutine(),
 		"memory": map[string]any{"heap_alloc": ms.HeapAlloc, "heap_sys": ms.HeapSys, "heap_inuse": ms.HeapInuse,
 			"heap_released": ms.HeapReleased, "sys": ms.Sys, "num_gc": ms.NumGC}}, nil

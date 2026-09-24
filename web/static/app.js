@@ -65,6 +65,7 @@
     const html = Object.keys(groups).sort((a, b) => (ORDER[a] || 9) - (ORDER[b] || 9)).map(g => `<div class="group">${esc(g)}</div>` + groups[g].sort((a, b) => a.order - b.order).map(x => `<a href="#${esc(x.id)}" data-page="${esc(x.id)}" ${x.locked ? 'title="Requires the ' + esc(x.required) + ' tier"' : ''}><span class="ico">${ICONS[x.icon || x.id] || '•'}</span>${esc(x.title)}${x.locked ? '<span class="lock">🔒</span>' : ''}</a>`).join('')).join('');
     $('#menu').innerHTML = html;
     $('#site').textContent = info.site || '';
+    if (info.data_since) { FS.state.dataSince = info.data_since; rangeBar(); }
     $('#version').textContent = 'v' + (info.version || '') + (p.tier && p.tier !== 'community' ? ' · ' + FS.tierName(p.tier) : '');
     if (info.read_only) $('#version').textContent += ' · read-only';
     get('/api/enrich/status').then(s => { const a = $('#attrib'); if (a) a.textContent = (s && s.attribution) || ''; });
@@ -82,7 +83,12 @@
   function rangeBar() {
     const el = $('#range');
     const opts = [[1, '1h'], [6, '6h'], [24, '24h'], [168, '7d'], [720, '30d']];
-    el.innerHTML = opts.map(([h, l]) => `<button data-h="${h}" class="${FS.state.hours === h ? 'on' : ''}">${l}</button>`).join('');
+    // A window wider than the history is honest about it: "7d" and "30d"
+    // show the same six days when six days is all there is.
+    const since = FS.state.dataSince || 0;
+    const start = Date.now() / 1000 - FS.state.hours * 3600;
+    const short = since && start < since - 3600 ? `<span class="muted small" title="The oldest traffic record. Wider windows show everything since then.">since ${new Date(since * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>` : '';
+    el.innerHTML = opts.map(([h, l]) => `<button data-h="${h}" class="${FS.state.hours === h ? 'on' : ''}">${l}</button>`).join('') + short;
     $$('button', el).forEach(b => b.onclick = () => { FS.setHours(Number(b.dataset.h)); rangeBar(); });
   }
 
