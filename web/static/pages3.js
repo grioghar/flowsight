@@ -364,6 +364,7 @@
       // different steps: hop 16 of one is hop 18 of another. The labels on
       // a chosen route use that route's numbering and that route's timings,
       // not whichever route happened to define the node.
+      const rcOf = (l) => picked ? (onRoute[l.from + '>' + l.to] ? ' onroute' : ' offroute') : '';
       const routeIndex = {}, routeRTT = {};
       routeHops.forEach(n => { routeIndex[n.id] = n.index; if (n.rtt_ms) routeRTT[n.id] = n.rtt_ms; });
       const hopNo = (n) => (picked && routeIndex[n.id] != null) ? routeIndex[n.id] : n.index;
@@ -430,7 +431,7 @@
         return out;
       };
 
-      let lines = '', dots = '', labels = '';
+      let lines = '', dots = '', labels = '', arrows = '';
       if (origin && picked) {
         const first = routeHops.find(n => n.located);
         if (first) {
@@ -453,16 +454,29 @@
         // the cable record can say. Each point is shifted by whole worlds to
         // sit nearest the one before, so a run over the antimeridian bends
         // round rather than snapping back across the map.
-        let d = `M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}`;
+        let pts = [[x1, y1], [x2, y2]];
         if ((l.route || []).length > 1) {
           let prev = null;
-          d = l.route.map(p => {
+          pts = l.route.map(p => {
             let [px, py] = FS.project(p.lat, p.lon, MAPW, MAPH);
             px = prev === null ? near(px, x1) : near(px, prev);
             prev = px;
-            return `${px.toFixed(1)},${py.toFixed(1)}`;
-          }).join(' L');
-          d = 'M' + d;
+            return [px, py];
+          });
+        }
+        const d = 'M' + pts.map(q => `${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(' L');
+        // Which way the packets went. A line has no direction and a route
+        // has one; the arrow sits on the middle segment, points from this
+        // hop to the next, and is rewritten on zoom so it stays the same
+        // size on screen. Off by a switch in the key.
+        {
+          const si = Math.floor((pts.length - 1) / 2);
+          const [ax0, ay0] = pts[si], [ax1, ay1] = pts[si + 1];
+          if (Math.hypot(ax1 - ax0, ay1 - ay0) > 1.5) {
+            const ax = (ax0 + ax1) / 2, ay = (ay0 + ay1) / 2;
+            const aa = Math.atan2(ay1 - ay0, ax1 - ax0) * 180 / Math.PI;
+            arrows += `<polygon class="arrow${rcOf(l)}" data-dsts="${esc((l.destinations || []).join(' '))}" data-ax="${ax.toFixed(1)}" data-ay="${ay.toFixed(1)}" data-aa="${aa.toFixed(1)}" points="-3.6,-2.2 3.6,0 -3.6,2.2" transform="translate(${ax.toFixed(1)} ${ay.toFixed(1)}) rotate(${aa.toFixed(1)})"/>`;
+          }
         }
         const n = (l.destinations || []).length;
         const cbl = (l.cables || []).length
@@ -623,6 +637,34 @@
               + `<div class="hr"><span>Addresses</span><b class="mono">${esc(ins.addresses.slice(0, 3).join(', '))}${ins.addresses.length > 3 ? ` +${ins.addresses.length - 3}` : ''}</b></div>` : '')
           + `</div>`;
       }
+
+      // The whole route, on the map. The trail below the map tells the same
+      // story at length; this is the compact version that stays in view
+      // while the reader is zoomed in on one corner of it -- every step from
+      // the machine inside the network to the endpoint, with the place and
+      // the round trip, each row lighting its dot like a crumb does.
+      const routeBox = () => {
+        if (!picked || !routeHops.length) return '';
+        const dest = (dests.destinations || []).find(d => d.dst === picked) || {};
+        const row = (o) => `<li class="rb${o.cls ? ' ' + o.cls : ''}" data-crumb="${esc(o.id)}">
+            <span class="rbn">${esc(o.n)}</span><span class="rbm">${o.main}</span><span class="rbt">${esc(o.t || '')}</span>
+            ${o.sub ? `<span class="rbs">${esc(o.sub)}</span>` : ''}</li>`;
+        const rows = [];
+        const ins = route.inside;
+        if (ins) rows.push(row({ id: '__origin', cls: 'inside', n: 'in', main: `<b>${esc(ins.name || ins.addresses[0])}</b>`, sub: ins.addresses[0] }));
+        routeHops.forEach((n, i) => {
+          const last = i === routeHops.length - 1;
+          if (n.silent) { rows.push(row({ id: n.id, cls: 'silent', n: '#' + n.index, main: '<span class="muted">no answer</span>' })); return; }
+          const cls = [n.impossible ? 'bad' : (n.tight ? 'doubt' : ''), last ? 'endpoint' : ''].filter(Boolean).join(' ');
+          const name = (n.names || [])[0] || '';
+          rows.push(row({ id: n.id, cls, n: '#' + n.index, main: `<b>${esc(name || n.ips[0])}</b>`,
+            t: n.rtt_ms ? n.rtt_ms.toFixed(n.rtt_ms < 10 ? 1 : 0) + ' ms' : '',
+            sub: [name ? n.ips[0] : '', [n.city, n.country].filter(Boolean).join(', ') || (n.located ? '' : 'not placed')].filter(Boolean).join(' \u00b7 ') }));
+        });
+        return `<div class="routebox onmap" id="routebox">
+          <button type="button" class="lgtoggle" id="rbtoggle" aria-expanded="true">Route to ${esc(dest.name || picked)}</button>
+          <ol class="rbrows">${rows.join('')}</ol></div>`;
+      };
 
       // The route as a trail, beginning inside the network.
       //
@@ -799,7 +841,7 @@
                 never there. Routes and markers are drawn for real too: a <use>
                 copy cannot be clicked, and a reader who pans past the edge
                 would find a map whose hops no longer answer. */''}
-          ${[-MAPW, 0, MAPW].map(dx => `<g class="${dx ? 'worldcopy' : ''}" transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${labels}${dots}${originArt}</g>`).join('')}
+          ${[-MAPW, 0, MAPW].map(dx => `<g class="${dx ? 'worldcopy' : ''}" transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${arrows}${labels}${dots}${originArt}</g>`).join('')}
           </g>
         </svg>
         ${(() => {
@@ -820,11 +862,12 @@
           // cannot move it -- but at ten times in it was covering the thing
           // being looked at, so it folds down to its title and remembers
           // which the reader preferred.
-          return `<div class="legend onmap" id="maplegend">
+          return routeBox() + `<div class="legend onmap" id="maplegend">
             <button type="button" class="lgtoggle" id="lgtoggle" aria-expanded="true">Key</button>
             <div class="lgitems">
             ${it(sw('leg shared', 'stroke:var(--muted)'), 'a leg several destinations share', 'shared')}
             ${it(sw('leg', 'stroke:' + FS.palette[0]), 'a leg used by one destination', 'single')}
+            ${it(`<svg class="lg" viewBox="0 0 22 10" aria-hidden="true"><line class="leg" style="stroke:var(--ink)" x1="1" y1="5" x2="14" y2="5"/><polygon points="13,1.8 20,5 13,8.2" fill="var(--ink)"/></svg>`, 'direction of travel, hop to hop', 'arrows')}
             ${(cab.cables || []).length ? it(sw('cable'), 'submarine cable', 'cable') : ''}
             ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="homering" cx="6" cy="6" r="4.5"/><circle class="home" cx="6" cy="6" r="2"/></svg>`, 'you', 'you')}
             ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="endpoint" cx="6" cy="6" r="4.6"/><circle cx="6" cy="6" r="2.2" fill="${FS.palette[2]}"/></svg>`, 'an endpoint: traffic was going here', 'endpoint')}
@@ -1046,6 +1089,19 @@
         lgb.onclick = () => set(lgd.classList.contains('folded'));
       }
 
+      const rbx = FS.$('#routebox', el), rbb = FS.$('#rbtoggle', el);
+      if (rbx && rbb) {
+        const set = (open) => {
+          rbx.classList.toggle('folded', !open);
+          rbb.setAttribute('aria-expanded', open ? 'true' : 'false');
+          try { localStorage.setItem('fs.routebox', open ? '1' : '0'); } catch (e) { }
+        };
+        let open = true;
+        try { open = localStorage.getItem('fs.routebox') !== '0'; } catch (e) { }
+        set(open);
+        rbb.onclick = () => set(rbx.classList.contains('folded'));
+      }
+
       const rc = FS.$('#r-clear', el);
       if (rc) rc.onclick = () => FS.go('paths?' + routeQ(''));
 
@@ -1232,6 +1288,7 @@
       // to them by hand. Everything else holds its size through CSS.
       const svg = FS.$('#pathmap', el);
       const sized = svg ? svg.querySelectorAll('[data-r]') : [];
+      const arrowEls = svg ? svg.querySelectorAll('.arrow') : [];
       // What the reader is looking at, so a refresh can put it back.
       //
       // The page redraws itself every couple of minutes. Zoomed in on a hop,
@@ -1257,6 +1314,9 @@
             const base = byTraffic && c.hasAttribute('data-rt') ? c.getAttribute('data-rt') : c.getAttribute('data-r');
             c.setAttribute('r', (parseFloat(base) / z).toFixed(2));
           });
+          const k = (1 / z).toFixed(3);
+          arrowEls.forEach(a => a.setAttribute('transform',
+            `translate(${a.getAttribute('data-ax')} ${a.getAttribute('data-ay')}) rotate(${a.getAttribute('data-aa')}) scale(${k})`));
         },
         onView: (v) => { FS.pathsView = { key: viewKey, box: v, focus: FS.pathsView && FS.pathsView.focus }; }
       });

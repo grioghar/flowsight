@@ -535,7 +535,39 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .pathmap.off-ruledout .ruledout,
 .pathmap.off-doubtful .doubtful,
 .pathmap.off-corrected .corrected, .pathmap.off-corrected .ghost,
-.pathmap.off-cable .cablegroup { display: none; }
+.pathmap.off-cable .cablegroup,
+.pathmap.off-arrows .arrow { display: none; }
+/* Direction of travel. Ink rather than the leg's colour, so it reads as an
+   annotation on the line and not as another line; dimmed with its leg when
+   a route is chosen. */
+.pathmap .arrow { fill: var(--ink); opacity: .8; pointer-events: none; }
+.pathmap .arrow.offroute { opacity: .12; }
+.pathmap .arrow.onroute { fill: var(--accent, #4c8dff); opacity: 1; }
+
+/* The route, end to end, on the map's other corner. Same furniture as the
+   key so the two read as a pair; rows light up with the trail's crumbs. */
+.routebox.onmap { position: absolute; right: 12px; top: 12px;
+  width: 300px; max-width: calc(100% - 24px); max-height: calc(100% - 24px); overflow: auto;
+  display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 9px 11px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 2px 10px rgba(0,0,0,.14); z-index: 2; font-size: 11px; line-height: 1.3; }
+.routebox.onmap .lgtoggle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; text-transform: none; letter-spacing: 0; font-size: 11px; font-weight: 600; color: var(--ink); }
+.routebox.onmap.folded { padding: 5px 9px; width: auto; }
+.routebox.onmap.folded .rbrows { display: none; }
+.rbrows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rb { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 0 6px; align-items: baseline;
+  padding: 3px 5px; border-radius: 5px; border: 1px solid transparent; cursor: pointer; }
+.rb:hover { background: var(--panel-3, rgba(127,127,127,.13)); }
+.rb.here { border-color: var(--accent, #4c8dff); background: color-mix(in srgb, var(--accent, #4c8dff) 14%, transparent); }
+.rb .rbn { font-size: 10px; letter-spacing: .05em; color: var(--muted); }
+.rb .rbm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb .rbt { font-variant-numeric: tabular-nums; color: var(--muted); }
+.rb .rbs { grid-column: 2 / 4; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb.inside { border-left: 3px solid var(--ok, #22c55e); }
+.rb.endpoint { border-left: 3px solid var(--accent, #4c8dff); }
+.rb.silent { opacity: .7; cursor: default; }
+.rb.bad .rbn { color: var(--bad); }
+.rb.doubt .rbn { color: var(--warn); }
 /* Two of these are emphasis rather than a layer of their own: switching them
    off removes the emphasis, since hiding the hop would be a different claim. */
 .pathmap.off-rich .hop.rich { stroke: var(--panel); stroke-width: .8; }

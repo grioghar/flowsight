@@ -12,6 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242021
+
+**Arrows show which way the packets went.** Every leg carries a small arrow
+on its middle segment pointing from the hop to the next; on a chosen route
+they take the route's colour and the rest fade with their legs. They keep
+their size on screen at any zoom. *Direction of travel* in the key switches
+them off and on, remembered like the other layers.
+
+**The whole route, on the map.** Choosing a route now puts a compact table
+in the map's top-right corner, opposite the key: every step from the machine
+inside the network to the endpoint, with the router's name or address, where
+it is, and its round trip. Rows light up with the trail below and behave the
+same way -- hover to mark the hop, click to travel to it, click the endpoint
+to frame the route. It folds to its title, and remembers.
+
 ## 0.9.8r202609242015
 
 **IPv6 addresses stay with their device.** Which addresses a device holds

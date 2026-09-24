@@ -410,6 +410,13 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     // cost; the milliseconds alone left a reader counting dots.
     var ms = t.match(/class="legms"[^>]*>#(\d+) \u00b7 ([\d.]+) ms</);
     if (!ms) throw new Error('legs of a chosen route should be labelled "#hop · N ms"');
+    // Direction and the whole route, on the map itself.
+    if (t.indexOf('class="arrow onroute"') < 0) throw new Error('the chosen route should carry direction arrows');
+    if (t.indexOf('data-layer="arrows"') < 0) throw new Error('arrows should be a switch in the key');
+    if (t.indexOf('id="routebox"') < 0) throw new Error('the route should be tabled on the map');
+    var rbRows = (t.match(/class="rb[ "]/g) || []).length;
+    if (rbRows !== 5) throw new Error('route table should list inside + 4 hops, got ' + rbRows);
+    if (!/class="rb[^"]*endpoint"/.test(t) || t.indexOf('class="rb inside"') < 0) throw new Error('route table should mark its ends');
     // The number is this route's step, not the step of whichever route first
     // defined the shared node: 1.1.1.1 is hop 4 on the map's node and hop 9
     // on this route.

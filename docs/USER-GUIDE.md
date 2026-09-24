@@ -464,6 +464,14 @@ adding one later is a line of configuration. Road-traced files are thinned to
 the points that change a route's shape by more than a kilometre before use,
 so a large one costs a second or two to load rather than a core for a day.
 
+**Direction and the route table.** Each leg carries an arrow pointing the
+way the packets went; *direction of travel* in the key switches them off.
+With a route chosen, a table in the map's top-right corner lists every step
+from the machine inside the network to the endpoint -- name or address, place,
+round trip -- and each row marks its hop on the map, travels to it on click,
+and frames the whole route from the endpoint. Both the key and the table fold
+to their titles.
+
 **Devices, not addresses.** A device is known by its hardware address; every
 IP it has held is grouped under it, IPv4 and IPv6 alike. Which addresses it
 holds *now* is remembered for a day (*Settings › identity › Remember a
