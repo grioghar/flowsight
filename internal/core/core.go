@@ -23,6 +23,8 @@ import (
 // through Register(); Core instantiates the ones the config enables, in
 // dependency order, and runs them.
 type Core struct {
+	profileMu sync.Mutex // guards lastGC
+	lastGC    time.Time  // when a heap profile last forced a collection
 	Version   string
 	Platform  *Platform
 	Config    *Config
@@ -300,7 +302,16 @@ func (c *Core) apiProfile(r *Req) (any, error) {
 		return nil, BadRequest("kind must be heap, allocs or goroutine")
 	}
 	if kind == "heap" {
-		runtime.GC() // a heap profile is of the last collection; make it now
+		// A heap profile is of the last collection, so one is forced -- but
+		// not more often than every few seconds, since a forced collection
+		// is a stop-the-world pause anyone holding the token could otherwise
+		// repeat in a loop.
+		c.profileMu.Lock()
+		if time.Since(c.lastGC) > 5*time.Second {
+			runtime.GC()
+			c.lastGC = time.Now()
+		}
+		c.profileMu.Unlock()
 	}
 	var buf bytes.Buffer
 	if err := pprof.Lookup(kind).WriteTo(&buf, 0); err != nil {
