@@ -494,9 +494,15 @@ FS.panZoom = (svg, w, h, opts) => {
   apply();
   // A window that changes shape changes the answer, so the viewBox is put
   // back in step rather than left to drift into the copy next door.
-  if (typeof ResizeObserver === 'function') {
+  //
+  // Both a ResizeObserver and a window listener, because the observer was
+  // seen not to fire on a pane that resized: the element's box changed, the
+  // viewBox kept the shape it had, and the map went back to showing more than
+  // one world. One of the two will always catch it, and reshape() does
+  // nothing when nothing has changed.
+  {
     let last = 0;
-    new ResizeObserver(() => {
+    const reshape = () => {
       // Never while a move is in flight. The observer fires after layout,
       // which on a fresh page is a moment after the first click may already
       // have started travelling somewhere -- and putting the view back to the
@@ -505,7 +511,7 @@ FS.panZoom = (svg, w, h, opts) => {
       // the hop that was clicked.
       if (frame) return;
       const a = aspect();
-      if (Math.abs(a - last) < 0.0005) return;
+      if (a <= 0 || Math.abs(a - last) < 0.0005) return;
       const first = last === 0;
       last = a;
       if (first || view.w > w + 0.5) {
@@ -517,7 +523,11 @@ FS.panZoom = (svg, w, h, opts) => {
         view.y = cy - view.h / 2;
       }
       apply();
-    }).observe(svg);
+    };
+    if (typeof ResizeObserver === 'function') new ResizeObserver(reshape).observe(svg);
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('resize', reshape);
+    }
   }
 
   // Going somewhere, visibly.

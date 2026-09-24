@@ -126,6 +126,11 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // is wider than one world and there is nothing out there to show.
   if ((h.match(/<use class="worldcopy"/g) || []).length !== 2)
     throw new Error('both backdrop copies should be marked as copies');
+  // Past one world the margin is emptied by clipping to the world, not by
+  // hiding the copies: the copies are what carries a leg over the
+  // antimeridian, and without them a wrapping route runs off into blank space.
+  if (h.indexOf('id="fs-world-clip"') < 0) throw new Error('the world needs a clip for the zoomed-out margin');
+  if (h.indexOf('class="stage"') < 0) throw new Error('the drawing needs a group to clip');
   if ((h.match(/<g class="worldcopy"/g) || []).length !== 2)
     throw new Error('both route copies should be marked as copies');
   if ((h.match(/<path class="land"/g) || []).length !== 1)

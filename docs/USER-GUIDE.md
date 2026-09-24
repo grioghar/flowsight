@@ -250,8 +250,11 @@ answers from several addresses, which is how a carrier balances across
 parallel links, that is one point carrying several addresses rather than
 several points.
 
-The map fills the window, with the hop detail beside it and the route beneath
-it, so nothing you click scrolls what it fills out of view. *About this map*
+The map is drawn two to one, the world's own proportion, so zoomed out it
+shows pole to pole and fills its frame exactly. The hop detail sits beside it
+and the route beneath it, so nothing you click scrolls what it fills out of
+view. On a screen wider than about 1750 pixels the tables move into a second
+column beside the map, and the whole page is one screenful. *About this map*
 under it unfolds the notes on where the land and cable data come from and what
 the map does not claim. The key sits in
 the map's bottom corner and stays there at any zoom; fold it away with *Key*

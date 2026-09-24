@@ -219,15 +219,23 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
    short window still gets a usable map and a tall one does not get an
    unreadable letterbox. */
 .mapsplit { display: flex; gap: 14px; align-items: stretch;
-  height: clamp(420px, calc(100vh - 210px), 900px); }
+  height: clamp(520px, calc(100vh - 140px), 1100px); }
 .mapsplit .mapcol { flex: 1 1 auto; min-width: 0; min-height: 0;
   display: flex; flex-direction: column; }
-/* The map takes what the route trail leaves. */
-.mapsplit .mapframe { flex: 1 1 auto; min-height: 0; }
-.mapsplit .pathmap { width: 100%; height: 100%; }
+/* The map takes what the route trail leaves, and is shaped like the world.
+   Two to one is the world's own proportion, so at full zoom-out pole to pole
+   exactly fills it: nothing cropped, nothing blank, and no second Earth in
+   the margin. Letting the map take whatever shape the window had meant one
+   of those three every time -- on a short wide window it was showing 437
+   degrees of latitude, a fifth of it empty sky above the pole. The largest
+   two-to-one box that fits is centred, and any space left over belongs to the
+   card rather than to the map. */
+.mapsplit .mapframe { flex: 1 1 auto; min-height: 0; display: flex; }
+.mapsplit .pathmap { aspect-ratio: 2 / 1; width: auto; height: auto;
+  max-width: 100%; max-height: 100%; margin: auto; }
 /* Embedded in the host GUI there is no viewport to measure -- the frame is
    sized from its own content, so asking for a share of it is circular. */
-.embedded .mapsplit { height: 620px; }
+.embedded .mapsplit { height: 760px; }
 .hoppanel { flex: 0 0 360px; display: flex; flex-direction: column; min-height: 0;
   padding: 0; background: var(--panel-2, rgba(127,127,127,.06));
   border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -419,10 +427,13 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .legend .lg .home { fill: var(--ink); stroke: none; }
 .legend .lg .homering { fill: none; stroke: var(--ink); stroke-width: 1.2; opacity: .6; }
 
-/* Zoomed out past one world there is nothing either side to show, so the
-   copies that make panning seamless are taken away and the extra width is
-   empty. Blank margins are honest; the same continent at both edges is not. */
-.pathmap.whole .worldcopy { display: none; }
+/* Zoomed out past one world the view is wider than the map, and the copies
+   either side would fill the margin with a second Earth. Clipping to the
+   world empties that margin while leaving the copies in place -- and leaving
+   them in place is the point, because they are what carries a leg across the
+   antimeridian. Hidden, a route that wraps ran off the edge into blank space
+   instead of coming back on the other side. */
+.pathmap.whole .stage { clip-path: url(#fs-world-clip); }
 
 
 /* What the map has been narrowed to, and the way back out. */
@@ -443,3 +454,27 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .hoppanel .endnote { font-size: 12px; color: var(--muted); margin: -4px 0 8px;
   padding: 6px 8px; border-radius: 6px;
   background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* Two columns where there is room for two.
+   An ultrawide screen was giving the map more width than a two-to-one map can
+   use, and putting the tables below it where they needed a scroll to reach.
+   Past this width the map and its route take the left, everything describing
+   them takes the right, and the whole page is one screenful. The right column
+   scrolls its own contents rather than the page, so the map never moves. */
+@media (min-width: 1750px) {
+  .pagewide { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: 14px; align-items: start; }
+  .pagewide .mapside { min-width: 0; }
+  .pagewide .dataside { min-width: 0; display: flex; flex-direction: column; gap: 14px;
+    max-height: calc(100vh - 100px); overflow-y: auto; padding-right: 2px; }
+  /* The children already carry their own spacing for the stacked layout. */
+  .pagewide .dataside > div { margin-top: 0 !important; }
+  .pagewide .mapside > div:first-child { margin-top: 0 !important; }
+  /* Tables in the side column scroll with the column, not inside themselves. */
+  .pagewide .dataside .tablewrap { max-height: none; overflow: visible; }
+  /* And the map side has to fit the screen too, or "one screenful" is only
+     true of the half that was measured. The card's own furniture -- title,
+     filters, the folded notes -- is the difference between this and the
+     figure above. */
+  .pagewide .mapside .mapsplit { height: clamp(380px, calc(100vh - 230px), 900px); }
+}

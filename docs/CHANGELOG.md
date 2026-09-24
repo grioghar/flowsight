@@ -12,6 +12,37 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241708
+
+**The map is shaped like the world.** Two to one, always, so at full zoom-out
+pole to pole exactly fills it -- nothing cropped, nothing blank, no second
+Earth in the margin. Letting it take whatever shape the window happened to be
+meant one of those three every time: on a short wide window it was showing 437
+degrees of latitude, a fifth of that empty sky above the pole.
+
+It is taller too, and the frame squarer.
+
+**A route that crosses the antimeridian keeps crossing it at every zoom.**
+Past one world the copies drawn either side were being hidden, to stop the
+margin filling with a second Earth. That was the easy answer and the wrong
+one: those copies are what carries a leg over the seam, so a wrapping route
+ran off the edge into blank space instead of coming back on the other side.
+The drawing is clipped to the world instead, which empties the margin and
+leaves the wrap intact.
+
+**Two columns on a wide screen.** A two-to-one map cannot use the width of an
+ultrawide display, and the tables underneath needed a scroll to reach. Past
+1750 pixels the map and its route take the left and everything describing them
+-- the counters, your location, the two plausibility tables, the hops with no
+coordinates, the destinations -- takes the right, in a column that scrolls its
+own contents so the map never moves. Below that width the page reads top to
+bottom as before.
+
+**The viewBox was not keeping up with the window.** Resizing a pane changed
+the element and left the viewBox with the shape it had, which on a map drawn
+three times over means showing more than one world. It listens on the window
+as well as through a ResizeObserver now; one of the two always catches it.
+
 ## 0.9.8r202609241701
 
 **Picking a hop that never answered no longer empties the panel.** Cards were

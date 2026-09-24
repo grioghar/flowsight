@@ -676,6 +676,12 @@
       nodes.forEach(n => { if (n.country) countries[n.country] = (countries[n.country] || 0) + 1; });
 
       el.innerHTML = `
+      ${/* On a wide screen the map does not need the whole width and the
+             tables underneath do not need a scroll. Two columns: the map and
+             its route on the left, everything that describes them on the
+             right. Below the breakpoint this collapses and the page reads top
+             to bottom as before. */''}
+      <div class="pagewide"><div class="mapside">
       <div style="margin-top:14px">${card('Where the traffic goes', `
         <div class="actions" style="margin-bottom:8px">
           <label class="small">Country
@@ -720,10 +726,21 @@
                 falls back to the SVG default and the continents come out
                 solid black. Inline style travels with the clone, and var()
                 still resolves, so the theme is not lost. */''}
-          <defs><g id="fs-world">
+          <defs>
+            ${/* The world's own bounds. Zoomed out past one world the view is
+                  wider than the map, and the copies drawn either side would
+                  fill that margin with a second Earth -- so the drawing is
+                  clipped to the world instead of the copies being hidden.
+                  Hiding them was the easy answer and the wrong one: they are
+                  what carries a leg across the antimeridian, and without them
+                  a route that wraps trailed off the edge into blank space
+                  rather than coming back on the other side. */''}
+            <clipPath id="fs-world-clip"><rect x="0" y="0" width="${MAPW}" height="${MAPH}"/></clipPath>
+            <g id="fs-world">
             ${FS.landPath ? `<path class="land" style="fill:color-mix(in srgb, var(--ink) 13%, transparent);stroke:var(--line);stroke-width:.4;vector-effect:non-scaling-stroke" d="${FS.landPath}"/>` : ''}
             <g style="fill:none;stroke:var(--line);stroke-width:.6;opacity:.9;vector-effect:non-scaling-stroke">${cables}</g>
           </g></defs>
+          <g class="stage">
           <use class="worldcopy" href="#fs-world" x="${-MAPW}"/><use href="#fs-world"/><use class="worldcopy" href="#fs-world" x="${MAPW}"/>
           ${/* The graticule is drawn rather than referenced because its labels
                 need a fill of their own, which they would not inherit inside
@@ -732,6 +749,7 @@
                 copy cannot be clicked, and a reader who pans past the edge
                 would find a map whose hops no longer answer. */''}
           ${[-MAPW, 0, MAPW].map(dx => `<g class="${dx ? 'worldcopy' : ''}" transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${dots}${originArt}</g>`).join('')}
+          </g>
         </svg>
         ${(() => {
           // Nothing on this map is self-evident: a thick grey line and a thin
@@ -784,6 +802,7 @@
           <div class="help" style="margin-top:6px">Land outlines are Natural Earth 1:110m, public domain. ${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. Coordinates come from an address database: dependable for end-user addresses and rough for carrier equipment, which is why placements the measured latency rules out are circled rather than trusted. Where a router's hostname carries a site code, that is used instead of the database, and an amber line shows where the two disagreed.</div>
         </details>`)}</div>
 
+      </div><div class="dataside">
       <div class="grid cols-4">
         ${kpi('Destinations with a route', num((dests.destinations || []).length), `${num(st.hops)} hops measured`)}
         ${kpi('Placed on the map', num(located.length), `${num(unlocated.length)} have no coordinates`, unlocated.length > located.length ? 'warn' : '')}
@@ -839,7 +858,8 @@
         { t: 'Answered', f: r => num(r.answered), num: true, sort: 'answered' },
         { t: 'Reached', f: r => r.complete ? pill('yes', 'ok') : pill('no', ''), sort: 'complete' },
         { t: 'Traced', f: r => ago(r.ts), sort: 'ts' }],
-        { empty: 'Nothing traced yet.' }))}</div>`;
+        { empty: 'Nothing traced yet.' }))}</div>
+      </div></div>`;
 
 
       const saveHome = async (lat, lon) => {
