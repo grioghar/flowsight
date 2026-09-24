@@ -12,6 +12,12 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242323
+
+**The echo is cleared from every address of the device.** The name a
+device-table echo left on a device's IPv6 rows came back through the durable
+name memory; those rows are cleared with the leased address.
+
 ## 0.9.8r202609242321
 
 **A lease is authoritative for its address.** The device table learned its

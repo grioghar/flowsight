@@ -608,6 +608,17 @@ func (m *Module) refresh() error {
 	for ip := range leased {
 		if names[ip] == "" && devName[ip] != "" {
 			_ = m.ctx.Store.Exec(`UPDATE hosts SET name=NULL WHERE ip=? AND name=?`, ip, devName[ip])
+			// The echo was carried to the device's other addresses too
+			// (its IPv6 rows), from where the durable name memory would
+			// hand it straight back.
+			if mac := macs[ip]; mac != "" {
+				_ = m.ctx.Store.Exec(`UPDATE hosts SET name=NULL WHERE lower(mac)=? AND name=?`, mac, devName[ip])
+				m.mu.Lock()
+				if m.macName[mac] == devName[ip] {
+					delete(m.macName, mac)
+				}
+				m.mu.Unlock()
+			}
 		}
 	}
 	// Repair what an earlier release did: local addresses named after a
