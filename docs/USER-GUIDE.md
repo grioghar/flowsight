@@ -460,9 +460,16 @@ in a compact form.
 Every enrolled device with its class (phone, laptop, TV, camera, console,
 printer, IoT), why it was classified so, its address (by name when known;
 with *Settings › enrich* on, bare addresses gain a reverse-DNS name and
-country), vendor, zone and last activity. Change a device's zone from its
-row; the zone name links to the Zones page, and the zone chips at the top
-filter the list. **Mode** (monitor or enforce) is switched here; enforce is
+country), vendor, zone and last activity. The classification rules decide
+each device's zone, and in monitor mode they keep deciding it: edit a rule
+and every device it covers moves on the next reconcile (every minute by
+default). Choosing a zone from a device's row pins it there, marked
+*pinned*, and the rules leave it alone; choosing the empty entry unpins it
+and hands it back to the rules. A zone a guest picks on the captive page
+pins the device the same way. In enforce mode a device that already has a
+zone keeps it, since the zone is an address it holds; only devices without
+one are placed. The zone name links to the Zones page, and the zone chips
+at the top filter the list. **Mode** (monitor or enforce) is switched here; enforce is
 Pro and writes DHCP reservations and isolation. *Re-identify* re-runs the
 classification.
 

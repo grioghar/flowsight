@@ -549,3 +549,107 @@ func TestSetRulesThroughAPIUsesWhenObject(t *testing.T) {
 	}
 	check("after reload")
 }
+
+// reconcileModule is a module with a store, the given mode and zones iot,
+// infra and a captive zone, and one rule placing Reolink gear in iot.
+func reconcileModule(t *testing.T, mode string) *Module {
+	t.Helper()
+	store, err := core.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return &Module{
+		ctx:           &core.Context{Store: store},
+		devices:       map[string]*Device{},
+		pendingAssign: map[string]string{},
+		zones: &ZonesDoc{Mode: mode, CaptiveZone: "quarantine",
+			Zones: []*Zone{{ID: "iot"}, {ID: "infra"}, {ID: "quarantine"}}},
+		rules: []*Rule{{ID: "iot-vendor", Zone: "iot", Confidence: "high",
+			When: map[string]interface{}{"vendor": []interface{}{"Reolink"}}}},
+	}
+}
+
+// A zone set by an earlier classification is not a decision anyone made. In
+// monitor mode an unpinned device follows the rules on the next reconcile,
+// which is what cleans up the devices a classification bug put in infra.
+// A device someone placed stays put, and one not heard from recently is
+// reclassified without being marked as seen.
+func TestReconcileRederivesUnpinnedZones(t *testing.T) {
+	m := reconcileModule(t, "monitor")
+	old := time.Now().Add(-30 * 24 * time.Hour).Unix()
+	m.devices["ec:71:db:00:00:01"] = &Device{MAC: "ec:71:db:00:00:01", Vendor: "Reolink Innovation Limited", Zone: "infra", LastSeen: old}
+	m.devices["aa:00:00:00:00:02"] = &Device{MAC: "aa:00:00:00:00:02", Vendor: "Unknown Co", Zone: "infra", LastSeen: old}
+	m.devices["ec:71:db:00:00:03"] = &Device{MAC: "ec:71:db:00:00:03", Vendor: "Reolink Innovation Limited", Zone: "infra", Pinned: 1, LastSeen: old}
+
+	if err := m.reconcile(); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	for mac, want := range map[string]string{
+		"ec:71:db:00:00:01": "iot",        // follows its rule
+		"aa:00:00:00:00:02": "quarantine", // matches nothing: captive zone
+		"ec:71:db:00:00:03": "infra",      // pinned: left alone
+	} {
+		if got := m.devices[mac].Zone; got != want {
+			t.Errorf("%s: zone %q, want %q", mac, got, want)
+		}
+	}
+	if got := m.devices["ec:71:db:00:00:01"].LastSeen; got != old {
+		t.Errorf("reclassifying a quiet device changed its last-seen time to %d", got)
+	}
+
+	// The change is persisted, not only held in memory.
+	m.devices = map[string]*Device{}
+	m.loadRegistry()
+	if d := m.devices["ec:71:db:00:00:01"]; d == nil || d.Zone != "iot" || d.Rule != "iot-vendor" {
+		t.Errorf("after reload: %+v, want zone iot by rule iot-vendor", d)
+	}
+}
+
+// In enforce mode a zone is an address the device already holds; switching
+// to enforce promises that present devices stay where they are, so only a
+// device without a zone is placed.
+func TestReconcileEnforceKeepsPlacedDevices(t *testing.T) {
+	m := reconcileModule(t, "enforce")
+	m.devices["ec:71:db:00:00:01"] = &Device{MAC: "ec:71:db:00:00:01", Vendor: "Reolink Innovation Limited", Zone: "infra"}
+	m.devices["ec:71:db:00:00:02"] = &Device{MAC: "ec:71:db:00:00:02", Vendor: "Reolink Innovation Limited"}
+	if err := m.reconcile(); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if got := m.devices["ec:71:db:00:00:01"].Zone; got != "infra" {
+		t.Errorf("placed device moved to %q in enforce mode", got)
+	}
+	if got := m.devices["ec:71:db:00:00:02"].Zone; got != "iot" {
+		t.Errorf("unplaced device got zone %q, want iot", got)
+	}
+}
+
+// Choosing a zone pins the device; choosing none hands it back to the rules.
+func TestAssignPinsAndUnpins(t *testing.T) {
+	m := reconcileModule(t, "monitor")
+	mac := "ec:71:db:00:00:01"
+	m.devices[mac] = &Device{MAC: mac, Vendor: "Reolink Innovation Limited", Class: "iot", Zone: "iot"}
+	assign := func(zone string) {
+		t.Helper()
+		body := []byte(`{"mac":"` + mac + `","zone":"` + zone + `"}`)
+		if _, err := m.apiAssign(core.NewReq(httptest.NewRequest("POST", "/api/enroll/assign", nil), "admin", "127.0.0.1", body)); err != nil {
+			t.Fatalf("apiAssign(%q): %v", zone, err)
+		}
+	}
+
+	assign("infra")
+	if d := m.devices[mac]; d.Zone != "infra" || d.Pinned != 1 {
+		t.Fatalf("after assigning infra: zone %q pinned %d", d.Zone, d.Pinned)
+	}
+	if err := m.reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.devices[mac].Zone; got != "infra" {
+		t.Errorf("reconcile moved a pinned device to %q", got)
+	}
+
+	assign("")
+	if d := m.devices[mac]; d.Zone != "iot" || d.Pinned != 0 {
+		t.Errorf("after clearing: zone %q pinned %d, want iot and unpinned", d.Zone, d.Pinned)
+	}
+}

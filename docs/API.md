@@ -69,7 +69,7 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 |---|---|---|---|
 | GET | `/api/enroll` | Enrollment status, zones and device counts |  |
 | POST | `/api/enroll/apply` | Apply enforcement |  |
-| POST | `/api/enroll/assign` | Assign device to zone |  |
+| POST | `/api/enroll/assign` | Assign a device to a zone and pin it there; an empty zone unpins it so the rules place it ({mac, zone}) |  |
 | GET | `/api/enroll/devices` | All devices with filtering | q (search query), zone (filter by zone) |
 | POST | `/api/enroll/mode` | Set monitor/enforce mode |  |
 | GET | `/api/enroll/plan` | Plan of what apply would do |  |

@@ -211,7 +211,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("POST", "/api/enroll/zones", m.apiSetZones, core.Write(), core.Doc("Update zones"))
 	ctx.Route("GET", "/api/enroll/rules", m.apiGetRules, core.Doc("Current rules configuration"))
 	ctx.Route("POST", "/api/enroll/rules", m.apiSetRules, core.Write(), core.Doc("Update rules"))
-	ctx.Route("POST", "/api/enroll/assign", m.apiAssign, core.Write(), core.Doc("Assign device to zone"))
+	ctx.Route("POST", "/api/enroll/assign", m.apiAssign, core.Write(), core.Doc("Assign a device to a zone and pin it there; an empty zone unpins it so the rules place it ({mac, zone})"))
 	ctx.Route("POST", "/api/enroll/reconcile", m.apiReconcile, core.Write(), core.Doc("Re-classify devices"))
 	ctx.Route("POST", "/api/enroll/apply", m.apiApply, core.Write(), core.Needs("device.enroll"), core.Doc("Apply enforcement"))
 	ctx.Route("GET", "/api/enroll/plan", m.apiPlan, core.Doc("Plan of what apply would do"))
@@ -449,7 +449,11 @@ func (m *Module) loadRegistry() {
 
 func (m *Module) saveDevice(d *Device) error {
 	d.MAC = strings.ToLower(d.MAC)
-	d.LastSeen = time.Now().Unix()
+	// Last seen is when the device was heard from, which the callers that
+	// hear from it set. Saving a zone or a reclassification is not a sighting.
+	if d.LastSeen == 0 {
+		d.LastSeen = time.Now().Unix()
+	}
 	if d.FirstSeen == 0 {
 		d.FirstSeen = d.LastSeen
 	}
@@ -515,21 +519,56 @@ func (m *Module) reconcile() error {
 		// Apply pending assignments
 		if pendingZone, ok := m.pendingAssign[mac]; ok {
 			d.Zone = pendingZone
+			d.Pinned = 1
 			delete(m.pendingAssign, mac)
-		} else if d.Zone == "" {
-			d.Zone = zone
-			// Unidentified devices go to the captive zone only when such a
-			// zone is actually defined; with no zones at all they simply
-			// stay unassigned.
-			if d.Zone == "" && m.hasZone(m.zones.CaptiveZone) {
-				d.Zone = m.zones.CaptiveZone
-			}
+		} else if m.followsRules(d) {
+			d.Zone = m.derivedZone(zone)
 		}
 
 		_ = m.saveDevice(d)
 	}
 
+	// Devices not heard from this round still follow the rules, so a rule
+	// change (or a classification fix) reaches the whole inventory rather
+	// than only whoever renewed a lease since.
+	for mac, d := range m.devices {
+		if _, seen := signals[mac]; seen || !m.followsRules(d) {
+			continue
+		}
+		zone, rule, conf, why := m.classify(d, nil)
+		placed := m.derivedZone(zone)
+		if d.Class == zone && d.Rule == rule && d.Confidence == conf && d.Why == why && d.Zone == placed {
+			continue
+		}
+		d.Class, d.Rule, d.Confidence, d.Why, d.Zone = zone, rule, conf, why, placed
+		_ = m.saveDevice(d)
+	}
+
 	return nil
+}
+
+// followsRules reports whether reconcile should set this device's zone from
+// the classification rules. A zone someone chose (from the Devices page, the
+// API or the captive page) pins the device and is never overridden. In
+// monitor mode every other device follows the rules, so a rule edit takes
+// effect everywhere. In enforce mode a zone is an address the device already
+// holds, so only a device without one is placed; the rest stay where they
+// are, as the switch to enforce promises.
+func (m *Module) followsRules(d *Device) bool {
+	if d.Pinned != 0 {
+		return false
+	}
+	return d.Zone == "" || m.zones == nil || m.zones.Mode != "enforce"
+}
+
+// derivedZone is where the rules put a device whose matching rule names
+// zone. An unidentified device goes to the captive zone only when such a
+// zone is actually defined; with no zones at all it simply stays unassigned.
+func (m *Module) derivedZone(zone string) string {
+	if zone == "" && m.zones != nil && m.hasZone(m.zones.CaptiveZone) {
+		return m.zones.CaptiveZone
+	}
+	return zone
 }
 
 // hasZone reports whether a zone with this id is defined.
@@ -1066,7 +1105,15 @@ func (m *Module) apiAssign(r *core.Req) (any, error) {
 		m.devices[mac] = d
 	}
 
-	d.Zone = req.Zone
+	// Choosing a zone pins the device there; choosing none hands it back to
+	// the rules.
+	if req.Zone != "" {
+		d.Zone = req.Zone
+		d.Pinned = 1
+	} else {
+		d.Pinned = 0
+		d.Zone = m.derivedZone(d.Class)
+	}
 	_ = m.saveDevice(d)
 
 	return d, nil
@@ -1441,6 +1488,7 @@ func (m *Module) captivePost(r *core.Req) (any, error) {
 	d := m.devices[strings.ToLower(mac)]
 	if d != nil {
 		d.Zone = req.Zone
+		d.Pinned = 1
 		_ = m.saveDevice(d)
 	}
 	m.mu.Unlock()
