@@ -12,6 +12,20 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241847
+
+**The Map page stops scanning the flow table.** Four things on the page read
+traffic straight from the flows -- the *In / out* column of the destinations
+table (twice per row, as a subquery), the traffic on each endpoint, the
+device list, and the "which device talked to this" lookup behind a trail --
+and the flow table has no index on the destination, so each was a scan of
+every flow the store holds: on the gateway, a million rows, four hundred
+times to draw one table. All four now read the five-minute rollups the core
+already keeps, which hold the same totals summed, keyed by time and, from
+this revision, indexed by destination. A total over hours lags the newest
+flow by at most five minutes. The device list and the trail lookup consider
+the last month rather than all time.
+
 ## 0.9.8r202609241844
 
 **Interception no longer stops because an exclusion list got long.** squid

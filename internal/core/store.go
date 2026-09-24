@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS rollup_dst (
     PRIMARY KEY (bucket, src_ip, dst_ip, dst_port, proto)
 );
 
+CREATE INDEX IF NOT EXISTS rollup_dst_dst ON rollup_dst(dst_ip, bucket);
+
 CREATE TABLE IF NOT EXISTS dns (
     id INTEGER PRIMARY KEY,
     ts INTEGER NOT NULL, client TEXT, domain TEXT, qtype TEXT,

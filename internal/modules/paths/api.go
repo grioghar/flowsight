@@ -49,20 +49,24 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 }
 
 func (m *Module) apiDestinations(r *core.Req) (any, error) {
-	since := time.Now().Add(-time.Duration(r.QInt("hours", 24, 1, 24*30)) * time.Hour).Unix()
+	hours := r.QInt("hours", 24, 1, 24*30)
 	rows, err := m.ctx.Store.Rows(`
 		SELECT r.dst AS dst, r.ts AS ts, r.hops AS hops, r.complete AS complete, r.err AS err,
-		       (SELECT COUNT(*) FROM path_hops h WHERE h.dst = r.dst AND h.ip <> '') AS answered,
-		       (SELECT COALESCE(SUM(bytes_in),0) FROM flows f WHERE f.dst_ip = r.dst AND f.ts > ?) AS bytes_in,
-		       (SELECT COALESCE(SUM(bytes_out),0) FROM flows f WHERE f.dst_ip = r.dst AND f.ts > ?) AS bytes_out
-		FROM path_runs r ORDER BY r.ts DESC LIMIT ?`, since, since, r.QInt("limit", 200, 1, 2000))
+		       (SELECT COUNT(*) FROM path_hops h WHERE h.dst = r.dst AND h.ip <> '') AS answered
+		FROM path_runs r ORDER BY r.ts DESC LIMIT ?`, r.QInt("limit", 200, 1, 2000))
 	if err != nil {
 		return nil, err
 	}
+	// Traffic comes from the rollups in one query, not from the flow table
+	// twice per destination: there is no index on the destination column of
+	// flows, so each of those subqueries was a scan of every flow the store
+	// holds -- four hundred scans of a million rows to draw one table.
+	in, out := m.trafficTo(hours)
 	ips := make([]string, 0, len(rows))
 	for _, x := range rows {
 		if s, _ := x["dst"].(string); s != "" {
 			ips = append(ips, s)
+			x["bytes_in"], x["bytes_out"] = in[s], out[s]
 		}
 	}
 	info := m.enrich(ips)
@@ -117,9 +121,12 @@ type Inside struct {
 // over flows, not addresses, so a laptop that rotates through a dozen IPv6
 // addresses does not outrank a device that simply talked more.
 func (m *Module) insideFor(dst, device string) *Inside {
+	// From the rollups, which carry a flow count per source and destination
+	// and are indexed by destination; the flow table is not, and this used to
+	// be a scan of it for every trail opened.
 	var args []any
-	where := `WHERE dst_ip = ? AND src_ip <> ''`
-	args = append(args, dst)
+	where := `WHERE dst_ip = ? AND bucket >= ? AND src_ip <> ''`
+	args = append(args, dst, time.Now().Add(-30*24*time.Hour).Unix())
 	if device != "" {
 		addrs := m.addressesOf(device)
 		ph := make([]string, len(addrs))
@@ -130,7 +137,7 @@ func (m *Module) insideFor(dst, device string) *Inside {
 		where += ` AND src_ip IN (` + strings.Join(ph, ",") + `)`
 	}
 	rows, err := m.ctx.Store.Rows(
-		`SELECT src_ip AS ip, COUNT(*) AS n FROM flows `+where+` GROUP BY src_ip ORDER BY n DESC`, args...)
+		`SELECT src_ip AS ip, SUM(flows) AS n FROM rollup_dst `+where+` GROUP BY src_ip ORDER BY n DESC`, args...)
 	if err != nil || len(rows) == 0 {
 		return nil
 	}
@@ -259,18 +266,7 @@ type cachedGraph struct {
 // A router on the way carries none as a destination, which makes the
 // difference between the two kinds of node visible.
 func (m *Module) attachTraffic(g *Graph, hours int) {
-	rows, err := m.ctx.Store.Rows(`
-		SELECT dst_ip AS ip, COALESCE(SUM(bytes_in),0) AS bi, COALESCE(SUM(bytes_out),0) AS bo
-		FROM flows WHERE ts > ? AND dst_ip IN (SELECT dst FROM path_runs)
-		GROUP BY dst_ip`, time.Now().Add(-time.Duration(hours)*time.Hour).Unix())
-	if err != nil {
-		return
-	}
-	in, out := map[string]int64{}, map[string]int64{}
-	for _, row := range rows {
-		ip, _ := row["ip"].(string)
-		in[ip], out[ip] = asInt(row["bi"]), asInt(row["bo"])
-	}
+	in, out := m.trafficTo(hours)
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
 		if !n.Endpoint {
@@ -281,6 +277,32 @@ func (m *Module) attachTraffic(g *Graph, hours int) {
 			n.BytesOut += out[d]
 		}
 	}
+}
+
+// trafficTo is the bytes each traced destination received and sent over the
+// last so many hours, read from the five-minute rollups the core keeps
+// rather than from the flows themselves. The rollups are the same numbers
+// already summed, a fraction of the rows, and keyed by time first, so the
+// window is a range read; the figure lags the last flow by at most the
+// rollup interval, which for a total over hours is nothing.
+func (m *Module) trafficTo(hours int) (in, out map[string]int64) {
+	in, out = map[string]int64{}, map[string]int64{}
+	if m.ctx == nil || m.ctx.Store == nil {
+		return in, out
+	}
+	since := time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
+	rows, err := m.ctx.Store.Rows(`
+		SELECT dst_ip AS ip, COALESCE(SUM(bytes_in),0) AS bi, COALESCE(SUM(bytes_out),0) AS bo
+		FROM rollup_dst WHERE bucket >= ? AND dst_ip IN (SELECT dst FROM path_runs)
+		GROUP BY dst_ip`, since-since%300)
+	if err != nil {
+		return in, out
+	}
+	for _, row := range rows {
+		ip, _ := row["ip"].(string)
+		in[ip], out[ip] = asInt(row["bi"]), asInt(row["bo"])
+	}
+	return in, out
 }
 
 // apiCables hands the map over for drawing, thinned to the number of points
@@ -402,10 +424,13 @@ func (m *Module) addressesOf(addr string) []string {
 // per device rather than one per address: a laptop with an IPv4 lease and six
 // rotating IPv6 addresses is one thing to filter by, not seven.
 func (m *Module) apiDevices(r *core.Req) (any, error) {
+	// The last month of rollups rather than every flow ever stored: the
+	// list is who to filter the map by, and a device that has not spoken in
+	// a month has no route worth filtering to.
 	rows, err := m.ctx.Store.Rows(`
 		SELECT f.src_ip AS ip, COUNT(DISTINCT f.dst_ip) AS destinations
-		FROM flows f JOIN path_runs p ON p.dst = f.dst_ip
-		WHERE f.src_ip <> '' GROUP BY f.src_ip`)
+		FROM rollup_dst f JOIN path_runs p ON p.dst = f.dst_ip
+		WHERE f.bucket >= ? AND f.src_ip <> '' GROUP BY f.src_ip`, time.Now().Add(-30*24*time.Hour).Unix())
 	if err != nil {
 		return nil, err
 	}
