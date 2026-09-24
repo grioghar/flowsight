@@ -56,6 +56,11 @@ func (m *Module) home() Home {
 
 // publicAddress is this gateway's own address on the public internet, read
 // from its interfaces rather than asked of anyone outside.
+//
+// "Not private" is not enough to find it. A delegated IPv6 prefix is globally
+// routable and still belongs to this network, so the LAN address matches
+// every test for a public one and is picked first. Identity knows which
+// prefixes are ours, and that is the only thing that can tell them apart.
 func (m *Module) publicAddress() string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -74,9 +79,14 @@ func (m *Module) publicAddress() string {
 			if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
 				continue
 			}
-			if s := ip.String(); !isPrivate(s) {
-				return s
+			s := ip.String()
+			if isPrivate(s) {
+				continue
 			}
+			if m.identity != nil && m.identity.IsLocal(s) {
+				continue // routable, but on this side of the firewall
+			}
+			return s
 		}
 	}
 	return ""

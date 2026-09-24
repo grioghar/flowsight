@@ -48,6 +48,15 @@ placed.
 Saving a device's zone no longer counts as seeing it, so *last seen* is
 when the device was actually heard from.
 
+## 0.9.8r202609240742
+
+**Working out where you are no longer picks the gateway's own LAN address.**
+It looked for an address that was globally routable and not private, and a
+delegated IPv6 prefix is exactly that while still belonging to this network,
+so the LAN interface won and the map had no origin at all. It now skips
+anything identity recognises as ours, which is the only thing that can tell
+the two apart.
+
 ## 0.9.8r202609240741
 
 **The map has its own place in the menu, and knows where you are.** It is

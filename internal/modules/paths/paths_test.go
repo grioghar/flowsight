@@ -323,3 +323,19 @@ func TestImpossiblePlacementsAreFlagged(t *testing.T) {
 		t.Error("without an origin there is no reference, so nothing should be flagged")
 	}
 }
+
+// A delegated IPv6 prefix is globally routable and still belongs to this
+// network, so the LAN address passes every test for a public one and gets
+// picked first. Only identity can tell them apart, and without that the map
+// tries to geolocate the gateway's own LAN interface.
+func TestPublicAddressSkipsOurOwnRoutablePrefix(t *testing.T) {
+	m := &Module{identity: fakeIdentity{local: "2600:1700:3ab0:f43f:"}}
+	if m.worthTracing("2600:1700:3ab0:f43f:be24:11ff:fe94:9732") {
+		t.Fatal("the guard used for tracing should reject our own prefix")
+	}
+	// The same guard is what publicAddress relies on, so a WAN address on a
+	// different prefix must still be accepted.
+	if !m.worthTracing("162.202.41.52") {
+		t.Error("the WAN address is not local and must be usable")
+	}
+}
