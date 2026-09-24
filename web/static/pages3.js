@@ -315,12 +315,13 @@
       if (ctx.params.max_hops) q.push('max_hops=' + encodeURIComponent(ctx.params.max_hops));
       const picked = ctx.params.dst || '';
       // Choosing a route must not throw away the filters that led to it.
-      const routeQ = (dst) => {
+      const routeQ = (dst, hop) => {
         const p = [];
         ['device', 'country', 'max_latency', 'max_hops'].forEach(k => {
           if (ctx.params[k]) p.push(k + '=' + encodeURIComponent(ctx.params[k]));
         });
         if (dst) p.push('dst=' + encodeURIComponent(dst));
+        if (hop) p.push('hop=' + encodeURIComponent(hop));
         return p.join('&');
       };
       const [st, g, dests, devs, home, cab, route] = await Promise.all([
@@ -430,6 +431,12 @@
         }));
         return out;
       };
+
+      // Routes through a hop, busiest first, so "the route this hop is on"
+      // has one answer when there are several, and a next one after it.
+      const bytesTo = {};
+      (dests.destinations || []).forEach(d => { bytesTo[d.dst] = (d.bytes_in || 0) + (d.bytes_out || 0); });
+      const routesThrough = (id) => routeOf(id).sort((a, b) => (bytesTo[b] || 0) - (bytesTo[a] || 0));
 
       let lines = '', dots = '', labels = '', arrows = '';
       if (origin && picked) {
@@ -798,7 +805,7 @@
                 click, or a reader who has forgotten they clicked is looking
                 at a map that is quietly lying about how much traffic there
                 is. */''}
-          <span class="mapfilter" id="mapfilter" hidden><span id="mapfilter-text"></span><button type="button" id="mapfilter-off" aria-label="Show every route">&times;</button></span>
+          <span class="mapfilter" id="mapfilter" hidden><span id="mapfilter-text"></span><button type="button" id="mapfilter-next" class="linkish" hidden title="Load the next route through this hop">next &rsaquo;</button><button type="button" id="mapfilter-off" aria-label="Show every route">&times;</button></span>
           <button class="btn small" id="f-reset">Reset zoom</button>
         </div>
         ${/* Map and detail side by side. The detail used to sit under the map,
@@ -1200,6 +1207,15 @@
             FS.go('paths?' + routeQ(n0.reaches[0]));
             return;
           }
+          // A hop that is not on the chosen route -- or there is no chosen
+          // route -- loads the one it is on: the trail, the table and the
+          // numbering all follow. Several routes through it are taken
+          // busiest first, and the chip offers the next.
+          const through = routesThrough(id);
+          if (through.length && !(picked && inRoute[id])) {
+            FS.go('paths?' + routeQ(through[0], id));
+            return;
+          }
           select(id);
           litRoute(routeOf(id), (n0 && n0.ips ? n0.ips[0] : id), id);
           const pz = FS.panZoomHandle;
@@ -1297,7 +1313,7 @@
       // The view is kept against the filters that produced it, so changing
       // route or device still starts fresh.
       const viewKey = ['device', 'country', 'max_latency', 'max_hops']
-        .map(k => ctx.params[k] || '').concat(picked).join('|');
+        .map(k => ctx.params[k] || '').concat(picked, ctx.params.hop || '').join('|');
       // Read before the map is built, because building it lays down a full
       // view of its own and publishes that -- which overwrote the very thing
       // being restored, a second before it was wanted.
@@ -1361,7 +1377,25 @@
       } else if (picked && laid.length) {
         const end = routeHops.filter(n => n.located).slice(-1)[0];
         litRoute([picked], picked);
-        if (end) select(end.id);
+        const landing = ctx.params.hop && byId[ctx.params.hop] ? ctx.params.hop : '';
+        if (landing) {
+          // Arrived by clicking this hop: it is the one to be looking at,
+          // and if it lies on several routes the chip says which this is
+          // and offers the next.
+          select(landing);
+          const through = routesThrough(landing);
+          const at = through.indexOf(picked);
+          if (through.length > 1 && at >= 0 && barText) {
+            barText.textContent = `route ${at + 1} of ${through.length} through ${(byId[landing].ips || [landing])[0]}`;
+            const nxt = FS.$('#mapfilter-next', el);
+            if (nxt) {
+              nxt.hidden = false;
+              nxt.onclick = () => FS.go('paths?' + routeQ(through[(at + 1) % through.length], landing));
+            }
+          }
+        } else if (end) {
+          select(end.id);
+        }
         if (typeof requestAnimationFrame === 'function') {
           requestAnimationFrame(() => requestAnimationFrame(fitRoute));
         } else {

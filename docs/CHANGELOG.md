@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242032
+
+**Clicking a hop loads the route it is on.** A hop off the chosen route --
+or any hop when none is chosen -- used to highlight the routes through it
+and stop there. It now opens the route: the trail, the on-map table, the leg
+numbers and the detail all follow, with the clicked hop selected. Where
+several routes pass through a hop the busiest opens first and the chip reads
+*route 1 of 4 through 4.68.72.145 · next ›*, each *next* loading the
+following one. A hop already on the chosen route behaves as before: select,
+zoom in, click again to zoom out.
+
 ## 0.9.8r202609242027
 
 **The Overview's site-to-endpoint lookup is indexed and remembered.** The

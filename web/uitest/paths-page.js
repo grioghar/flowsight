@@ -414,6 +414,7 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     if (t.indexOf('class="arrow onroute"') < 0) throw new Error('the chosen route should carry direction arrows');
     if (t.indexOf('data-layer="arrows"') < 0) throw new Error('arrows should be a switch in the key');
     if (t.indexOf('id="routebox"') < 0) throw new Error('the route should be tabled on the map');
+    if (t.indexOf('id="mapfilter-next"') < 0) throw new Error('the chip should be able to offer the next route through a hop');
     var rbRows = (t.match(/class="rb[ "]/g) || []).length;
     if (rbRows !== 5) throw new Error('route table should list inside + 4 hops, got ' + rbRows);
     if (!/class="rb[^"]*endpoint"/.test(t) || t.indexOf('class="rb inside"') < 0) throw new Error('route table should mark its ends');

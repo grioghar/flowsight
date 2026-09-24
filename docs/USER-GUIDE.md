@@ -469,6 +469,12 @@ adding one later is a line of configuration. Road-traced files are thinned to
 the points that change a route's shape by more than a kilometre before use,
 so a large one costs a second or two to load rather than a core for a day.
 
+**Clicking a hop opens its route.** Any hop not on the chosen route loads the
+route it belongs to, busiest first when there are several, with the hop
+selected; the chip above the map then reads *route 1 of N through …* with
+*next ›* to step through the others. A hop on the chosen route zooms in, and
+again to zoom out.
+
 **Direction and the route table.** Each leg carries an arrow pointing the
 way the packets went; *direction of travel* in the key switches them off.
 With a route chosen, a table in the map's top-right corner lists every step

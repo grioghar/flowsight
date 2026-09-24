@@ -607,3 +607,6 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .barrow .maplink:hover { color: var(--accent, #4c8dff); border-color: var(--accent, #4c8dff); }
 .barrow .maplink.untraced { border-style: dashed; }
 
+/* The chip's "next": a link-shaped button, so the chip reads as one phrase. */
+.mapfilter .linkish { border: 0; background: none; padding: 0 4px; font: inherit; color: var(--accent, #4c8dff); cursor: pointer; }
+
