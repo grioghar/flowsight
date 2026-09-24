@@ -12,6 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242039
+
+**OpenStreetMap's telecom lines, as a low-weight land-route source.** Where
+mappers have drawn fibre and telecom lines -- dense in a few well-mapped
+countries, absent elsewhere, mostly the visible kind -- they now inform the
+*expected* time between two hops at half weight: the average of following
+the line and the plain detour estimate. They never touch the physics floor
+and are never drawn as the route a leg took. Fetched from the Overpass API
+one region per run, six hours apart, kept a month, regions taken in order of
+how many of your placed hops fall in each (the populated world is sixteen
+regions; the first pass takes about four days); a refusal backs off a day.
+The *Data sources* card shows lines, regions and weight; *Use OpenStreetMap
+telecom lines* under *Where things are* turns it off, and *Overpass API*
+points it at your own instance.
+
 ## 0.9.8r202609242032
 
 **Clicking a hop loads the route it is on.** A hop off the chosen route --

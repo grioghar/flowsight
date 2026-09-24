@@ -218,3 +218,6 @@ inflation, and stitched into networks in memory. A source that stitches to
 more than two million edges is refused -- left on disk, reported on the
 *Data sources* card, not held -- so a hostile or merely enormous file cannot
 push the daemon's heap past what the gateway can carry.
+The OpenStreetMap source is a POST to the configured Overpass endpoint through
+the same client, carrying only the fixed query for one region; the answer is
+capped at 64 MB and converted before it is kept.

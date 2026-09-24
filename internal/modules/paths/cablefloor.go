@@ -61,6 +61,9 @@ type cableRoute struct {
 	AlongKM  float64
 	AshoreKM float64
 	OK       bool
+	// Weight is the network's, carried so an estimate can blend a
+	// suggestive route with the plain detour rather than swallow it whole.
+	Weight float64
 }
 
 // routeMemo remembers the answer to "shortest way between these two places
@@ -222,8 +225,12 @@ func cableRouteKM(nets []cableNet, aLat, aLon, bLat, bLon, ashoreKM float64) cab
 				pts = append(pts, n.Pts[ix])
 			}
 			pts = append(pts, LatLon{Lat: bLat, Lon: bLon})
+			w := n.Weight
+			if w <= 0 {
+				w = 1
+			}
 			best = cableRoute{KM: total, Name: n.Name, Route: pts,
-				AlongKM: along, AshoreKM: da + db, OK: true}
+				AlongKM: along, AshoreKM: da + db, OK: true, Weight: w}
 		}
 	}
 	if !best.OK {
@@ -301,9 +308,15 @@ func (m *Module) expectedKM(aLat, aLon, bLat, bLon float64) (km float64, via str
 	if r := m.crossing(aLat, aLon, bLat, bLon); r.OK {
 		return r.AlongKM + r.AshoreKM*detour, r.Name
 	}
-	// Overland, a mapped route beats an estimate where we have one.
+	// Overland, a mapped route beats an estimate where we have one. A
+	// suggestive source -- OpenStreetMap's lines -- is blended with the
+	// estimate by its weight rather than trusted outright.
 	if r := m.overland(aLat, aLon, bLat, bLon); r.OK {
-		return r.AlongKM + r.AshoreKM*detour, r.Name
+		along := r.AlongKM + r.AshoreKM*detour
+		if r.Weight > 0 && r.Weight < 1 {
+			return along*r.Weight + straight*detour*(1-r.Weight), r.Name
+		}
+		return along, r.Name
 	}
 	return straight * detour, ""
 }
@@ -360,15 +373,21 @@ func (m *Module) overland(aLat, aLon, bLat, bLon float64) cableRoute {
 		return cableRoute{}
 	}
 	m.mu.Lock()
-	nets := m.landNets
+	nets, osm := m.landNets, m.osmNets
 	m.mu.Unlock()
-	if len(nets) == 0 {
-		return cableRoute{}
-	}
-	r := m.routes.memoRoute('l', nets, aLat, aLon, bLat, bLon)
 	straight := greatCircleKM(aLat, aLon, bLat, bLon)
-	if !r.OK || r.KM <= straight || r.KM > straight*cableFloorMaxRatio {
-		return cableRoute{}
+	// Measured sets first; the suggestive one only where they say nothing.
+	if len(nets) > 0 {
+		r := m.routes.memoRoute('l', nets, aLat, aLon, bLat, bLon)
+		if r.OK && r.KM > straight && r.KM <= straight*cableFloorMaxRatio {
+			return r
+		}
 	}
-	return r
+	if len(osm) > 0 {
+		r := m.routes.memoRoute('o', osm, aLat, aLon, bLat, bLon)
+		if r.OK && r.KM > straight && r.KM <= straight*cableFloorMaxRatio {
+			return r
+		}
+	}
+	return cableRoute{}
 }

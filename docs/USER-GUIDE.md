@@ -465,7 +465,11 @@ length is a real bound, but on land a straight line is merely something nobody
 built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons
 licence and is the one substantial open set; the comprehensive maps of North
 America, Europe and Asia are sold commercially. Sources are a list of URLs, so
-adding one later is a line of configuration. Road-traced files are thinned to
+adding one later is a line of configuration. OpenStreetMap's telecom lines
+are a second, weaker source: fetched region by region from the Overpass API,
+they count at half weight -- the expected time is the average of following
+the line and the plain detour -- because they are mostly the visible kind of
+line and rarely the buried long-haul a packet rides. Road-traced files are thinned to
 the points that change a route's shape by more than a kilometre before use,
 so a large one costs a second or two to load rather than a core for a day.
 

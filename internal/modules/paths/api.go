@@ -34,6 +34,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	sources := map[string]any{
 		"cables":       map[string]any{"on": core.Bool(m.ctx.Settings(), "cables", false), "loaded": len(m.cables), "error": m.cableErr},
 		"land_routes":  map[string]any{"on": core.Bool(m.ctx.Settings(), "terrestrial", false), "loaded": m.landRoutes, "error": m.landErr},
+		"osm_telecom":  m.osm,
 		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
 		"facilities":   map[string]any{"on": m.facilitiesOK()},
@@ -231,6 +232,7 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	stage("build")
 	h := m.home()
 	m.locate(g.Nodes, h)
+	m.tallyHopBoxes(g.Nodes)
 	stage("locate")
 	// Interpolate before bridging: a hop put between two others is a hop, and
 	// the route should run through it rather than over it. Bridge before

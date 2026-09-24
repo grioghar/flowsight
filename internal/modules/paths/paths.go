@@ -50,6 +50,10 @@ type Module struct {
 	landNets      []cableNet // mapped terrestrial routes, where anyone publishes them
 	landRoutes    int
 	landErr       string
+	osmNets       []cableNet // OpenStreetMap telecom lines, at half weight
+	osm           osmState
+	osmUntil      time.Time      // do not ask Overpass again before this
+	hopBoxes      map[string]int // placed hops per OSM region, from the last graph
 	cableErr      string
 	pending       map[string]bool // addresses still needing the slow registry lookup
 	geoPending    map[string]bool // addresses still to be asked about at IPmap
@@ -94,6 +98,8 @@ func (m *Module) Info() core.ModuleInfo {
 			"terrestrial":       false,
 			"learn_corrections": true,
 			"terrestrial_urls":  "",
+			"osm_telecom":       true,
+			"osm_overpass_url":  "",
 			"facilities":        true,
 		},
 		Schema: []core.SettingField{
@@ -120,6 +126,10 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Downloads open maps of long-haul fibre on land and measures along them where they reach, instead of estimating the detour. These never raise the impossible threshold: over water a cable is the only way across, so its length is a real bound, but on land a straight line is merely something nobody built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons licence and is the one substantial open set; the comprehensive maps of North America, Europe and Asia are sold commercially. Refreshed monthly."},
 			{Section: "Where things are", Key: "terrestrial_urls", Label: "Land-route sources", Type: "text",
 				Help: "One GeoJSON URL per line, replacing the defaults. Lines starting with # or // are ignored, so a source can be kept and turned off."},
+			{Section: "Where things are", Key: "osm_telecom", Label: "Use OpenStreetMap telecom lines (low weight)", Type: "bool",
+				Help: "Fibre and telecom lines where OpenStreetMap mappers have drawn them: dense in a few well-mapped countries, absent elsewhere, and mostly the visible kind. Used at half weight -- where a line offers a route between two hops, the expected time is the average of following it and the plain detour estimate. Never touches the physics floor; never drawn as the route. Fetched from the Overpass API one region per run, a few hours apart, kept a month, starting with the regions your traffic crosses; a refusal backs off for a day."},
+			{Section: "Where things are", Key: "osm_overpass_url", Label: "Overpass API", Type: "string",
+				Help: "Empty: overpass-api.de. Point it at your own Overpass instance if you run one; the public service is shared and asked gently."},
 			{Section: "Where things are", Key: "learn_corrections", Label: "Remember what the database gets wrong", Type: "bool",
 				Help: "When a router's own name or a RIPE measurement places a hop far from where the address database put it, the hop's announced prefix is remembered as being where the evidence says, and other addresses in that prefix follow it. A registrant address the database uses for a whole network -- a carrier's head office stamped on every block -- is set aside once two of its addresses are shown to be elsewhere; hops the database would put there are placed by timing instead. Listed at /api/paths/corrections; any item can be forgotten."},
 			{Section: "Where things are", Key: "ipmap", Label: "Ask RIPE where each router is", Type: "bool",
@@ -157,6 +167,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	// Long-haul routes change over years and these datasets are revised
 	// rarely, so the job wakes often and downloads almost never.
 	ctx.Every("terrestrial", 12*time.Hour, m.refreshTerrestrial)
+	ctx.Every("osm", 6*time.Hour, m.refreshOSM, core.Delayed())
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/corrections", m.apiCorrections, core.Needs("paths.map"),

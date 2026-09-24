@@ -38,6 +38,10 @@ type cableNet struct {
 	Name string
 	Pts  []LatLon
 	Adj  [][]cableEdge
+	// Weight is how far a route along this network is believed as the
+	// route a packet took: 1 for a measured set, less for one that is
+	// merely suggestive. Zero means unset and is read as 1.
+	Weight float64
 }
 
 // buildNet stitches a cable's runs together.
