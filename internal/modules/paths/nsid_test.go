@@ -3,6 +3,7 @@ package paths
 import (
 	"encoding/binary"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -90,5 +91,27 @@ func TestIdentifiersAreDecodedBySiteListThenByCode(t *testing.T) {
 	}
 	if id := m.decodeIdentity("ns1.gb-lon.k.ripe.net", 132, h); !id.Located {
 		t.Fatalf("London at 132 ms is fine: %+v", id)
+	}
+}
+
+func TestInstanceNamesAreReadWithTheirDressingRemoved(t *testing.T) {
+	m := &Module{}
+	h := Home{Lat: 39.18, Lon: -96.57, OK: true}
+	for _, c := range []struct {
+		id   string
+		rtt  float64
+		city string
+	}{
+		{"qro1a.c.root-servers.org", 50, "Quer"},
+		{"u-ci-nominet2.usdal1.", 19, "Dallas"},
+		{"u-ci-nominet1.usatl1.", 35, "Atlanta"},
+		{"usmes2-dns-001.ts.apple.com", 30, "Mesa"},
+		{"dfw07", 18, "Dallas"},
+		{"ns1dns-dal04-918-5311", 18, "Dallas"},
+	} {
+		id := m.decodeIdentity(c.id, c.rtt, h)
+		if !id.Located || !strings.HasPrefix(id.Site, c.city) {
+			t.Fatalf("%s -> %+v, want %s (host %s)", c.id, id, c.city, identityHost(c.id))
+		}
 	}
 }

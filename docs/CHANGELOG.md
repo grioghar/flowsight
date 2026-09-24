@@ -12,6 +12,16 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242141
+
+**Instance names are read with their dressing removed.** On the live
+gateway the first round of self-identification placed ten of twenty anycast
+hops; the rest answered in forms the decoder did not undress -- `qro1a`,
+`usdal1`, `usmes2` -- an airport code with an instance suffix or a country
+prefix. Each token is now also offered bare, so C-root answers from
+Querétaro, Vercara's from Dallas and Atlanta, and Apple's resolvers from
+Mesa, Arizona.
+
 ## 0.9.8r202609242137
 
 **The status call could deadlock the Map.** In revisions 2116 to 2123 the

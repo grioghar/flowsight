@@ -248,7 +248,33 @@ func (m *Module) loadRootSites() error {
 
 // ---------------------------------------------------------------- decoding
 
-var idCityCode = regexp.MustCompile(`(?i)(?:^|[-._])(?:[a-z]{2})?([a-z]{3})(?:\d+[a-z]?)?(?:$|[-._])`)
+var idToken = regexp.MustCompile(`^([a-z]{2})?([a-z]{3,})(\d+[a-z]?)?$`)
+
+// identityHost turns an instance identifier into something the router-name
+// decoder reads: tokens as given, plus each token with its instance suffix
+// removed and, where a two-letter country leads it, without that too.
+// "u-ci-nominet2.usdal1" becomes "u.ci.nominet2.usdal1.usdal.dal.x.y".
+func identityHost(id string) string {
+	var labels, bare []string
+	for _, tok := range strings.FieldsFunc(strings.ToLower(id), func(r rune) bool { return r == '-' || r == '.' || r == '_' }) {
+		if tok == "" {
+			continue
+		}
+		labels = append(labels, tok)
+		if m := idToken.FindStringSubmatch(tok); m != nil && (m[1] != "" || m[3] != "") {
+			if m[3] != "" {
+				bare = append(bare, m[1]+m[2])
+			}
+			if m[1] != "" {
+				bare = append(bare, m[2])
+			}
+		}
+	}
+	// The bare forms go last, beside the pseudo-domain: the decoder trusts
+	// a code more the nearer the domain it sits, and an instance name puts
+	// its site anywhere.
+	return strings.Join(append(labels, bare...), ".") + ".x.y"
+}
 
 // decodeIdentity turns an identifier into a place: the published site with
 // that identifier, else the airport code in it read like a router name.
@@ -271,8 +297,10 @@ func (m *Module) decodeIdentity(id string, rtt float64, h Home) *Identity {
 	}
 	if !out.Located {
 		// Read the codes in it the way a router name is read, and take the
-		// best one the clock allows.
-		host := strings.NewReplacer("-", ".", "_", ".").Replace(low) + ".x.y"
+		// best one the clock allows. Instance names dress their codes up
+		// -- qro1a, usdal1, usmes2, dfw07 -- so each token is also offered
+		// bare: instance suffix stripped, country prefix stripped.
+		host := identityHost(low)
 		if match, score, _ := m.placeFromName(host, rtt, h); score >= 0.55 && match.Pop.City != "" {
 			out.Site, out.Lat, out.Lon, out.By, out.Located = match.Pop.City, match.Pop.Lat, match.Pop.Lon, "name code "+match.Code, true
 		}
