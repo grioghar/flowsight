@@ -12,6 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242119
+
+**A language model, for the hops nothing else can place.** *Settings › paths
+› AI lookup* takes a provider -- Anthropic, OpenAI, Google, Azure OpenAI, a
+local Ollama, or any OpenAI-compatible endpoint -- with setup instructions
+for each in the field's help, a key, a model and an hourly cap. Only hops
+that answered and that no name, provider feed, geofeed, measurement or
+database could place are put to it, with the hostname, network, operator and
+round trip from here, and it is asked for JSON with a city and a confidence.
+The answer is a hypothesis: checked against the clock like a router name,
+drawn as an inference, shown on the card under *Read by a language model*
+with its reasoning and confidence, overruled by any source that knows, and
+remembered a month so no hop is asked about twice. Off unless configured;
+the *Data sources* card shows provider, model, answered and waiting.
+
 ## 0.9.8r202609242116
 
 **Geofeeds named in the registry are followed.** The registries' own address

@@ -171,6 +171,11 @@ Traces the route to destinations this network already contacts, and keeps what i
 | `hop_delay_us` | Each hop adds (microseconds) | int | `200` | A router must finish receiving a packet before it starts sending it on. Small individually; over twenty hops worth counting. |
 | `terrestrial` | Use published land-route maps | bool | `false` | Downloads open maps of long-haul fibre on land and measures along them where they reach. Never raises the impossible threshold: over water a cable is the only way across, on land a straight line is merely unbuilt. Refreshed monthly. |
 | `terrestrial_urls` | Land-route sources | text | *(AfTerFibre)* | One GeoJSON URL per line, replacing the defaults. `#` and `//` comment a line out. |
+| `ai_provider` | Ask a language model about hops nothing else can place | choice | `off` | off, anthropic, openai, google, azure, ollama, custom. Setup for each is in the field's help. |
+| `ai_endpoint` | Endpoint | string | *(provider default)* | Required for azure and custom. |
+| `ai_model` | Model | string | *(provider default)* | claude-haiku-4-5, gpt-4o-mini, gemini-2.0-flash, llama3.1 by default. |
+| `ai_key` | API key | secret | *(empty)* | Sent only to the endpoint. |
+| `ai_per_hour` | Questions per hour | int | `20` | Each hop at most once a month; this caps new questions. |
 | `abuseipdb_key` | AbuseIPDB API key | secret | *(empty)* | Enables reputation lookups for route hops: abuse confidence, reports, ISP, usage type. Twenty addresses per five-minute run, answers kept a week. Free key: abuseipdb.com › Account › API › Create Key. |
 | `geofeeds` | Follow geofeeds named in the registry | bool | `true` | RFC 8805 files named in registry objects of hops on routes are fetched weekly and used like provider range lists. |
 | `provider_feeds` | Use the clouds' published address ranges | bool | `true` | AWS, Google Cloud, Azure, Oracle, DigitalOcean, Linode regional ranges and Cloudflare/Fastly anycast ranges, one feed per half-hour run until all are under a week old, throttled to 2 MB/s; the operator's own statement outranks the database and a measurement; anycast positions are set aside. |

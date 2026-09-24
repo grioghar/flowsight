@@ -500,6 +500,13 @@ milliseconds of the last placed hop on its route is drawn beside that hop and
 says so, and the well-known anycast ranges are never placed by a database or
 by a measurement made from somewhere else.
 
+**AI lookup.** With a provider configured under *Settings › paths › AI
+lookup* (instructions for Anthropic, OpenAI, Google, Azure OpenAI and Ollama
+are in the setting's help), hops that nothing else could place are put to the
+model with their name, operator and round trip. Its answer is drawn as an
+inference and labelled *Read by a language model* with its reasoning; the
+clock still rules, and any real source overrules it.
+
 **Reputation.** With an AbuseIPDB key (*Settings › paths › Reputation*; free
 at abuseipdb.com under *Account › API*), each hop's card gains a *Reputation*
 block: abuse confidence, reports and reporters, ISP, usage type and domain,

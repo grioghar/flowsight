@@ -126,7 +126,7 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/paths/status` | Tracing state plus `sources`: per data source, whether it is on and what it has produced (IPmap answered/queued/back-off, cables and land routes loaded, OSM telecom lines with regions and weight, `providers` with per-feed prefix counts and errors, `reputation` (AbuseIPDB: on, known, asked this session, error), `geofeeds` (found, fetched, rows, failing), learned corrections, registry queue) |  |
+| GET | `/api/paths/status` | Tracing state plus `sources`: per data source, whether it is on and what it has produced (IPmap answered/queued/back-off, cables and land routes loaded, OSM telecom lines with regions and weight, `providers` with per-feed prefix counts and errors, `reputation` (AbuseIPDB: on, known, asked this session, error), `geofeeds` (found, fetched, rows, failing), `assistant` (provider, model, answered, queued, per hour, error), learned corrections, registry queue) |  |
 | GET | `/api/paths/destinations` | Destinations with a measured route; `bytes_in`/`bytes_out` come from the five-minute rollups and lag the newest flow by up to five minutes | limit (rows), hours (traffic window) |
 | GET | `/api/paths/path` | Every hop to one destination, in order, with names, locations and operator detail, plus `inside`: the device on this network that used the route | dst (destination), device (whose flows to count) |
 | GET | `/api/paths/geofeeds` | RFC 8805 geofeeds discovered in registry objects: URL, the address whose object named it, fetch time, rows placed, errors |  |

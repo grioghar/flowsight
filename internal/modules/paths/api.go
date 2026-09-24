@@ -37,6 +37,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		"osm_telecom":  m.osm,
 		"providers":    m.provider,
 		"geofeeds":     m.geofeedStatus(),
+		"assistant":    m.assistStatus(),
 		"reputation":   map[string]any{"on": m.abuseKey() != "", "asked_this_session": m.abuseAsked, "known": m.ctx.Store.KVCount(abuseKV), "error": m.abuseErr},
 		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
@@ -680,6 +681,21 @@ func (m *Module) describe(nodes []Node, h Home) {
 			if score <= 0 || match.Pop.City == "" {
 				if n.Detail != nil {
 					n.Detail.PoPWhy = why
+				}
+				// Nothing read the name. If nothing else placed the hop
+				// either, the assistant may have -- or may be asked.
+				if !n.Located && !n.Anycast && n.RTT > 0 {
+					if g := m.guessFor(ip); g != nil {
+						if !g.Unknown && reachable(h, g.Lat, g.Lon, n.RTT) {
+							n.Lat, n.Lon, n.Located, n.Source = g.Lat, g.Lon, true, "assistant"
+							n.City, n.Region, n.Country = g.City, g.Region, g.Country
+							n.Inferred = true
+							gg := *g
+							n.Guess = &gg
+						}
+					} else {
+						m.wantAssist(ip, d.Name, n.Detail, n.RTT)
+					}
 				}
 				continue
 			}

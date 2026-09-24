@@ -57,6 +57,10 @@ type Module struct {
 	providers     *providerIndex // the clouds' published ranges
 	provider      providerState
 	abuseErr      string
+	assistQueue   []assistCandidate
+	assistAsked   []time.Time
+	assistTotal   int
+	assistErr     string
 	abuseAsked    int
 	cableErr      string
 	pending       map[string]bool // addresses still needing the slow registry lookup
@@ -106,6 +110,11 @@ func (m *Module) Info() core.ModuleInfo {
 			"provider_feeds":         true,
 			"geofeeds":               true,
 			"abuseipdb_key":          "",
+			"ai_provider":            "off",
+			"ai_endpoint":            "",
+			"ai_model":               "",
+			"ai_key":                 "",
+			"ai_per_hour":            20,
 			"azure_service_tags_url": "",
 			"osm_overpass_url":       "",
 			"facilities":             true,
@@ -134,6 +143,17 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Downloads open maps of long-haul fibre on land and measures along them where they reach, instead of estimating the detour. These never raise the impossible threshold: over water a cable is the only way across, so its length is a real bound, but on land a straight line is merely something nobody built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons licence and is the one substantial open set; the comprehensive maps of North America, Europe and Asia are sold commercially. Refreshed monthly."},
 			{Section: "Where things are", Key: "terrestrial_urls", Label: "Land-route sources", Type: "text",
 				Help: "One GeoJSON URL per line, replacing the defaults. Lines starting with # or // are ignored, so a source can be kept and turned off."},
+			{Section: "AI lookup", Key: "ai_provider", Label: "Ask a language model about hops nothing else can place", Type: "choice",
+				Choices: []string{"off", "anthropic", "openai", "google", "azure", "ollama", "custom"},
+				Help:    "Only hops that answered and that no name, provider feed, geofeed, measurement or database could place are put to the model: the hostname, the network and operator, and the round trip from here. Its answer is a hypothesis -- checked against the clock like a router name, drawn as an inference, marked as the model's reading on the card -- and never overrules a source that knows. Setting up: ANTHROPIC -- console.anthropic.com › API Keys › Create Key; default model claude-haiku-4-5. OPENAI -- platform.openai.com › API keys; default gpt-4o-mini. GOOGLE -- aistudio.google.com › Get API key; default gemini-2.0-flash. AZURE -- in Azure OpenAI Studio deploy a chat model, then paste the deployment's chat/completions URL (https://<resource>.openai.azure.com/openai/deployments/<deployment>/chat/completions?api-version=2024-10-21) as the endpoint and a key from Keys and Endpoint. OLLAMA -- run ollama locally, pull a model (ollama pull llama3.1), leave the endpoint empty for http://127.0.0.1:11434 or set your host's; no key. CUSTOM -- any OpenAI-compatible chat/completions endpoint and, if it needs one, a key. Hostnames are sent to whichever service you choose."},
+			{Section: "AI lookup", Key: "ai_endpoint", Label: "Endpoint", Type: "string", Placeholder: "leave empty for the provider's default",
+				Help: "Required for Azure (the deployment URL) and custom; optional otherwise. Google's may contain {model}."},
+			{Section: "AI lookup", Key: "ai_model", Label: "Model", Type: "string", Placeholder: "provider default",
+				Help: "Any chat model the provider offers. Small, fast models are plenty for this."},
+			{Section: "AI lookup", Key: "ai_key", Label: "API key", Type: "secret",
+				Help: "Sent only to the endpoint above. Not needed for Ollama."},
+			{Section: "AI lookup", Key: "ai_per_hour", Label: "Questions per hour", Type: "int",
+				Help: "Each hop is asked about once a month at most; this caps how many new ones per hour. Twenty is a few cents a day on the small models."},
 			{Section: "Reputation", Key: "abuseipdb_key", Label: "AbuseIPDB API key", Type: "secret",
 				Help: "With a key, every hop on a route is checked against AbuseIPDB -- abuse confidence, reports, ISP, usage type -- and the answer shown on its card and kept a week. Twenty addresses are asked about every few minutes, well inside the free allowance of a thousand a day. To get a key: create a free account at abuseipdb.com, open Account \u203a API, click Create Key, and paste it here. Leave empty to disable."},
 			{Section: "Where things are", Key: "geofeeds", Label: "Follow geofeeds named in the registry", Type: "bool",
@@ -189,6 +209,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("providers", 30*time.Minute, m.refreshProviders, core.Delayed())
 	ctx.Every("geofeeds", 30*time.Minute, m.refreshGeofeeds, core.Delayed())
 	ctx.Every("reputation", 5*time.Minute, m.reputationJob, core.Delayed())
+	ctx.Every("assistant", 5*time.Minute, m.assistantJob, core.Delayed())
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/geofeeds", m.apiGeofeeds, core.Needs("paths.map"),

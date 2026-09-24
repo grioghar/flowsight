@@ -604,6 +604,13 @@
           h += grp('Corrected') + r('The database said', `${n.database_said} — ${num(Math.round(n.moved_km))} km away`, 'warn')
              + r('Learned from', `${n.corrected_by}${n.corrected_at ? ', ' + FS.when(n.corrected_at) : ''} — a router in the same announced prefix, shown to be here; every address of the prefix now follows it`);
         }
+        if (n.guess && n.location_source === 'assistant') {
+          const q = n.guess;
+          h += grp('Read by a language model') + r('Its answer', `${q.city}${q.country ? ', ' + q.country : ''} \u2014 ${Math.round((q.confidence || 0) * 100)}% confident`, 'soft')
+             + (q.reason ? r('Its reasoning', q.reason, 'soft') : '')
+             + r('Model', `${q.model}, ${FS.when(q.at)}`, 'soft')
+             + r('Standing', 'a hypothesis: drawn as an inference, checked against the round trip, overruled by any source that knows', 'soft');
+        }
         if (d.abuse) {
           const a = d.abuse;
           h += grp('Reputation') + r('Abuse confidence', `${a.score}%${a.reports ? ` \u2014 ${num(a.reports)} report${a.reports === 1 ? '' : 's'}${a.reporters ? ` from ${num(a.reporters)} reporters` : ''}` : ' \u2014 no reports in 90 days'}${a.whitelisted ? ' (whitelisted)' : ''}${a.tor ? ' (Tor exit)' : ''}`, a.score >= 50 ? 'warn' : (a.score > 0 ? 'soft' : ''))
@@ -642,6 +649,7 @@
                              corrected: 'a learned correction \u2014 the address database, overruled for this prefix',
                              provider: 'the provider\u2019s own published range list' + (n.provider ? ' \u2014 ' + n.provider : ''),
                              near: 'beside the last placed hop \u2014 the timing says the same metro',
+                             assistant: 'a language model\u2019s reading of the name \u2014 a hypothesis the clock did not rule out',
                              between: 'inferred from timing' }[n.location_source] || 'address database');
         }
         if (n.distance_km) h += r('Distance used', `${num(n.distance_km)} km${n.via ? ' along ' + n.via : ' (straight line)'}`);
@@ -978,7 +986,7 @@
         const S = st.sources || {};
         const row = (name, on, detail, err) => `<tr><td>${esc(name)}</td><td>${on ? pill('on', 'ok') : pill('off', '')}</td><td class="small">${detail}</td><td class="small sev-high">${esc(err || '')}</td></tr>`;
         const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {}, fx = S.corrections || {}, osm = S.osm_telecom || {}, pv = S.providers || {};
-        const rep = S.reputation || {}, gf = S.geofeeds || {};
+        const rep = S.reputation || {}, gf = S.geofeeds || {}, ai = S.assistant || {};
         const pvFeeds = Object.values(pv.feeds || {});
         const pvText = pvFeeds.length ? pvFeeds.map(f => `${f.name} ${num(f.prefixes || 0)}${f.error ? ' (failed)' : ''}`).join(' \u00b7 ') : 'nothing fetched yet';
         const pvErr = pvFeeds.filter(f => f.error).map(f => `${f.name}: ${f.error}`).join('; ');
@@ -990,6 +998,7 @@
           ${row('Routing table &amp; registry', reg.on, `${num(reg.queued || 0)} addresses waiting for their operator`)}
           ${row('Submarine cables', cab.on, cab.on ? `${num(cab.loaded || 0)} cables loaded` : 'not loaded', cab.error)}
           ${row('Land routes', land.on, land.on ? `${num(land.loaded || 0)} routes loaded` : 'not loaded', land.error)}
+          ${row('AI lookup', ai.on, ai.on ? `${esc(ai.provider)} / ${esc(ai.model)}: ${num(ai.known || 0)} hops answered, ${num(ai.queued || 0)} waiting, ${num(ai.per_hour || 0)} an hour` : 'off \u2014 choose a provider under Settings \u203a paths \u203a AI lookup', ai.error)}
           ${row('AbuseIPDB reputation', rep.on, rep.on ? `${num(rep.known || 0)} addresses known (${num(rep.asked_this_session || 0)} asked this session)` : 'no key \u2014 set one under Settings \u203a paths \u203a Reputation', rep.error)}
           ${row('Cloud provider ranges', pv.on, pv.on ? `${num(pv.prefixes || 0)} prefixes: ${pvText}` : 'off', pvErr)}
           ${row('Registry geofeeds', gf.on, gf.on ? `${num(gf.urls || 0)} feeds named in registry objects, ${num(gf.fetched || 0)} fetched, ${num(gf.rows || 0)} placed prefixes${gf.failed ? `, ${num(gf.failed)} failing` : ''}` : 'off')}

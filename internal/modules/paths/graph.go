@@ -95,8 +95,11 @@ type Node struct {
 	// Provider is the cloud and region whose published range the address
 	// is in, when that is what placed it; Anycast says the address is
 	// announced everywhere at once and has no single place.
-	Provider    string `json:"provider,omitempty"`
-	Anycast     bool   `json:"anycast,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Anycast  bool   `json:"anycast,omitempty"`
+	// Guess is a language model's reading of the name, when that is what
+	// placed the hop; kept beside the position so the card can say so.
+	Guess       *Guess `json:"guess,omitempty"`
 	CorrectedBy string `json:"corrected_by,omitempty"`
 	CorrectedAt int64  `json:"corrected_at,omitempty"`
 	SetAside    string `json:"database_set_aside,omitempty"`

@@ -191,6 +191,16 @@ public service; an AS number must be digits before it is placed in a URL.
 The fixed public services asked -- RIPE IPmap, rdap.org, PeeringDB, Team Cymru
 over DNS -- are asked at bounded rates and their answers cached for weeks.
 
+## AI lookup
+
+Off by default. When a provider is configured, the daemon sends -- only for
+hops that answered and that nothing else placed -- the hostname, address,
+network, operator and round trip to the chosen endpoint, with the key in that
+provider's own header and nowhere else. Cloud endpoints go through the
+public-only client; Ollama and custom endpoints may be local by design. The
+answer is parsed as JSON, bounded, cached a month, and used only as a
+hypothesis the clock can veto.
+
 ## Reputation lookups
 
 The AbuseIPDB key is stored with the module's settings, sent only in the
