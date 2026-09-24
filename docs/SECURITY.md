@@ -221,3 +221,8 @@ push the daemon's heap past what the gateway can carry.
 The OpenStreetMap source is a POST to the configured Overpass endpoint through
 the same client, carrying only the fixed query for one region; the answer is
 capped at 64 MB and converted before it is kept.
+Provider range feeds (AWS, Google, Microsoft, Oracle, DigitalOcean, Linode,
+Cloudflare, Fastly) are fixed URLs fetched the same way; Microsoft's weekly
+link is read off its download page and must match the expected host and file
+name pattern. Each file is streamed and reduced to prefix, region and
+coordinates; nothing large is held in memory or on disk.

@@ -92,6 +92,11 @@ type Node struct {
 	// this hop's prefix, when the database alone would have put it elsewhere
 	// and a learned correction was applied instead. SetAside says why a
 	// database placement was not used at all.
+	// Provider is the cloud and region whose published range the address
+	// is in, when that is what placed it; Anycast says the address is
+	// announced everywhere at once and has no single place.
+	Provider    string `json:"provider,omitempty"`
+	Anycast     bool   `json:"anycast,omitempty"`
 	CorrectedBy string `json:"corrected_by,omitempty"`
 	CorrectedAt int64  `json:"corrected_at,omitempty"`
 	SetAside    string `json:"database_set_aside,omitempty"`

@@ -493,6 +493,14 @@ round trip -- and each row marks its hop on the map, travels to it on click,
 and frames the whole route from the endpoint. Both the key and the table fold
 to their titles.
 
+**The clouds' own range lists.** For an address in a range AWS, Google,
+Azure, Oracle, DigitalOcean or Linode publishes, the map uses the provider's
+own region -- the campus the region is built in -- over the address database
+and over a measurement; a violet ring marks such hops. Cloudflare and Fastly
+ranges are anycast, announced everywhere at once, so no single place is
+claimed for them: a database position is set aside and the hop is placed by
+timing, with the reason on its card.
+
 **Devices, not addresses.** A device is known by its hardware address; every
 IP it has held is grouped under it, IPv4 and IPv6 alike. Which addresses it
 holds *now* is remembered for a day (*Settings › identity › Remember a

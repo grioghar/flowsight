@@ -12,6 +12,24 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242102
+
+**The clouds' own published ranges place their addresses.** AWS, Google
+Cloud, Microsoft Azure, Oracle Cloud, DigitalOcean and Linode each publish
+which prefixes they use in which region, and Cloudflare and Fastly publish
+their anycast ranges. FlowSight now fetches all of them weekly -- Microsoft's
+hundred-megabyte file read as a stream and kept as a few hundred kilobytes;
+its weekly link found on the download page -- and for an address in one of
+those ranges takes the operator's own statement of where it is over the
+address database and over a latency measurement. Regions become the cities
+they are built in (`us-east-1` Ashburn, `westus2` Quincy, `europe-west4`
+Eemshaven). An anycast address is announced everywhere at once, so a
+database or measured position for one is set aside as meaningless and the
+hop is placed by timing; its card says so. Such hops are drawn with a violet
+ring (*position from the provider's own range list* in the key, a switch
+like the others), the *Data sources* card counts each feed, and *Use the
+clouds' published address ranges* under *Where things are* turns it off.
+
 ## 0.9.8r202609242053
 
 **A placement the physics rules out is no longer drawn.** A Microsoft

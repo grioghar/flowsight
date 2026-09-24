@@ -94,7 +94,7 @@ var CAB = { cables: [
   { name:'Pacific Light', km:12800, runs:[[[170.0,20.0],[179.0,21.0],[-179.0,21.5],[-150.0,22.0]]] } ],
   attribution:"Submarine cable routes from TeleGeography's public cable map." };
 var STATUS = { active:true, last_run:1790200000, destinations:2, hops:11, error:'',
-  sources:{ osm_telecom:{ on:true, ways:1234, regions_loaded:3, regions_total:16, next_region:'Europe, west', weight:0.5 }, corrections:{ on:true, prefixes:3, set_aside:1 }, router_names:{on:true,codes:210}, ipmap:{on:true,answered:21,queued:300,per_minute:20,backing_off_until:0},
+  sources:{ providers:{ on:true, prefixes:12345, feeds:{ aws:{name:'AWS', prefixes:8000}, azure:{name:'Microsoft Azure', prefixes:0, error:'no link found'} } }, osm_telecom:{ on:true, ways:1234, regions_loaded:3, regions_total:16, next_region:'Europe, west', weight:0.5 }, corrections:{ on:true, prefixes:3, set_aside:1 }, router_names:{on:true,codes:210}, ipmap:{on:true,answered:21,queued:300,per_minute:20,backing_off_until:0},
             registry:{on:true,queued:12}, cables:{on:true,loaded:709,error:''}, land_routes:{on:true,loaded:133,error:''} } };
 
 var ROUTE = { destination:'1.1.1.1',
@@ -142,6 +142,7 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('Data sources') < 0) throw new Error('the page should say what the map is fed by');
   if (h.indexOf('51.10.6.166') < 0 || h.indexOf('set aside') < 0 || h.indexOf('Said by') < 0) throw new Error('a rejected placement should be in the ruled-out table with what said it');
   if (h.indexOf('RIPE IPmap') < 0 || h.indexOf('21 positions known') < 0) throw new Error('IPmap progress should be shown');
+  if (h.indexOf('Cloud provider ranges') < 0 || h.indexOf('AWS 8,000') < 0 || h.indexOf('Microsoft Azure: no link found') < 0) throw new Error('provider feeds should be on the sources card with their counts and errors');
   if (h.indexOf('OpenStreetMap telecom lines') < 0 || h.indexOf('1,234 lines from 3 of 16 regions, counted at 50%') < 0) throw new Error('OSM lines should be on the sources card with their weight');
   if (h.indexOf('709 cables loaded') < 0) throw new Error('cable count should be shown');
   // Traffic per endpoint, and a way to read the map by it.

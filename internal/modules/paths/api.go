@@ -35,6 +35,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		"cables":       map[string]any{"on": core.Bool(m.ctx.Settings(), "cables", false), "loaded": len(m.cables), "error": m.cableErr},
 		"land_routes":  map[string]any{"on": core.Bool(m.ctx.Settings(), "terrestrial", false), "loaded": m.landRoutes, "error": m.landErr},
 		"osm_telecom":  m.osm,
+		"providers":    m.provider,
 		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
 		"facilities":   map[string]any{"on": m.facilitiesOK()},
@@ -610,11 +611,43 @@ func (m *Module) describe(nodes []Node, h Home) {
 					n.City, n.Region, n.Country = "", "", ""
 				}
 			}
+			// What the provider itself publishes about the range. The
+			// operator's own statement of where a prefix is announced
+			// outranks the database and a measurement; an anycast range has
+			// no single place, so nothing but the timing may place it.
+			if pr := m.providerPlace(ip); pr != nil {
+				if pr.Anycast {
+					n.Anycast = true
+					n.Provider = pr.Provider + " anycast"
+					if n.Located && n.Source != "name" {
+						n.SetAside = fmt.Sprintf("%s announces this range from many places at once (anycast); the %s's position for it is meaningless, so it is placed by timing", pr.Provider, sourceNoun(n.Source))
+						n.DBLat, n.DBLon = n.Lat, n.Lon
+						n.Lat, n.Lon, n.Located, n.Source = 0, 0, false, ""
+						n.City, n.Region, n.Country = "", "", ""
+					}
+				} else if !n.Located || n.Source == "database" || n.Source == "corrected" {
+					if n.Located && n.Source == "database" {
+						if km := greatCircleKM(n.Lat, n.Lon, pr.Lat, pr.Lon); km > 250 {
+							n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
+							n.MovedKM = km
+							n.DBLat, n.DBLon = n.Lat, n.Lon
+						}
+					}
+					n.Lat, n.Lon, n.Located, n.Source = pr.Lat, pr.Lon, true, "provider"
+					n.City, n.Region, n.Country = splitPlace(pr.City)
+					n.Provider = pr.Provider + " " + pr.Region
+					n.Inferred = false
+					n.CorrectedBy, n.CorrectedAt = "", 0
+				}
+			}
 			// What somebody measured, if they have. This outranks the address
 			// database -- which says where a block was registered -- and is
 			// asked for whenever nothing better is known.
-			if p, plat, plon, known := m.knownPlace(ip); known {
-				if p.OK && (!n.Located || n.Source == "database") {
+			if n.Anycast {
+				// Nothing to ask; a measurement of an anycast address is
+				// wherever the probes happened to be.
+			} else if p, plat, plon, known := m.knownPlace(ip); known {
+				if p.OK && (!n.Located || n.Source == "database" || n.Source == "corrected") {
 					if n.Located && n.Source == "database" {
 						if km := greatCircleKM(n.Lat, n.Lon, plat, plon); km > 250 {
 							n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")

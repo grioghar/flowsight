@@ -563,7 +563,7 @@
           const rt = Math.min(22, 8 + Math.log10(1 + mb) * 3.2).toFixed(1);
           dots += `<circle class="endpoint" data-r="8" data-rt="${rt}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"/>`;
         }
-        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${n.endpoint ? ' isend' : ''}${n.inferred ? ' guessed' : ''}${n.location_source === 'measured' ? ' measured' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.endpoint ? '\nENDPOINT — traffic was going here' : ''}${n.inferred ? '\nPLACED BY TIMING, not located: ' + esc(n.between_how || '') : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'TOO FAST: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
+        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${n.endpoint ? ' isend' : ''}${n.inferred ? ' guessed' : ''}${n.location_source === 'measured' ? ' measured' : ''}${n.location_source === 'provider' ? ' provider' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.endpoint ? '\nENDPOINT — traffic was going here' : ''}${n.inferred ? '\nPLACED BY TIMING, not located: ' + esc(n.between_how || '') : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'TOO FAST: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
       });
 
       // What a hop is, told in the order the evidence deserves: what was
@@ -626,13 +626,14 @@
             + r('Source', 'inferred from timing; it is not drawn as a located hop', 'soft');
         } else if (!n.located) {
           h += n.database_set_aside
-            ? `<div class="muted small">It answered. The address database has coordinates for its block, but they are not believed: ${esc(n.database_set_aside)}. It is listed under <em>Not on the map</em> rather than drawn at a head office.</div>`
+            ? `<div class="muted small">It answered. ${n.anycast ? 'It is an <b>anycast</b> address: ' : 'The address database has coordinates for its block, but they are not believed: '}${esc(n.database_set_aside)}. It is listed under <em>Not on the map</em> rather than drawn somewhere it is not.</div>`
             : `<div class="muted small">It answered, but nothing places it: no site in its name, and the address database has no coordinates for the block. It is listed under <em>Not on the map</em> rather than drawn somewhere invented.</div>`;
         } else {
           h += r('Shown at', [n.city, n.region, n.country].filter(Boolean).join(', '))
             + r('Source', { name: 'the router\u2019s own name',
                              measured: 'RIPE IPmap \u2014 measured from thousands of probes, not registered',
                              corrected: 'a learned correction \u2014 the address database, overruled for this prefix',
+                             provider: 'the provider\u2019s own published range list' + (n.provider ? ' \u2014 ' + n.provider : ''),
                              between: 'inferred from timing' }[n.location_source] || 'address database');
         }
         if (n.distance_km) h += r('Distance used', `${num(n.distance_km)} km${n.via ? ' along ' + n.via : ' (straight line)'}`);
@@ -924,6 +925,7 @@
             <button type="button" class="lgi lgmode" data-mode="traffic" aria-pressed="false">${`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="endpoint" cx="6" cy="6" r="5.4"/><circle class="endpoint" cx="6" cy="6" r="2.4"/></svg>`}<span>size endpoints by traffic</span></button>
             ${it(dot(FS.palette[2]), 'a hop it crossed on the way', 'hop')}
             ${it(dot(FS.palette[1], 'measured'), 'position measured, not registered', 'measured')}
+            ${it(dot(FS.palette[5], 'provider'), 'position from the provider\u2019s own range list', 'provider')}
             ${it(dot('', 'guessed'), 'answered but unplaceable: put between its neighbours by timing', 'guessed')}
             ${it(dot(FS.palette[2], 'rich'), 'operator known', 'rich')}
             ${it(dot('', 'ruledout'), 'the latency rules this placement out', 'ruledout')}
@@ -967,7 +969,10 @@
         // Settings say what is switched on; this says what it has produced.
         const S = st.sources || {};
         const row = (name, on, detail, err) => `<tr><td>${esc(name)}</td><td>${on ? pill('on', 'ok') : pill('off', '')}</td><td class="small">${detail}</td><td class="small sev-high">${esc(err || '')}</td></tr>`;
-        const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {}, fx = S.corrections || {}, osm = S.osm_telecom || {};
+        const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {}, fx = S.corrections || {}, osm = S.osm_telecom || {}, pv = S.providers || {};
+        const pvFeeds = Object.values(pv.feeds || {});
+        const pvText = pvFeeds.length ? pvFeeds.map(f => `${f.name} ${num(f.prefixes || 0)}${f.error ? ' (failed)' : ''}`).join(' \u00b7 ') : 'nothing fetched yet';
+        const pvErr = pvFeeds.filter(f => f.error).map(f => `${f.name}: ${f.error}`).join('; ');
         const backoff = ipm.backing_off_until && ipm.backing_off_until * 1000 > Date.now() ? ` — backing off until ${FS.when(ipm.backing_off_until)}` : '';
         return `<div style="margin-top:14px">${card('Data sources', `<table>
           <tr><th>Source</th><th></th><th>State</th><th></th></tr>
@@ -976,6 +981,7 @@
           ${row('Routing table &amp; registry', reg.on, `${num(reg.queued || 0)} addresses waiting for their operator`)}
           ${row('Submarine cables', cab.on, cab.on ? `${num(cab.loaded || 0)} cables loaded` : 'not loaded', cab.error)}
           ${row('Land routes', land.on, land.on ? `${num(land.loaded || 0)} routes loaded` : 'not loaded', land.error)}
+          ${row('Cloud provider ranges', pv.on, pv.on ? `${num(pv.prefixes || 0)} prefixes: ${pvText}` : 'off', pvErr)}
           ${row('OpenStreetMap telecom lines', osm.on, osm.on ? `${num(osm.ways || 0)} lines from ${num(osm.regions_loaded || 0)} of ${num(osm.regions_total || 0)} regions, counted at ${Math.round((osm.weight || 0) * 100)}%${osm.next_region ? ` — next: ${esc(osm.next_region)}` : ''}${osm.backing_off_until && osm.backing_off_until * 1000 > Date.now() ? ` — backing off until ${FS.when(osm.backing_off_until)}` : ''}` : 'off', osm.error)}
           ${row('Learned corrections', fx.on, `${num(fx.prefixes || 0)} prefixes placed by their own routers, ${num(fx.set_aside || 0)} registrant addresses set aside`)}
         </table>`, `each is a setting under <a href="#modules/paths">Settings › paths</a>, grouped under <em>Where things are</em>`)}</div>`;

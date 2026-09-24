@@ -126,7 +126,7 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/paths/status` | Tracing state plus `sources`: per data source, whether it is on and what it has produced (IPmap answered/queued/back-off, cables and land routes loaded, OSM telecom lines with regions and weight, learned corrections, registry queue) |  |
+| GET | `/api/paths/status` | Tracing state plus `sources`: per data source, whether it is on and what it has produced (IPmap answered/queued/back-off, cables and land routes loaded, OSM telecom lines with regions and weight, `providers` with per-feed prefix counts and errors, learned corrections, registry queue) |  |
 | GET | `/api/paths/destinations` | Destinations with a measured route; `bytes_in`/`bytes_out` come from the five-minute rollups and lag the newest flow by up to five minutes | limit (rows), hours (traffic window) |
 | GET | `/api/paths/path` | Every hop to one destination, in order, with names, locations and operator detail, plus `inside`: the device on this network that used the route | dst (destination), device (whose flows to count) |
 | GET | `/api/paths/talkers` | Devices on this network that talked to an endpoint, each with its services (`app`, `domain`, `port`, `proto`, bytes, flows), plus a cross-device service summary; also embedded as `talkers` in `/api/paths/path` | dst (endpoint), hours (window, default 24) |

@@ -535,6 +535,7 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .pathmap.off-ruledout .ruledout,
 .pathmap.off-doubtful .doubtful,
 .pathmap.off-corrected .corrected, .pathmap.off-corrected .ghost,
+.pathmap.off-provider .hop.provider,
 .pathmap.off-cable .cablegroup,
 .pathmap.off-arrows .arrow { display: none; }
 /* Direction of travel. Ink rather than the leg's colour, so it reads as an
@@ -622,4 +623,9 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .svc { display: flex; gap: 8px; font-size: 11.5px; }
 .svc .svcn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .svc .svcb { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* A hop placed by its provider's own range list: the operator's statement,
+   marked apart from a measurement and from the database. */
+.pathmap .hop.provider { stroke: #a855f7; stroke-width: 1.2; }
+.lg .provider { stroke: #a855f7; stroke-width: 1.2; fill: none; }
 

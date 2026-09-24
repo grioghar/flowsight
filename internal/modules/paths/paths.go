@@ -54,6 +54,8 @@ type Module struct {
 	osm           osmState
 	osmUntil      time.Time      // do not ask Overpass again before this
 	hopBoxes      map[string]int // placed hops per OSM region, from the last graph
+	providers     *providerIndex // the clouds' published ranges
+	provider      providerState
 	cableErr      string
 	pending       map[string]bool // addresses still needing the slow registry lookup
 	geoPending    map[string]bool // addresses still to be asked about at IPmap
@@ -79,28 +81,30 @@ func (m *Module) Info() core.ModuleInfo {
 		Description: "The route to the places this network talks to: every hop with its name, carrier and location, collapsed where paths share a leg.",
 		After:       []string{"enrich", "visibility", "web"},
 		Defaults: map[string]any{
-			"enabled":           true,
-			"active":            false,
-			"per_run":           6,
-			"retrace_hours":     24,
-			"max_destinations":  300,
-			"trace_ipv6":        true,
-			"home":              "",
-			"cables":            false,
-			"cables_url":        "",
-			"cable_near_km":     400,
-			"registry":          true,
-			"ipmap":             true,
-			"ipmap_per_minute":  20,
-			"land_detour_pct":   35,
-			"origin_slack_km":   100,
-			"hop_delay_us":      200,
-			"terrestrial":       false,
-			"learn_corrections": true,
-			"terrestrial_urls":  "",
-			"osm_telecom":       true,
-			"osm_overpass_url":  "",
-			"facilities":        true,
+			"enabled":                true,
+			"active":                 false,
+			"per_run":                6,
+			"retrace_hours":          24,
+			"max_destinations":       300,
+			"trace_ipv6":             true,
+			"home":                   "",
+			"cables":                 false,
+			"cables_url":             "",
+			"cable_near_km":          400,
+			"registry":               true,
+			"ipmap":                  true,
+			"ipmap_per_minute":       20,
+			"land_detour_pct":        35,
+			"origin_slack_km":        100,
+			"hop_delay_us":           200,
+			"terrestrial":            false,
+			"learn_corrections":      true,
+			"terrestrial_urls":       "",
+			"osm_telecom":            true,
+			"provider_feeds":         true,
+			"azure_service_tags_url": "",
+			"osm_overpass_url":       "",
+			"facilities":             true,
 		},
 		Schema: []core.SettingField{
 			{Section: "Tracing", Key: "active", Label: "Trace paths", Type: "bool",
@@ -126,6 +130,10 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Downloads open maps of long-haul fibre on land and measures along them where they reach, instead of estimating the detour. These never raise the impossible threshold: over water a cable is the only way across, so its length is a real bound, but on land a straight line is merely something nobody built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons licence and is the one substantial open set; the comprehensive maps of North America, Europe and Asia are sold commercially. Refreshed monthly."},
 			{Section: "Where things are", Key: "terrestrial_urls", Label: "Land-route sources", Type: "text",
 				Help: "One GeoJSON URL per line, replacing the defaults. Lines starting with # or // are ignored, so a source can be kept and turned off."},
+			{Section: "Where things are", Key: "provider_feeds", Label: "Use the clouds' published address ranges", Type: "bool",
+				Help: "AWS, Google Cloud, Microsoft Azure, Oracle Cloud, DigitalOcean and Linode publish which prefixes they use in which region; Cloudflare and Fastly publish their anycast ranges. For an address in one of those ranges this is the operator's own statement of where it is and outranks the address database and a latency estimate. An anycast address is announced everywhere at once, so a database position for one is set aside and the hop is placed by timing. Fetched weekly; Microsoft's file is read as a stream and kept compact."},
+			{Section: "Where things are", Key: "azure_service_tags_url", Label: "Azure service tags file", Type: "string",
+				Help: "Empty: found on Microsoft's download page each week. Set it only if that discovery fails."},
 			{Section: "Where things are", Key: "osm_telecom", Label: "Use OpenStreetMap telecom lines (low weight)", Type: "bool",
 				Help: "Fibre and telecom lines where OpenStreetMap mappers have drawn them: dense in a few well-mapped countries, absent elsewhere, and mostly the visible kind. Used at half weight -- where a line offers a route between two hops, the expected time is the average of following it and the plain detour estimate. Never touches the physics floor; never drawn as the route. Fetched from the Overpass API one ten-degree tile per run, twenty minutes apart while any are outstanding, kept a month, starting with the tiles your traffic crosses; a timeout waits an hour, a refusal six."},
 			{Section: "Where things are", Key: "osm_overpass_url", Label: "Overpass API", Type: "string",
@@ -168,6 +176,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	// rarely, so the job wakes often and downloads almost never.
 	ctx.Every("terrestrial", 12*time.Hour, m.refreshTerrestrial)
 	ctx.Every("osm", 20*time.Minute, m.refreshOSM, core.Delayed())
+	ctx.Every("providers", 24*time.Hour, m.refreshProviders, core.Delayed())
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/talkers", m.apiTalkers, core.Needs("paths.map"),
