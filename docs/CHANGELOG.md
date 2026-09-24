@@ -12,7 +12,7 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8r202609240729
+## 0.9.8r202609240728
 
 **Rules saved from the Enrollment page or the API now take effect straight
 away.** Saving rules read each rule's name, zone and explanation as if they
