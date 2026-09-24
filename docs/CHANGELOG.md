@@ -12,6 +12,35 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242000
+
+**The map takes the room it has on a wide screen.** On an ultrawide the
+two-column layout gave the map column its minimum width -- an SVG has no
+intrinsic width to ask for -- and the tables took sixty percent of a
+3,440-pixel screen. The map column is now sized from the height it may use,
+doubled for the map's shape, plus the detail panel, and capped so the tables
+always keep 420 pixels; on a laptop the stacked layout applies as before and
+the map is no larger than it was.
+
+**What is learned about the database is learned more carefully.** The first
+hour of corrections on a live gateway included `1.1.1.0/24 in Johannesburg`
+and `35.184.0.0/13 in Frankfurt`. The first is anycast: RIPE measures an
+address wherever most probes see it, and a 19 ms answer from Kansas was never
+Johannesburg. The second is a cloud's aggregate, spanning continents. A
+correction is now learned only when the hop's own round trip could have come
+back from the place (light through glass over the straight line), and a
+prefix broader than a /16 (a /32 for IPv6) falls back to the /24 or /48
+around the address. Anything an earlier build learned under looser rules is
+dropped on load; `POST /api/paths/corrections/forget` with `all: true`
+clears the lot so it can be relearned.
+
+**Place names from RIPE IPmap are read correctly** -- *São Paulo*, not
+*SÃ£o Paulo* -- on the way in and in anything already stored.
+
+**The *Not on the map* table says why.** Each hop there now carries the
+reason: nothing places it, or the database's coordinates for its block are
+not believed and why.
+
 ## 0.9.8r202609241955
 
 **The map remembers what the address database gets wrong.** The database

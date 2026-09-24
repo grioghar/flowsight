@@ -222,7 +222,7 @@ func (m *Module) askIPmap(c *http.Client, ip string) (Placed, float64, float64, 
 		return Placed{}, 0, 0, false
 	}
 	return Placed{
-		City: strings.TrimSpace(l.CityName), Region: strings.TrimSpace(l.StateName),
+		City: repairMojibake(strings.TrimSpace(l.CityName)), Region: repairMojibake(strings.TrimSpace(l.StateName)),
 		Country: strings.TrimSpace(l.CountryCode), Score: l.Contribs.Worlds.Score, OK: true,
 	}, l.Latitude, l.Longitude, false
 }

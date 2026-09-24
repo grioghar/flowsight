@@ -105,11 +105,21 @@ func (f *fixes) load(st *core.Store) {
 	}
 	var s fixStore
 	if st.KVGet(fixesKV, &s) {
-		if s.Corrections != nil {
-			f.s.Corrections = s.Corrections
+		for p, c := range s.Corrections {
+			// Anything an earlier build learned under rules since
+			// tightened is dropped here rather than believed: a prefix
+			// too broad to be one place, or a name mangled on the way in.
+			_, n, err := net.ParseCIDR(p)
+			if err != nil || prefixFor(n.IP.String(), p) != p {
+				continue
+			}
+			c.City, c.Region = repairMojibake(c.City), repairMojibake(c.Region)
+			c.From = repairMojibake(c.From)
+			f.s.Corrections[p] = c
 		}
-		if s.Distrusted != nil {
-			f.s.Distrusted = s.Distrusted
+		for k, d := range s.Distrusted {
+			d.Place = repairMojibake(d.Place)
+			f.s.Distrusted[k] = d
 		}
 	}
 	for p := range f.s.Corrections {
@@ -137,7 +147,14 @@ func distrustKey(asn int, lat, lon float64) string {
 func prefixFor(ip, announced string) string {
 	if announced != "" {
 		if _, n, err := net.ParseCIDR(announced); err == nil {
-			return n.String()
+			// An aggregate is not a place. A cloud's /13 spans continents,
+			// and one router in Frankfurt says nothing about the rest of
+			// it; anything broader than a /16 (or a /32 for IPv6) falls
+			// back to the smallest routable block around the address.
+			bits, total := n.Mask.Size()
+			if (total == 32 && bits >= 16) || (total == 128 && bits >= 32) {
+				return n.String()
+			}
 		}
 	}
 	a := net.ParseIP(ip)
@@ -278,10 +295,22 @@ func (m *Module) apiForgetFix(r *core.Req) (any, error) {
 	prefix, _ := body["prefix"].(string)
 	key, _ := body["key"].(string)
 	prefix, key = strings.TrimSpace(prefix), strings.TrimSpace(key)
-	if prefix == "" && key == "" {
-		return nil, core.BadRequest("prefix or key is required")
-	}
 	f := &m.fixes
+	if all, _ := body["all"].(bool); all {
+		f.mu.Lock()
+		n := len(f.s.Corrections) + len(f.s.Distrusted)
+		f.s = fixStore{Corrections: map[string]*Correction{}, Distrusted: map[string]*Distrust{}}
+		f.nets = map[string]*net.IPNet{}
+		f.mu.Unlock()
+		f.save(m.ctx.Store)
+		m.mu.Lock()
+		m.graphCache = nil
+		m.mu.Unlock()
+		return map[string]any{"ok": true, "forgotten": n}, nil
+	}
+	if prefix == "" && key == "" {
+		return nil, core.BadRequest("prefix or key is required, or all: true")
+	}
 	f.mu.Lock()
 	_, hadP := f.s.Corrections[prefix]
 	_, hadK := f.s.Distrusted[key]

@@ -420,10 +420,12 @@ if (FAILURE) throw FAILURE;
 // says why the hop is not drawn.
 (function(){
   var el3 = mkEl();
-  FS.pages.paths.render(el3, { params: {} });
+  FS.pages.paths.render(el3, { params: {} }).then(function(){
   var h = el3.innerHTML;
   ['a learned correction', 'Learned from', 'ae10.r02.rio01.icn', 'every address of the prefix now follows it',
    'registrant&#39;s address for AS20940', 'not believed', '3 prefixes placed by their own routers', '1 registrant addresses set aside'
   ].forEach(function(t){ if (h.indexOf(t) < 0 && h.indexOf(t.replace('&#39;', "'")) < 0) throw new Error('corrections: missing ' + t); });
   print('learned corrections shown OK');
+  });
 })();
+if (typeof drainMicrotasks === 'function') drainMicrotasks();

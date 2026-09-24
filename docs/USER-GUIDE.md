@@ -471,7 +471,10 @@ there, the map learns two things: that the hop's announced prefix is where the
 evidence says -- other addresses of the prefix follow it, drawn as *corrected*
 with the router and date on their card -- and, once two routers of one network
 have been shown away from the same database coordinate, that the coordinate is
-the registrant's and not to be believed. A hop the database would put there is
+the registrant's and not to be believed. Nothing is learned from a placement the
+hop's own round trip could not have reached -- an anycast address is measured
+wherever most probes see it -- nor recorded against an aggregate broader than
+a /16. A hop the database would put there is
 left for the timing to place, with the reason on its card, rather than drawn
 at a head office on the wrong continent. The *Data sources* card counts both;
 `/api/paths/corrections` lists them and lets any be forgotten. *Remember what

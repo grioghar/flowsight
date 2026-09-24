@@ -607,7 +607,11 @@ func (m *Module) describe(nodes []Node, h Home) {
 							n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
 							n.MovedKM = km
 							n.DBLat, n.DBLon = n.Lat, n.Lon
-							if km > learnKM {
+							// Learned only when the round trip could reach the
+							// measured place from here. An anycast address is
+							// measured wherever most probes see it, and a
+							// 19 ms answer from Kansas was never Johannesburg.
+							if km > learnKM && reachable(h, plat, plon, n.RTT) {
 								m.learn(ip, &d, "RIPE IPmap", n.DBLat, n.DBLon, n.DatabaseSaid, plat, plon, p.City, p.Region, p.Country, km)
 							}
 						}
@@ -647,7 +651,7 @@ func (m *Module) describe(nodes []Node, h Home) {
 					n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
 					n.MovedKM = km
 					n.DBLat, n.DBLon = n.Lat, n.Lon
-					if km > learnKM {
+					if km > learnKM && reachable(h, match.Pop.Lat, match.Pop.Lon, n.RTT) {
 						city, region, country := splitPlace(match.Pop.City)
 						m.learn(ip, &d, d.Name, n.DBLat, n.DBLon, n.DatabaseSaid, match.Pop.Lat, match.Pop.Lon, city, region, country, km)
 					}
@@ -749,4 +753,14 @@ func asInt(v any) int64 {
 		return int64(x)
 	}
 	return 0
+}
+
+// reachable says whether a round trip could have come back from a place: it
+// must not beat light through glass over the straight line from the origin.
+// A hop with no timing is not evidence either way, and teaches nothing.
+func reachable(h Home, lat, lon, rtt float64) bool {
+	if rtt <= 0 || !h.OK {
+		return false
+	}
+	return rtt >= floorMS(greatCircleKM(h.Lat, h.Lon, lat, lon))
 }

@@ -82,3 +82,22 @@ func TestPrefixForFallsBackToRoutableBlocks(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+func TestLearningIsGatedByPrefixSizeAndReach(t *testing.T) {
+	if p := prefixFor("35.190.1.2", "35.184.0.0/13"); p != "35.190.1.0/24" {
+		t.Fatalf("an aggregate should fall back to a /24, got %s", p)
+	}
+	if p := prefixFor("2600:1900::5", "2600:1900::/28"); p != "2600:1900::/48" {
+		t.Fatalf("an IPv6 aggregate should fall back to a /48, got %s", p)
+	}
+	home := Home{Lat: 39.18, Lon: -96.57, OK: true} // Kansas
+	if reachable(home, -26.2, 28.04, 19) {
+		t.Fatal("19 ms from Kansas cannot be Johannesburg")
+	}
+	if !reachable(home, -26.2, 28.04, 260) {
+		t.Fatal("260 ms from Kansas could be Johannesburg")
+	}
+	if reachable(home, 40, -74, 0) || reachable(Home{}, 40, -74, 30) {
+		t.Fatal("no timing, or no origin, is not evidence")
+	}
+}

@@ -502,9 +502,17 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
      2,560 pixel screen and pushed the detail panel and every table off the
      side. The figure below is what the map can actually use -- its height cap
      doubled, plus the panel. */
+  /* fit-content collapsed the other way on an ultrawide: the map has no
+     intrinsic width, so the column shrank to its minimum and the tables took
+     sixty percent of a 3,440 pixel screen. The map column is now sized
+     outright from the height it may use -- the viewport less the card's
+     furniture and the route trail, doubled for the map's 2:1 shape, plus the
+     detail panel -- and capped so the tables always keep 420 pixels. On a
+     wide short screen the height decides; on a narrow tall one the width
+     does; on a laptop the stacked layout above applies and none of this. */
   .pagewide { grid-template-columns:
-    fit-content(calc((100vh - 380px) * 2 + 374px)) minmax(380px, 1fr); }
-  .pagewide .mapside .mapframe { max-width: calc((100vh - 380px) * 2); }
+    minmax(0, min(calc((100vh - 260px) * 2 + 374px), calc(100% - 420px))) minmax(380px, 1fr); }
+  .pagewide .mapside .mapframe { max-width: calc((100vh - 260px) * 2); }
 }
 
 /* Every entry in the key is a switch for the thing it names. A key that only

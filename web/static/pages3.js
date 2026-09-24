@@ -912,11 +912,13 @@
       ${doubtOut}
 
       ${unlocated.length || silent ? `<div class="unlocated">${card('Not on the map', table(unlocated.map(n => ({
-          index: n.index, ips: n.ips.join(', '), names: (n.names || []).join(', '), country: n.country || '' })), [
+          index: n.index, ips: n.ips.join(', '), names: (n.names || []).join(', '), country: n.country || '',
+          why: n.database_set_aside ? 'database not believed: ' + n.database_set_aside : 'no site in the name, no coordinates for the block' })), [
           { t: 'Hop', f: r => num(r.index), num: true, sort: 'index' },
           { t: 'Address', f: r => `<span class="mono small">${esc(r.ips)}</span>`, sort: 'ips' },
           { t: 'Name', f: r => esc(r.names) || '<span class="muted">none</span>', sort: 'names' },
-          { t: 'Country', f: r => esc(r.country) || '<span class="muted">unknown</span>', sort: 'country' }],
+          { t: 'Country', f: r => esc(r.country) || '<span class="muted">unknown</span>', sort: 'country' },
+          { t: 'Why', f: r => `<span class="small ${r.why.indexOf('not believed') === 0 ? 'sev-med' : 'muted'}">${esc(r.why)}</span>`, sort: 'why' }],
           { empty: 'Every hop has coordinates.' }),
           `${num(silent)} hop${silent === 1 ? '' : 's'} never answered and are not shown at all`)}</div>` : ''}
 
