@@ -179,10 +179,26 @@ inside of a session. To decrypt selected devices:
 1. **TLS › Create inspection CA** (Pro). The key pair is generated on the
    firewall and never leaves it.
 2. **Download the certificate** from the same card and install it as a
-   trusted root on each device you intend to inspect. On a Mac: open the
-   file in Keychain Access, System keychain, then set the certificate's
-   trust to *Always Trust*. Do this *before* step 4, or every HTTPS
-   connection from that device fails with a certificate warning.
+   trusted root on each device you intend to inspect. 
+   
+   - **Mac**: open the file in Keychain Access, System keychain, then set 
+     the certificate's trust to *Always Trust*. Do this *before* step 4, 
+     or every HTTPS connection from that device fails with a certificate warning.
+   - **Linux containers and VMs** (on Proxmox): run the automated 
+     installation script on your Proxmox nodes:
+     ```
+     ssh pve1 bash /root/install-fsca-all.sh
+     ssh pve2 bash /root/install-fsca-all.sh
+     ```
+     This detects the OS of each running container and VM, installs the CA 
+     into the appropriate system trust store (Debian/Ubuntu, RHEL/Fedora, 
+     Alpine, Arch, openSUSE, FreeBSD), and verifies the installation. See 
+     the script's output for per-guest results. **Limitations**: 
+     Docker images inside containers are not reached (each has its own bundle); 
+     stopped containers are skipped; Windows VMs and read-only appliances 
+     require manual installation; VMs without a guest agent cannot be reached; 
+     phones, Macs, and Echo devices outside Proxmox are not reached by this script.
+   
 3. **Groups & schedules**: make a group with those devices (by `mac:` is
    the stable choice).
 4. **Policies**: a policy matching the group with *Inspect TLS* on and a

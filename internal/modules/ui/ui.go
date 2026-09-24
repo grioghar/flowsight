@@ -28,6 +28,7 @@ func (m *Module) Info() core.ModuleInfo {
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
 	ctx.Route("GET", "/api/ui/prefs", m.apiPrefs, core.Doc("Interface preferences the front end applies at start (theme)"))
+	ctx.Panel(core.Panel{ID: "api", Title: "API", Group: "Administration", Order: 200, Icon: "api"})
 	return nil
 }
 

@@ -12,6 +12,35 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242345
+
+**Second-hand names stay second-hand.** Pi-hole's client names come from its
+own reverse lookups and go stale when a lease moves; FlowSight imported
+them whenever it had no name of its own, which put a laptop's name back on
+an Amazon speaker every few minutes after the wrong name had been cleared.
+A Pi-hole name that is some other device's own name (its lease hostname or
+a chosen name) is no longer imported. The enrich module no longer does
+reverse DNS for local addresses at all: identity names those, and a reverse
+record is at best the same name and at worst the previous holder's. Both
+the name and the address in a host link now open the host page.
+
+## 0.9.8r202609242330
+
+**Complete CRUD API for all configuration.** Every policy, group, schedule,
+zone, device, notification channel, alert rule, QoS rule, category, name override,
+and pinned TLS name can now be created, read, updated, and deleted via the API.
+New endpoints added for policy (groups, schedules), enrollment (zones, devices),
+alerting (channels, rules), QoS (rules), categories, identity (name overrides),
+and web (pinned TLS names).
+
+**API endpoints now accept `{param}` in paths.** Routes like `/api/policy/groups/{name}`
+resolve parameters from the request path; the pattern is matched against the request
+and available in handlers, enabling granular resource manipulation.
+
+**Interactive OpenAPI explorer at the API page.** Operations are grouped by the four
+menu areas (Monitor, Inventory, Protect, Administration), with parameter templates,
+live request/response, and copy-as-curl for easy testing.
+
 ## 0.9.8r202609242336
 
 **The menu has four areas.** Twenty-five pages in one flat list became

@@ -267,3 +267,17 @@ Cloudflare, Fastly) are fixed URLs fetched the same way; Microsoft's weekly
 link is read off its download page and must match the expected host and file
 name pattern. Each file is streamed and reduced to prefix, region and
 coordinates; nothing large is held in memory or on disk.
+
+## API explorer
+
+The in-product API explorer at the Administration › API page runs with the
+viewer's session and can make requests on their behalf. Every write operation
+(POST, PUT, DELETE) asks for confirmation before sending. The explorer runs
+entirely in the browser and sends requests through the same authentication
+gate as the UI. Every action is logged in the audit log with the user and
+client address.
+
+The OpenAPI specification endpoint (`GET /api/openapi.json`) is public and
+contains no authentication secrets; it describes the routes and their
+parameters but not data values. Export it freely for use with external API
+clients and tools.

@@ -89,6 +89,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Params("ip", "address"))
 	ctx.Route("GET", "/api/identity/leases", m.apiLeases, core.Doc("Current DHCP leases"))
 	ctx.Route("POST", "/api/identity/name", m.apiSetName, core.Write(), core.Doc("Assign a display name to an address"))
+	ctx.Route("DELETE", "/api/identity/name/{ip}", m.apiDeleteNameByIP, core.Write(), core.Doc("Delete a name override by IP"))
 	ctx.Panel(core.Panel{ID: "hosts", Title: "IP Addresses", Group: "Inventory", Order: 20, Icon: "hosts"})
 	ctx.Panel(core.Panel{ID: "host", Title: "IP address", Group: "Inventory", Order: 21, Detail: true})
 	return nil
@@ -114,6 +115,33 @@ func (m *Module) Name(ip string) string {
 	}
 	if mac := m.everMAC[ip]; mac != "" {
 		return m.macName[mac]
+	}
+	return ""
+}
+
+// NameOwner is the hardware address of the device whose lease, reservation
+// or chosen name is this one (first label, case-insensitive), or "". Other
+// modules ask before attaching a name they learned second-hand: a resolver
+// or Pi-hole name that matches a device's own name belongs to that device,
+// wherever the resolver's stale record points now.
+func (m *Module) NameOwner(name string) string {
+	label := strings.ToLower(strings.SplitN(strings.TrimSpace(name), ".", 2)[0])
+	if label == "" {
+		return ""
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for ip, n := range m.names {
+		if strings.ToLower(strings.SplitN(n, ".", 2)[0]) == label {
+			if mac := m.macs[ip]; mac != "" {
+				return mac
+			}
+		}
+	}
+	for _, n := range m.overr {
+		if strings.ToLower(strings.SplitN(n, ".", 2)[0]) == label {
+			return "operator"
+		}
 	}
 	return ""
 }

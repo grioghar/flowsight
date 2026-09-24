@@ -54,6 +54,9 @@ type Route struct {
 	Write                bool
 	Feature              string // tier feature this route belongs to ("" = free)
 	Params               map[string]string
+	Tags                 []string // OpenAPI tags for grouping
+	OperationId          string   // unique operation identifier
+	RequestBodyType      string   // describes the request body for docs
 }
 
 type RouteOption func(*Route)
@@ -67,6 +70,16 @@ func Params(kv ...string) RouteOption {
 		}
 	}
 }
+func Tags(tags ...string) RouteOption {
+	return func(r *Route) {
+		r.Tags = append(r.Tags, tags...)
+	}
+}
+func OperationId(id string) RouteOption {
+	return func(r *Route) {
+		r.OperationId = id
+	}
+}
 
 // Handler returns a JSON-able value, or an *Error.
 type Handler func(r *Req) (any, error)
@@ -77,6 +90,7 @@ type Req struct {
 	User   string
 	Client string
 	body   []byte
+	Params map[string]string // path parameters from {param} matches
 }
 
 // Error carries an HTTP status.
@@ -168,7 +182,7 @@ func (r *Req) Raw() []byte { return r.body }
 // NewReq builds a request carrying body, for calling handlers directly (tests,
 // or a listener outside the API server) the way the server itself would.
 func NewReq(r *http.Request, user, client string, body []byte) *Req {
-	return &Req{Request: r, User: user, Client: client, body: body}
+	return &Req{Request: r, User: user, Client: client, body: body, Params: map[string]string{}}
 }
 
 // Setup ---------------------------------------------------------------------
@@ -203,12 +217,53 @@ func (a *API) OpenAPI() map[string]any {
 	}
 	sort.Strings(keys)
 	paths := map[string]map[string]any{}
+	areaTagMap := map[string][]string{} // area -> list of area/page tags
+
 	for _, k := range keys {
 		r := a.routes[k]
-		op := map[string]any{
-			"summary": r.Description, "tags": []string{r.Module},
-			"responses": map[string]any{"200": map[string]any{"description": "JSON object"}},
+
+		// Derive tags from TagMap if not explicitly set
+		tags := r.Tags
+		if len(tags) == 0 {
+			if mapped, ok := TagMap[r.Module]; ok {
+				tags = mapped // area/page pair like ["Monitor", "Hosts"]
+			} else {
+				tags = []string{"Other", r.Module}
+			}
 		}
+
+		// Track area/page tags for x-tagGroups
+		if len(tags) > 0 {
+			area := tags[0]
+			tagStr := area
+			if len(tags) > 1 {
+				tagStr = area + "/" + strings.Join(tags[1:], "/")
+			}
+			found := false
+			for _, existing := range areaTagMap[area] {
+				if existing == tagStr {
+					found = true
+					break
+				}
+			}
+			if !found {
+				areaTagMap[area] = append(areaTagMap[area], tagStr)
+			}
+		}
+
+		// Generate operationId if not set
+		opId := r.OperationId
+		if opId == "" {
+			opId = deriveOperationId(r.Module, r.Method, r.Path)
+		}
+
+		op := map[string]any{
+			"summary":     r.Description,
+			"tags":        tags,
+			"operationId": opId,
+			"responses":   map[string]any{"200": map[string]any{"description": "JSON object"}},
+		}
+
 		if r.Description == "" {
 			op["summary"] = "(undocumented)"
 		}
@@ -235,9 +290,43 @@ func (a *API) OpenAPI() map[string]any {
 		}
 		paths[r.Path][strings.ToLower(r.Method)] = op
 	}
-	return map[string]any{"openapi": "3.0.3",
-		"info":    map[string]any{"title": "FlowSight API", "version": a.core.Version},
-		"servers": []map[string]any{{"url": "/"}}, "paths": paths}
+
+	// Build x-tagGroups from collected areas and tags
+	areas := []string{"Monitor", "Inventory", "Protect", "Administration"}
+	var tagGroups []map[string]any
+	for _, area := range areas {
+		if tags, ok := areaTagMap[area]; ok && len(tags) > 0 {
+			sort.Strings(tags)
+			tagGroups = append(tagGroups, map[string]any{
+				"name": area,
+				"tags": tags,
+			})
+		}
+	}
+	// Add API tag to Administration if not present
+	if len(tagGroups) > 0 && tagGroups[len(tagGroups)-1]["name"] == "Administration" {
+		adminTags := tagGroups[len(tagGroups)-1]["tags"].([]string)
+		hasApi := false
+		for _, t := range adminTags {
+			if t == "Administration/API" {
+				hasApi = true
+				break
+			}
+		}
+		if !hasApi {
+			adminTags = append(adminTags, "Administration/API")
+			sort.Strings(adminTags)
+			tagGroups[len(tagGroups)-1]["tags"] = adminTags
+		}
+	}
+
+	return map[string]any{
+		"openapi":     "3.0.3",
+		"info":        map[string]any{"title": "FlowSight API", "version": a.core.Version},
+		"servers":     []map[string]any{{"url": "/"}},
+		"paths":       paths,
+		"x-tagGroups": tagGroups,
+	}
 }
 
 // Auth ----------------------------------------------------------------------
@@ -385,13 +474,18 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Method == http.MethodPatch) {
 		route = a.routes["POST "+p]
 	}
+	// Try pattern matching for parameterized paths
+	var params map[string]string
+	if route == nil {
+		route, params = a.matchPattern(r.Method, p)
+	}
 	a.mu.RUnlock()
 	if route == nil {
 		a.writeJSON(w, 404, map[string]any{"error": "not found: " + p})
 		return
 	}
 
-	req := &Req{Request: r, User: user, Client: client}
+	req := &Req{Request: r, User: user, Client: client, Params: params}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		if r.ContentLength > maxBody {
 			a.writeJSON(w, 413, map[string]any{"error": "payload too large"})
@@ -583,4 +677,101 @@ func (a *API) Listen(bind string, port int) (*http.Server, error) {
 		}
 	}()
 	return srv, nil
+}
+
+// matchPattern attempts to match a request path against parameterized route patterns.
+// It returns the matching route and extracted parameters if found.
+func (a *API) matchPattern(method, path string) (*Route, map[string]string) {
+	// Try to match against registered patterns
+	for key, route := range a.routes {
+		parts := strings.Fields(key) // "METHOD /path"
+		if len(parts) != 2 || parts[0] != method {
+			continue
+		}
+		pattern := parts[1]
+		if params := matchPath(pattern, path); params != nil {
+			return route, params
+		}
+	}
+	return nil, nil
+}
+
+// matchPath checks if a path matches a pattern like /api/policy/groups/{name}.
+// Returns extracted parameters if it matches, nil otherwise.
+func matchPath(pattern, path string) map[string]string {
+	patternParts := strings.Split(pattern, "/")
+	pathParts := strings.Split(path, "/")
+
+	if len(patternParts) != len(pathParts) {
+		return nil
+	}
+
+	params := make(map[string]string)
+	for i, pp := range patternParts {
+		if strings.HasPrefix(pp, "{") && strings.HasSuffix(pp, "}") {
+			// This is a parameter
+			paramName := pp[1 : len(pp)-1]
+			params[paramName] = pathParts[i]
+		} else if pp != pathParts[i] {
+			// Literal mismatch
+			return nil
+		}
+	}
+	return params
+}
+
+// OpenAPI helper functions -------------------------------------------------
+
+// deriveOperationId creates a stable operation ID from module, method, and path.
+// Format: module.methodNoun (e.g., policy.listPolicies, policy.createPolicy)
+func deriveOperationId(module, method, path string) string {
+	noun := derivNoun(path)
+	verb := verbFromMethod(method)
+	return module + "." + verb + noun
+}
+
+// derivNoun extracts the main resource name from a path.
+// /api/policy -> "Policy", /api/policy/policies -> "Policies"
+// /api/enroll/devices/{mac} -> "Device"
+func derivNoun(path string) string {
+	parts := strings.Split(strings.TrimPrefix(path, "/api/"), "/")
+	if len(parts) < 2 {
+		return "Item"
+	}
+	noun := parts[1]
+	if noun == "" {
+		return "Item"
+	}
+	// Singularize common plurals in operationId
+	if strings.HasSuffix(noun, "ies") {
+		noun = noun[:len(noun)-3] + "y"
+	} else if strings.HasSuffix(noun, "es") {
+		noun = noun[:len(noun)-2]
+	} else if strings.HasSuffix(noun, "s") && noun != "status" && noun != "rules" {
+		noun = noun[:len(noun)-1]
+	}
+	return capitalize(noun)
+}
+
+// verbFromMethod maps HTTP method to operation verb.
+func verbFromMethod(method string) string {
+	switch method {
+	case "GET":
+		return "get"
+	case "POST", "PUT":
+		return "create"
+	case "DELETE":
+		return "delete"
+	case "PATCH":
+		return "update"
+	default:
+		return "handle"
+	}
+}
+
+func capitalize(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

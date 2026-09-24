@@ -2,6 +2,16 @@
 
 FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. On OPNsense the GUI page proxies it at `/flowsight.php?api=<path>` with the session's CSRF token; on other systems it listens at `http://127.0.0.1:8080` by default.
 
+## API Explorer
+
+An interactive OpenAPI explorer is built into FlowSight at the **API** page under Administration. It provides:
+- Grouped operations by area (Monitor, Inventory, Protect, Administration)
+- Parameter and request body templates
+- Live request/response with timing
+- Copy as curl for easy CLI testing
+
+Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use with Swagger UI, Insomnia, Postman, or other tools.
+
 ## Conventions
 
 - Every write (POST) needs the header `X-Requested-With: Flowsight`. From anything that is not the OPNsense GUI or loopback, also send the API token in `X-Flowsight-Token` (or sign in once at `POST /api/login` with `{"token": …}` to get a session cookie).

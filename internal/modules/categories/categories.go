@@ -124,6 +124,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/categories/lookup", m.apiLookup, core.Doc("Categories a domain belongs to"),
 		core.Params("domain", "name"))
 	ctx.Route("POST", "/api/categories/custom", m.apiCustom, core.Write(), core.Doc("Create or replace a custom category"))
+	ctx.Route("DELETE", "/api/categories/{name}", m.apiDeleteCategoryByName, core.Write(), core.Doc("Delete a custom category"))
 	ctx.Panel(core.Panel{ID: "categories", Title: "Categories", Group: "Protect", Order: 120, Icon: "categories"})
 	return nil
 }

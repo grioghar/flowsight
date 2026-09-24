@@ -65,9 +65,13 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// API routes
 	ctx.Route("GET", "/api/alerting/status", m.apiStatus, core.Doc("Channel status and recent notifications"))
+	ctx.Route("GET", "/api/alerting/channels", m.apiGetChannels, core.Doc("List all notification channels"))
 	ctx.Route("POST", "/api/alerting/channels", m.apiSetChannels, core.Write(), core.Needs("alerting.notify"), core.Doc("Replace notification channels"))
+	ctx.Route("DELETE", "/api/alerting/channels/{name}", m.apiDeleteChannel, core.Write(), core.Needs("alerting.notify"), core.Doc("Delete a notification channel"))
 	ctx.Route("POST", "/api/alerting/channels/test", m.apiTestChannel, core.Write(), core.Needs("alerting.notify"), core.Doc("Send test message to a channel"))
+	ctx.Route("GET", "/api/alerting/rules", m.apiGetRules, core.Doc("List all alert rules"))
 	ctx.Route("POST", "/api/alerting/rules", m.apiSetRules, core.Write(), core.Doc("Replace alert rules"))
+	ctx.Route("DELETE", "/api/alerting/rules/{name}", m.apiDeleteRule, core.Write(), core.Doc("Delete an alert rule"))
 	ctx.Route("GET", "/api/alerting/notifications", m.apiNotifications, core.Doc("Recent notifications"),
 		core.Params("limit", "rows"))
 

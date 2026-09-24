@@ -109,6 +109,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Whether shaping is on, the pipes in force, the rules and what each queue is holding"))
 	ctx.Route("GET", "/api/qos/preview", m.apiPreview, core.Needs("qos.shape"),
 		core.Doc("The firewall rules the current settings would produce, without applying them"))
+	ctx.Route("GET", "/api/qos/rules", m.apiGetRules, core.Doc("List all traffic shaping rules"))
+	ctx.Route("POST", "/api/qos/rules", m.apiCreateRule, core.Write(), core.Doc("Create a new traffic shaping rule"))
+	ctx.Route("DELETE", "/api/qos/rules/{id}", m.apiDeleteRule, core.Write(), core.Doc("Delete a traffic shaping rule"))
 	ctx.Panel(core.Panel{ID: "qos", Title: "Priority", Group: "Protect", Order: 105, Icon: "qos", Feature: "qos.shape"})
 	return nil
 }

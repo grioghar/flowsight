@@ -54,7 +54,10 @@ FS.pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '0%';
 FS.pill = (text, kind) => `<span class="pill ${kind || ''}">${FS.esc(text)}</span>`;
 FS.sevPill = (s) => FS.pill(s, { critical: 'bad', high: 'bad', medium: 'warn', low: 'info', info: '' }[s] || '');
 FS.verdictPill = (v) => v === 'blocked' ? FS.pill('blocked', 'bad') : v === 'allowed' ? FS.pill('allowed', 'ok') : FS.pill(v || 'observed', '');
-FS.hostLink = (ip, name) => ip ? `<a href="#host/${encodeURIComponent(ip)}" title="${FS.esc(ip)}" ${name ? '' : `data-ip="${FS.esc(ip)}"`}>${FS.esc(name || ip)}</a>${name ? ` <span class="muted mono small">${FS.esc(ip)}</span>` : ''}` : '';
+// Both the name and the address open the host page: a reader clicks the
+// address as readily as the name, and a grey address that did nothing read
+// as a broken page.
+FS.hostLink = (ip, name) => ip ? `<a href="#host/${encodeURIComponent(ip)}" title="${FS.esc(ip)}" ${name ? '' : `data-ip="${FS.esc(ip)}"`}>${FS.esc(name || ip)}</a>${name ? ` <a class="muted mono small" href="#host/${encodeURIComponent(ip)}">${FS.esc(ip)}</a>` : ''}` : '';
 // A bare address that enrichment may decorate with a reverse-DNS name and a country.
 // An address cell: the address itself, with whatever host or device name
 // FlowSight knows beneath it. The Web page shows the name first and the

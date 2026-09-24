@@ -199,7 +199,10 @@ func (m *Module) Lookup(ips []string) map[string]Info {
 		if geo && !local && m.geo != nil {
 			m.place(addr, &info)
 		}
-		if rd {
+		// Local addresses are named by identity (leases, reservations, the
+		// device's own claim). A reverse record for one is at best the same
+		// name and at worst the previous holder's, so it is not looked up.
+		if rd && !local {
 			e := m.cache[key]
 			if e != nil && now.Sub(e.at) < ttl {
 				info.Name = e.name

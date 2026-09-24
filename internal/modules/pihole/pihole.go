@@ -630,6 +630,16 @@ func (m *Module) associate(names map[string]string) {
 		if m.identity != nil && m.identity.Name(ip) != "" {
 			continue
 		}
+		// Pi-hole's client name is second-hand: its own reverse lookups,
+		// which go stale when a lease moves. A name that is some other
+		// device's own name (its lease hostname or a name someone chose)
+		// stays with that device; an Amazon speaker at the address a
+		// laptop once had is not "Mac".
+		if owner, ok := m.identity.(interface{ NameOwner(string) string }); ok && m.identity != nil {
+			if o := owner.NameOwner(name); o != "" && o != m.identity.MAC(ip) {
+				continue
+			}
+		}
 		row, err := m.ctx.Store.Row(`SELECT name FROM hosts WHERE ip=?`, ip)
 		if err == nil && row != nil {
 			if cur, _ := row["name"].(string); cur != "" {
