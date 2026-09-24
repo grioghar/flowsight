@@ -12,6 +12,23 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242108
+
+**AbuseIPDB reputation on every hop.** With a key under *Settings › paths ›
+Reputation* (a free account at abuseipdb.com, *Account › API › Create Key*),
+each address on a route is checked -- abuse confidence, reports and
+reporters, ISP, usage type, domain, Tor and whitelist flags -- and the answer
+shown on the hop's card under *Reputation* and kept a week. Twenty addresses
+are asked about every five minutes, newest hops first, well inside the free
+allowance of a thousand a day; the *Data sources* card shows how many are
+known. The key is sent to api.abuseipdb.com and nowhere else.
+
+**Provider range feeds arrive gently.** One feed per half-hour run rather
+than all at once, the stalest first, read at two megabytes a second, and a
+failing feed is not retried for a day. The gateway is also routing,
+inspecting and counting every flow; a hundred-megabyte file pulled flat out
+was a hundred megabytes taken from that.
+
 ## 0.9.8r202609242102
 
 **The clouds' own published ranges place their addresses.** AWS, Google

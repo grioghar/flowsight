@@ -493,6 +493,12 @@ round trip -- and each row marks its hop on the map, travels to it on click,
 and frames the whole route from the endpoint. Both the key and the table fold
 to their titles.
 
+**Reputation.** With an AbuseIPDB key (*Settings › paths › Reputation*; free
+at abuseipdb.com under *Account › API*), each hop's card gains a *Reputation*
+block: abuse confidence, reports and reporters, ISP, usage type and domain,
+with Tor and whitelist flags. Answers are kept a week; the *Data sources* card
+counts them.
+
 **The clouds' own range lists.** For an address in a range AWS, Google,
 Azure, Oracle, DigitalOcean or Linode publishes, the map uses the provider's
 own region -- the campus the region is built in -- over the address database

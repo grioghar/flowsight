@@ -191,6 +191,14 @@ public service; an AS number must be digits before it is placed in a URL.
 The fixed public services asked -- RIPE IPmap, rdap.org, PeeringDB, Team Cymru
 over DNS -- are asked at bounded rates and their answers cached for weeks.
 
+## Reputation lookups
+
+The AbuseIPDB key is stored with the module's settings, sent only in the
+`Key` header of requests to `api.abuseipdb.com`, and never written to logs or
+the API. Only public addresses that appear as route hops are looked up, at
+most twenty every five minutes; answers are cached a week. Without a key
+nothing is sent.
+
 ## Runtime profiles
 
 `GET /api/system/profile` returns a Go runtime profile -- heap, allocations,

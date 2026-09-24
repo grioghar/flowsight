@@ -36,6 +36,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		"land_routes":  map[string]any{"on": core.Bool(m.ctx.Settings(), "terrestrial", false), "loaded": m.landRoutes, "error": m.landErr},
 		"osm_telecom":  m.osm,
 		"providers":    m.provider,
+		"reputation":   map[string]any{"on": m.abuseKey() != "", "asked_this_session": m.abuseAsked, "known": m.ctx.Store.KVCount(abuseKV), "error": m.abuseErr},
 		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
 		"facilities":   map[string]any{"on": m.facilitiesOK()},
@@ -586,6 +587,7 @@ func (m *Module) describe(nodes []Node, h Home) {
 			}
 			if n.Detail == nil {
 				c := d
+				c.Abuse = m.reputationFor(ip)
 				n.Detail = &c
 			}
 			if d.Name != "" && !contains(n.Names, d.Name) {

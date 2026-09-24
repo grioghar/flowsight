@@ -57,6 +57,9 @@ type Detail struct {
 	PoPHow   string  `json:"pop_how,omitempty"`
 	PoPWhy   string  `json:"pop_why,omitempty"`
 
+	// From the abuse databases, when a key is configured.
+	Abuse *Reputation `json:"abuse,omitempty"`
+
 	// From the routing table.
 	ASN    string `json:"asn,omitempty"`
 	ASName string `json:"as_name,omitempty"`

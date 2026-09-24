@@ -325,23 +325,76 @@ func (m *Module) refreshProviders() error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	stats := map[string]providerStats{}
-	for _, f := range providerFeeds {
+	// One feed per run, and the run is gentle: a hundred-megabyte file
+	// pulled flat out, on a gateway that is also routing, inspecting and
+	// counting every flow, is a hundred megabytes taken from everything else.
+	// The job comes round every half hour, does the stalest feed, and idles
+	// once all are fresh; a week's staleness is the trigger.
+	m.mu.Lock()
+	stats := m.provider.Feeds
+	m.mu.Unlock()
+	if stats == nil {
+		stats = map[string]providerStats{}
+	}
+	var pick *providerFeed
+	var pickAge time.Duration
+	for i := range providerFeeds {
+		f := &providerFeeds[i]
 		path := filepath.Join(dir, f.Key+".csv")
-		st := providerStats{Name: f.Name}
+		st := stats[f.Key]
+		st.Name = f.Name
 		if fi, err := os.Stat(path); err == nil {
 			st.FetchedAt = fi.ModTime().Unix()
 		}
-		if st.FetchedAt == 0 || time.Since(time.Unix(st.FetchedAt, 0)) > 7*24*time.Hour {
-			if n, unplaced, err := m.fetchProvider(f, path); err != nil {
-				st.Error = err.Error()
-			} else {
-				st.Prefixes, st.Unplaced, st.FetchedAt, st.Error = n, unplaced, time.Now().Unix(), ""
-			}
-		}
 		stats[f.Key] = st
+		age := 365 * 24 * time.Hour
+		if st.FetchedAt > 0 {
+			age = time.Since(time.Unix(st.FetchedAt, 0))
+		}
+		if age > 7*24*time.Hour && age > pickAge {
+			pick, pickAge = f, age
+		}
+	}
+	if pick != nil {
+		path := filepath.Join(dir, pick.Key+".csv")
+		st := stats[pick.Key]
+		if n, unplaced, err := m.fetchProvider(*pick, path); err != nil {
+			st.Error = err.Error()
+			// Not again for a day: a failing feed must not be hammered.
+			_ = os.Chtimes(path, time.Now().Add(-6*24*time.Hour), time.Now().Add(-6*24*time.Hour))
+		} else {
+			st.Prefixes, st.Unplaced, st.FetchedAt, st.Error = n, unplaced, time.Now().Unix(), ""
+		}
+		stats[pick.Key] = st
 	}
 	return m.loadProviders(stats)
+}
+
+// throttled reads at most rate bytes per second, so a big file arrives at a
+// walking pace and leaves the link and the CPU to the traffic the gateway
+// exists for.
+type throttled struct {
+	r     io.Reader
+	rate  int
+	start time.Time
+	n     int64
+}
+
+func (t *throttled) Read(p []byte) (int, error) {
+	if len(p) > 64<<10 {
+		p = p[:64<<10]
+	}
+	n, err := t.r.Read(p)
+	t.n += int64(n)
+	if t.start.IsZero() {
+		t.start = time.Now()
+	}
+	// Sleep until the bytes so far fit the rate.
+	want := time.Duration(float64(t.n) / float64(t.rate) * float64(time.Second))
+	if ahead := want - time.Since(t.start); ahead > 0 {
+		time.Sleep(ahead)
+	}
+	return n, err
 }
 
 func (m *Module) fetchProvider(f providerFeed, path string) (int, int, error) {
@@ -393,7 +446,7 @@ func (m *Module) fetchProvider(f providerFeed, path string) (int, int, error) {
 		fmt.Fprintf(w, "%s,%s,%s,%.4f,%.4f,%s,%t\n", prefix, f.Name, csvSafe(region), pl.Lat, pl.Lon, csvSafe(pl.City), anycast)
 		n++
 	}
-	err = f.Parse(io.LimitReader(resp.Body, 512<<20), emit)
+	err = f.Parse(&throttled{r: io.LimitReader(resp.Body, 512<<20), rate: 2 << 20}, emit)
 	w.Flush()
 	out.Close()
 	if err != nil {

@@ -604,6 +604,13 @@
           h += grp('Corrected') + r('The database said', `${n.database_said} — ${num(Math.round(n.moved_km))} km away`, 'warn')
              + r('Learned from', `${n.corrected_by}${n.corrected_at ? ', ' + FS.when(n.corrected_at) : ''} — a router in the same announced prefix, shown to be here; every address of the prefix now follows it`);
         }
+        if (d.abuse) {
+          const a = d.abuse;
+          h += grp('Reputation') + r('Abuse confidence', `${a.score}%${a.reports ? ` \u2014 ${num(a.reports)} report${a.reports === 1 ? '' : 's'}${a.reporters ? ` from ${num(a.reporters)} reporters` : ''}` : ' \u2014 no reports in 90 days'}${a.whitelisted ? ' (whitelisted)' : ''}${a.tor ? ' (Tor exit)' : ''}`, a.score >= 50 ? 'warn' : (a.score > 0 ? 'soft' : ''))
+             + r('ISP', a.isp) + r('Usage type', a.usage_type) + r('Domain', a.domain)
+             + (a.last_reported ? r('Last reported', a.last_reported.slice(0, 10), 'soft') : '')
+             + r('Source', `${a.source}, ${FS.when(a.at)}`, 'soft');
+        }
         if (d.asn) {
           h += grp('Who runs it') + r('Network', 'AS' + d.asn + (d.as_name ? '  ' + d.as_name : ''))
              + r('Announced prefix', d.prefix)
@@ -970,6 +977,7 @@
         const S = st.sources || {};
         const row = (name, on, detail, err) => `<tr><td>${esc(name)}</td><td>${on ? pill('on', 'ok') : pill('off', '')}</td><td class="small">${detail}</td><td class="small sev-high">${esc(err || '')}</td></tr>`;
         const ipm = S.ipmap || {}, cab = S.cables || {}, land = S.land_routes || {}, reg = S.registry || {}, nm = S.router_names || {}, fx = S.corrections || {}, osm = S.osm_telecom || {}, pv = S.providers || {};
+        const rep = S.reputation || {};
         const pvFeeds = Object.values(pv.feeds || {});
         const pvText = pvFeeds.length ? pvFeeds.map(f => `${f.name} ${num(f.prefixes || 0)}${f.error ? ' (failed)' : ''}`).join(' \u00b7 ') : 'nothing fetched yet';
         const pvErr = pvFeeds.filter(f => f.error).map(f => `${f.name}: ${f.error}`).join('; ');
@@ -981,6 +989,7 @@
           ${row('Routing table &amp; registry', reg.on, `${num(reg.queued || 0)} addresses waiting for their operator`)}
           ${row('Submarine cables', cab.on, cab.on ? `${num(cab.loaded || 0)} cables loaded` : 'not loaded', cab.error)}
           ${row('Land routes', land.on, land.on ? `${num(land.loaded || 0)} routes loaded` : 'not loaded', land.error)}
+          ${row('AbuseIPDB reputation', rep.on, rep.on ? `${num(rep.known || 0)} addresses known (${num(rep.asked_this_session || 0)} asked this session)` : 'no key \u2014 set one under Settings \u203a paths \u203a Reputation', rep.error)}
           ${row('Cloud provider ranges', pv.on, pv.on ? `${num(pv.prefixes || 0)} prefixes: ${pvText}` : 'off', pvErr)}
           ${row('OpenStreetMap telecom lines', osm.on, osm.on ? `${num(osm.ways || 0)} lines from ${num(osm.regions_loaded || 0)} of ${num(osm.regions_total || 0)} regions, counted at ${Math.round((osm.weight || 0) * 100)}%${osm.next_region ? ` — next: ${esc(osm.next_region)}` : ''}${osm.backing_off_until && osm.backing_off_until * 1000 > Date.now() ? ` — backing off until ${FS.when(osm.backing_off_until)}` : ''}` : 'off', osm.error)}
           ${row('Learned corrections', fx.on, `${num(fx.prefixes || 0)} prefixes placed by their own routers, ${num(fx.set_aside || 0)} registrant addresses set aside`)}
