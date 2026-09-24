@@ -70,7 +70,8 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | GET | `/api/enroll` | Enrollment status, zones and device counts |  |
 | POST | `/api/enroll/apply` | Apply enforcement |  |
 | POST | `/api/enroll/assign` | Assign a device to a zone and pin it there; an empty zone unpins it so the rules place it ({mac, zone}) |  |
-| GET | `/api/enroll/devices` | All devices with filtering | q (search query), zone (filter by zone) |
+| GET | `/api/enroll/devices` | All devices with filtering; each carries `excluded` / `excluded_by` when the policy's exclusion list keeps it out of inspection, and the response's `excluded` lists the entries | q (search query), zone (filter by zone) |
+| GET | `/api/enroll/services` | What each device uses (applications, by bytes) and offers (ports other local hosts connected to, with distinct clients), keyed by MAC | hours (1-168, default 24) |
 | POST | `/api/enroll/mode` | Set monitor/enforce mode |  |
 | GET | `/api/enroll/plan` | Plan of what apply would do |  |
 | POST | `/api/enroll/reconcile` | Re-classify devices |  |
@@ -131,6 +132,8 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | GET | `/api/paths/path` | Every hop to one destination, in order, with names, locations and operator detail, plus `inside`: the device on this network that used the route | dst (destination), device (whose flows to count) |
 | GET | `/api/paths/fcc/files` | The FCC release's file catalogue recorded at the last check | filter (substring), limit |
 | POST | `/api/paths/fcc/check` | Test the FCC broadband map credentials and record the current release and file count |  |
+| GET | `/api/paths/fcc/summary` | The national provider summaries (fixed and mobile broadband) and the origin state's census-place summary kept from the last pull, with `providers` and `mobile` (arrays sorted by location count), place name and technology coverage, column headers for the record; `full=1` returns all providers; nothing if not yet pulled | full (1 to get all providers) |
+| POST | `/api/paths/fcc/pull` | Pull the national and state summaries from the FCC now, or skip silently if no credentials |  |
 | GET | `/api/paths/shodan` | Shodan record for a hop (InternetDB; plus the keyed host record when a key is set) | ip (address), now (1 to fetch if not cached) |
 | GET | `/api/paths/geofeeds` | RFC 8805 geofeeds discovered in registry objects: URL, the address whose object named it, fetch time, rows placed, errors |  |
 | GET | `/api/paths/talkers` | Devices on this network that talked to an endpoint, each with its services (`app`, `domain`, `port`, `proto`, bytes, flows), plus a cross-device service summary; also embedded as `talkers` in `/api/paths/path` | dst (endpoint), hours (window, default 24) |

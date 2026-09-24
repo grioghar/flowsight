@@ -280,7 +280,13 @@ func (m *Module) saveSeen() {
 // which addresses a device holds now; this says which device an address
 // belonged to, which is a fact about the past and does not expire. Called
 // with the module lock held.
-func (m *Module) durable(names, macs map[string]string) (everMAC, macName map[string]string) {
+//
+// The live tables win over the hosts row for any address they hold: a DHCP
+// address changes hands, and the row written when the last holder had it
+// says nothing about the device that has it now. Addresses whose row names
+// a different device than the live tables do are returned as moved, so the
+// caller can clear the name the old holder left on them.
+func (m *Module) durable(names, macs map[string]string) (everMAC, macName map[string]string, moved []string) {
 	everMAC, macName = map[string]string{}, map[string]string{}
 	if m.ctx == nil || m.ctx.Store == nil {
 		return
@@ -294,20 +300,28 @@ func (m *Module) durable(names, macs map[string]string) (everMAC, macName map[st
 		if ip == "" || mac == "" {
 			continue
 		}
-		everMAC[ip] = mac
+		// The name on the row was the holder's at the time, so it still
+		// says what that hardware address is called; the address itself
+		// is only the device's when the live tables agree or are silent.
 		if name != "" && macName[mac] == "" {
 			macName[mac] = name
 		}
+		if live := macs[ip]; live != "" && live != mac {
+			moved = append(moved, ip)
+			continue
+		}
+		everMAC[ip] = mac
 	}
-	// Names learned live (leases, reservations, the device table) outrank
-	// whatever the hosts row happened to record.
 	for ip, mac := range macs {
-		if n := names[ip]; n != "" && mac != "" {
-			macName[mac] = n
+		if mac != "" {
+			everMAC[ip] = mac
 		}
 	}
-	for ip, mac := range everMAC {
-		if n := names[ip]; n != "" {
+	// Names learned live (leases, reservations, the device table) outrank
+	// whatever the hosts row happened to record; they are attached only to
+	// the hardware address the live tables put behind the address.
+	for ip, mac := range macs {
+		if n := names[ip]; n != "" && mac != "" {
 			macName[mac] = n
 		}
 	}
@@ -479,16 +493,6 @@ func (m *Module) refresh() error {
 	for ip, n := range static {
 		names[ip] = n
 	}
-	// Resolver answers name the far end; only used when nothing else did.
-	rows, _ := m.ctx.Store.Rows(`SELECT ip, name FROM dns_names WHERE ts > ? LIMIT 50000`,
-		time.Now().Add(-24*time.Hour).Unix())
-	for _, r := range rows {
-		ip, _ := r["ip"].(string)
-		n, _ := r["name"].(string)
-		if _, ok := names[ip]; !ok && ip != "" && n != "" {
-			names[ip] = n
-		}
-	}
 	// Enrolment / device table contributions.
 	drows, _ := m.ctx.Store.Rows(`SELECT mac, ip, hostname, guest_name FROM devices WHERE ip IS NOT NULL`)
 	for _, r := range drows {
@@ -510,6 +514,32 @@ func (m *Module) refresh() error {
 			if _, ok := macs[ip]; !ok {
 				macs[ip] = strings.ToLower(mac)
 			}
+		}
+	}
+	// Resolver answers name the far end, and only the far end: a record in
+	// the local resolver that still points a laptop's name at an address the
+	// laptop gave up last week must not name whatever holds that address
+	// now. Local addresses are named by leases, reservations and the device
+	// table, or not at all.
+	isLocal := func(ip string) bool {
+		p := net.ParseIP(ip)
+		if p == nil {
+			return false
+		}
+		for _, n := range nets {
+			if n.Contains(p) {
+				return true
+			}
+		}
+		return false
+	}
+	rows, _ := m.ctx.Store.Rows(`SELECT ip, name FROM dns_names WHERE ts > ? LIMIT 50000`,
+		time.Now().Add(-24*time.Hour).Unix())
+	for _, r := range rows {
+		ip, _ := r["ip"].(string)
+		n, _ := r["name"].(string)
+		if _, ok := names[ip]; !ok && ip != "" && n != "" && !isLocal(ip) {
+			names[ip] = n
 		}
 	}
 
@@ -538,7 +568,8 @@ func (m *Module) refresh() error {
 		}
 	}
 	m.names, m.macs, m.ips, m.leases, m.static = names, macs, ips, leases, static
-	m.everMAC, m.macName = m.durable(names, macs)
+	var moved []string
+	m.everMAC, m.macName, moved = m.durable(names, macs)
 	m.nets = nets
 	m.netStrs = m.netStrs[:0]
 	for _, n := range nets {
@@ -547,6 +578,24 @@ func (m *Module) refresh() error {
 	m.updated = time.Now()
 	m.mu.Unlock()
 
+	// An address that changed hands carries the old holder's name in the
+	// hosts table until something overwrites it; nothing would, when the new
+	// holder has no name of its own. Clear it, so the row says "unnamed"
+	// rather than naming the wrong device.
+	for _, ip := range moved {
+		_ = m.ctx.Store.Exec(`UPDATE hosts SET name=NULL WHERE ip=?`, ip)
+	}
+	// Repair what an earlier release did: local addresses named after a
+	// resolver answer. Where the row's name is exactly what the resolver
+	// said for that address and nothing live names it, the name goes.
+	if rows, err := m.ctx.Store.Rows(`SELECT h.ip AS ip FROM hosts h JOIN dns_names d ON d.ip = h.ip AND lower(d.name) = lower(h.name) WHERE h.is_local = 1 AND h.name IS NOT NULL AND h.name <> ''`); err == nil {
+		for _, r := range rows {
+			ip, _ := r["ip"].(string)
+			if ip != "" && names[ip] == "" && m.IsLocal(ip) {
+				_ = m.ctx.Store.Exec(`UPDATE hosts SET name=NULL WHERE ip=?`, ip)
+			}
+		}
+	}
 	// Fold identities into the hosts table so reports carry names.
 	var ups []core.HostUpdate
 	for ip, mac := range macs {

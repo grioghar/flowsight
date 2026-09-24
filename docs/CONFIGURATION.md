@@ -176,8 +176,8 @@ Traces the route to destinations this network already contacts, and keeps what i
 | `ai_model` | Model | string | *(provider default)* | claude-haiku-4-5, gpt-4o-mini, gemini-2.0-flash, llama3.1 by default. |
 | `ai_key` | API key | secret | *(empty)* | Sent only to the endpoint. |
 | `ai_per_hour` | Questions per hour | int | `20` | Each hop at most once a month; this caps new questions. |
-| `fcc_username` | FCC broadband map username | string | *(empty)* | National Broadband Map account. |
-| `fcc_token` | FCC API token | secret | *(empty)* | Sent as `hash_value` to broadbandmap.fcc.gov only; monthly check-in for the current release. |
+| `fcc_username` | FCC broadband map username | string | *(empty)* | National Broadband Map account username (free at broadbandmap.fcc.gov). |
+| `fcc_token` | FCC API token | secret | *(empty)* | Sent as `hash_value` header to broadbandmap.fcc.gov only. With both fields set, FlowSight checks in monthly for the current release, records the file catalogue, and keeps the national fixed and mobile broadband provider summaries plus the origin state's census-place summary of who serves where and with what technology. Per-location files are skipped to stay under the gateway's memory limit. |
 | `shodan_key` | Shodan API key | secret | *(empty)* | Optional; without it InternetDB (free) is used. Sent only to api.shodan.io. |
 | `shodan_mode` | Look hops up on Shodan | choice | `click` | off, click (the card's button), all (every hop, twenty per five-minute run; spends credits when a key is set). |
 | `abuseipdb_key` | AbuseIPDB API key | secret | *(empty)* | Enables reputation lookups for route hops: abuse confidence, reports, ISP, usage type. Twenty addresses per five-minute run, answers kept a week. Free key: abuseipdb.com › Account › API › Create Key. |

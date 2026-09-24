@@ -104,14 +104,21 @@
   FS.registerPage('devices', {
     title: 'Devices', refresh: 30,
     async render(el, ctx) {
-      const { s, zones, devices, mode } = await enrollLoad(ctx.params.zone);
+      const [{ s, zones, devices, mode }, sv] = await Promise.all([enrollLoad(ctx.params.zone), get('/api/enroll/services')]);
       if (s.error) { el.innerHTML = FS.err(s.error); return; }
+      const svc = (sv && sv.services) || {};
+      const svcCell = (x) => {
+        const v = svc[x.mac]; if (!v) return '<span class="muted small">quiet</span>';
+        const uses = (v.uses || []).slice(0, 5).map(u => `<span title="${bytes(u.bytes)} in the last day">${esc(u.name)}</span>`).join(', ');
+        const offers = (v.offers || []).slice(0, 5).map(o => `<span class="mono" title="${num(o.flows)} connections from ${num(o.clients)} local host${o.clients === 1 ? '' : 's'}">${esc(o.name || (o.proto + '/' + o.port))}</span> <span class="muted">(${num(o.clients)})</span>`).join(', ');
+        return `${uses ? `<div class="small"><span class="muted">uses</span> ${uses}</div>` : ''}${offers ? `<div class="small"><span class="muted">offers</span> ${offers}</div>` : ''}` || '<span class="muted small">quiet</span>';
+      };
       const zoneOpts = (cur) => `<option value="">—</option>` + zones.map(x => `<option value="${esc(x.id)}" ${x.id === cur ? 'selected' : ''}>${esc(x.name || x.id)}</option>`).join('');
       const byZone = {}; devices.forEach(d => { byZone[d.zone || ''] = (byZone[d.zone || ''] || 0) + 1; });
       const unplaced = byZone[''] || 0;
-      el.innerHTML = `<div class="grid cols-4">${kpi('Mode', mode === 'enforce' ? 'enforcing' : 'monitor', mode === 'enforce' ? 'placement and isolation are applied' : 'classifying only; nothing is written', mode === 'enforce' ? 'warn' : '')}${kpi('Devices', num(devices.length), `${num(s.unidentified || 0)} unidentified · ${num(unplaced)} without a zone`)}${kpi('Zones', num(zones.length), zones.map(x => `<a href="#zones?zone=${esc(x.id)}">${esc(x.id)}</a> ${num(byZone[x.id] || 0)}`).join(' · ') || 'none defined')}${card('Actions', `<div class="actions"><button class="btn" id="reconcile">Re-identify</button><a class="btn" href="#zones">Zones &amp; placement</a><button class="btn ${mode === 'enforce' ? 'danger' : ''}" id="mode">${mode === 'enforce' ? 'Switch to monitor' : 'Switch to enforce'}</button></div>`)}</div>
-      <div style="margin-top:14px">${card('Devices' + (ctx.params.zone ? ` in zone ${esc(zoneName(zones, ctx.params.zone))}` : ''), table(devices, [{ t: 'Device', f: x => `<b>${esc(x.hostname || x.guest_name || x.mac)}</b><div class="muted small mono">${esc(x.mac)}${x.randomized ? ' · private MAC' : ''}</div>`, sort: 'hostname' }, { t: 'Address', f: x => x.ip ? FS.hostLink(x.ip) : '', sort: 'ip' }, { t: 'Vendor', f: x => esc(x.vendor || '') + (x.vendor_class ? `<div class="muted small">${esc(x.vendor_class)}</div>` : ''), sort: 'vendor' }, { t: 'Class', f: x => esc(x.class || ''), sort: 'class' }, { t: 'Zone', f: x => `<select data-mac="${esc(x.mac)}">${zoneOpts(x.zone)}</select>${x.zone ? ` <a class="small" href="#zones?zone=${esc(x.zone)}">view</a>` : ''}${x.pinned ? ' ' + pill('pinned', '') : ''}`, sort: 'zone' }, { t: 'Why', f: x => `<span class="small muted">${esc(x.why || x.rule || '')}</span>` }, { t: 'Seen', f: x => ago(x.last_seen), sort: 'last_seen' }]), ctx.params.zone ? `<a href="#devices">all devices</a>` : zones.map(x => `<a href="#devices?zone=${esc(x.id)}">${esc(x.id)}</a>`).join(' · '))}</div>
-      <div class="help" style="margin-top:8px"><b>Devices</b> is the enrolment inventory: one row per physical device (by MAC) learned from DHCP, with a class and a zone, whether or not it is talking right now. <a href="#hosts">Hosts</a> is what traffic shows: one row per address seen in flows and DNS in the selected window, with its traffic. A device's address links to its host page. Addresses are shown by name when FlowSight knows one; with <a href="#modules/enrich">Settings › enrich</a> on, bare addresses gain their reverse-DNS name and country.</div>`;
+      el.innerHTML = `<div class="grid cols-4">${kpi('Mode', mode === 'enforce' ? 'enforcing' : 'monitor', mode === 'enforce' ? 'placement and isolation are applied' : 'classifying only; nothing is written', mode === 'enforce' ? 'warn' : '')}${kpi('Devices', num(devices.length), `${num(s.unidentified || 0)} unidentified · ${num(unplaced)} without a zone · ${num(devices.filter(d => d.excluded).length)} excluded from inspection`)}${kpi('Zones', num(zones.length), zones.map(x => `<a href="#zones?zone=${esc(x.id)}">${esc(x.id)}</a> ${num(byZone[x.id] || 0)}`).join(' · ') || 'none defined')}${card('Actions', `<div class="actions"><button class="btn" id="reconcile">Re-identify</button><a class="btn" href="#zones">Zones &amp; placement</a><button class="btn ${mode === 'enforce' ? 'danger' : ''}" id="mode">${mode === 'enforce' ? 'Switch to monitor' : 'Switch to enforce'}</button></div>`)}</div>
+      <div style="margin-top:14px">${card('Devices' + (ctx.params.zone ? ` in zone ${esc(zoneName(zones, ctx.params.zone))}` : ''), table(devices, [{ t: 'Device', f: x => `<b>${esc(x.hostname || x.guest_name || x.mac)}</b>${x.excluded ? ` <span title="excluded from interception, inspection and policy by the entry ${esc(x.excluded_by)} under Policy › Exclusions">${pill('not inspected', 'warn')}</span>` : ''}<div class="muted small mono">${esc(x.mac)}${x.randomized ? ' · private MAC' : ''}</div>`, sort: 'hostname' }, { t: 'Address', f: x => (x.ip ? FS.hostLink(x.ip) : '') + (x.ip6 ? `<div class="muted small mono">${esc(x.ip6)}</div>` : ''), sort: 'ip' }, { t: 'Services', f: svcCell }, { t: 'Vendor', f: x => esc(x.vendor || '') + (x.vendor_class ? `<div class="muted small">${esc(x.vendor_class)}</div>` : ''), sort: 'vendor' }, { t: 'Class', f: x => esc(x.class || ''), sort: 'class' }, { t: 'Zone', f: x => `<select data-mac="${esc(x.mac)}">${zoneOpts(x.zone)}</select>${x.zone ? ` <a class="small" href="#zones?zone=${esc(x.zone)}">view</a>` : ''}${x.pinned ? ' ' + pill('pinned', '') : ''}`, sort: 'zone' }, { t: 'Why', f: x => `<span class="small muted">${esc(x.why || x.rule || '')}</span>` }, { t: 'Seen', f: x => ago(x.last_seen), sort: 'last_seen' }]), ctx.params.zone ? `<a href="#devices">all devices</a>` : zones.map(x => `<a href="#devices?zone=${esc(x.id)}">${esc(x.id)}</a>`).join(' · '))}</div>
+      <div class="help" style="margin-top:8px"><b>Devices</b> is the enrolment inventory: one row per physical device (by MAC) learned from DHCP, with a class and a zone, whether or not it is talking right now. <i>Services</i> is what the device did in the last day: the applications it used, and the ports other local hosts connected to on it (with how many came). A device marked <i>not inspected</i> is on the exclusion list under <a href="#policy">Policy › Exclusions and options</a>: its traffic is never intercepted, decrypted or policed, which is where to put anything that pins its certificates or cannot carry the FlowSight CA. A device with a private (randomised) address has no registered maker; the maker shown for one is read from its DHCP fingerprint or its name. <a href="#hosts">Hosts</a> is what traffic shows: one row per address seen in flows and DNS in the selected window, with its traffic. A device's address links to its host page. Addresses are shown by name when FlowSight knows one; with <a href="#modules/enrich">Settings › enrich</a> on, bare addresses gain their reverse-DNS name and country.</div>`;
       FS.$$('select[data-mac]', el).forEach(sel => sel.onchange = async () => { const r = await post('/api/enroll/assign', { mac: sel.dataset.mac, zone: sel.value }); FS.toast(r.error || (sel.value ? 'Assigned and pinned' : 'Unpinned: the rules place it'), !!r.error); if (!r.error) FS.render(); });
       FS.$('#reconcile', el).onclick = async () => { const r = await post('/api/enroll/reconcile', {}); FS.toast(r.error || 'Re-identified', !!r.error); FS.render(); };
       modeControls(mode, el);
@@ -640,6 +647,13 @@
             h += `<div class="hr"><span></span><b><button type="button" class="btn small shodan-go" data-ip="${esc(n.ips[0])}">Look up on Shodan</button> <span class="muted small">ports, names, fingerprints, vulnerabilities; free without a key</span></b></div>`;
           }
         }
+        if (d.fcc) {
+          const f = d.fcc;
+          h += grp('FCC broadband map') + r('Registered provider', `${esc(f.name)}${f.holding && f.holding !== f.name ? ' (' + esc(f.holding) + ')' : ''}`)
+             + (f.states ? r('Reports fixed service in', `${num(f.states)} state${f.states === 1 ? '' : 's'}${f.locations ? ', ' + num(f.locations) + ' locations' : ''}`) : '')
+             + (f.techs ? r('Technologies', esc(f.techs), 'soft') : '')
+             + r('Standing', 'a national filing matched by name; it says the operator is a US broadband provider, not where this router is', 'soft');
+        }
         if (d.abuse) {
           const a = d.abuse;
           h += grp('Reputation') + r('Abuse confidence', `${a.score}%${a.reports ? ` \u2014 ${num(a.reports)} report${a.reports === 1 ? '' : 's'}${a.reporters ? ` from ${num(a.reporters)} reporters` : ''}` : ' \u2014 no reports in 90 days'}${a.whitelisted ? ' (whitelisted)' : ''}${a.tor ? ' (Tor exit)' : ''}`, a.score >= 50 ? 'warn' : (a.score > 0 ? 'soft' : ''))
@@ -1029,7 +1043,7 @@
           ${row('Routing table &amp; registry', reg.on, `${num(reg.queued || 0)} addresses waiting for their operator`)}
           ${row('Submarine cables', cab.on, cab.on ? `${num(cab.loaded || 0)} cables loaded` : 'not loaded', cab.error)}
           ${row('Land routes', land.on, land.on ? `${num(land.loaded || 0)} routes loaded` : 'not loaded', land.error)}
-          ${row('FCC broadband map', fcc.on, fcc.on ? (fcc.as_of ? `release ${esc(fcc.as_of)}, ${num(fcc.files || 0)} files listed; checked ${FS.when(fcc.checked_at)}` : 'credentials entered, not yet checked') + ` <button type="button" class="btn small" id="fcc-check">Check FCC access</button>` : 'no account \u2014 enter the username and API token under Settings \u203a paths \u203a FCC broadband map', fcc.error)}
+          ${row('FCC broadband map', fcc.on, fcc.on ? (fcc.as_of ? `release ${esc(fcc.as_of)}, ${num(fcc.files || 0)} files listed${fcc.providers ? `; kept ${num(fcc.providers)} providers${fcc.state ? `, ${num(fcc.places || 0)} places in ${esc(fcc.state)}` : ''}` : ''}; checked ${FS.when(fcc.checked_at)}` : 'credentials entered, not yet checked') + ` <button type="button" class="btn small" id="fcc-check">Check FCC access</button> <button type="button" class="btn small" id="fcc-pull">Pull FCC data</button>` : 'no account \u2014 enter the username and API token under Settings \u203a paths \u203a FCC broadband map', fcc.error)}
           ${row('Shodan', shd.mode && shd.mode !== 'off', shd.mode === 'off' ? 'off' : `${shd.mode === 'all' ? 'every hop' : 'on click'}, ${shd.keyed ? 'with a key (full records)' : 'no key (InternetDB only)'}: ${num(shd.known || 0)} addresses on record`, shd.error)}
           ${row('Servers identifying themselves', idn.on, idn.on ? `${num(idn.known || 0)} anycast servers asked, ${num(idn.placed_this_session || 0)} placed this session, ${num(idn.queued || 0)} waiting; ${num(idn.root_sites || 0)} root-server sites on file` : 'off')}
           ${row('AI lookup', ai.on, ai.on ? `${esc(ai.provider)} / ${esc(ai.model)}: ${num(ai.known || 0)} hops answered, ${num(ai.queued || 0)} waiting, ${num(ai.per_hour || 0)} an hour` : 'off \u2014 choose a provider under Settings \u203a paths \u203a AI lookup', ai.error)}
@@ -1215,6 +1229,13 @@
         } catch (e) { b.textContent = 'Shodan did not answer'; }
       });
 
+      const fccPull = FS.$('#fcc-pull', el);
+      if (fccPull) fccPull.onclick = async () => {
+        fccPull.disabled = true; fccPull.textContent = 'Pulling\u2026 (a minute or two)';
+        const r = await FS.post('/api/paths/fcc/pull', {});
+        FS.toast(r.ok ? `FCC: ${num(r.providers)} providers, ${num(r.places)} places in ${r.state || 'your state'}` : (r.error || (r.errors || []).join('; ') || 'FCC pull failed'), !r.ok);
+        FS.render();
+      };
       const fccBtn = FS.$('#fcc-check', el);
       if (fccBtn) fccBtn.onclick = async () => {
         fccBtn.disabled = true; fccBtn.textContent = 'Checking\u2026';

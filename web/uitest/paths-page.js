@@ -61,7 +61,7 @@ var GRAPH = { rejected: [ { id:'h30', index:30, ips:['51.10.6.166'], names:['be1
       facilities_scoped:true } },
   { id:'h4', index:4, ips:['1.1.1.1'], located:true, lat:-33.86, lon:151.20, country:'AU', city:'Sydney', rtt_ms:18.9,
     anycast:true, anycast_sites:120, provider:'anycast census, AS13335 anycast',
-    detail:{ asn:'13335', abuse:{ score:0, reports:0, isp:'Cloudflare, Inc.', usage_type:'Content Delivery Network', domain:'cloudflare.com', country:'AU', source:'AbuseIPDB', at:1790000000 }, shodan:{ ip:'1.1.1.1', ports:[53,443], hostnames:['one.one.one.one'], keyed:false, at:1790000000 } },
+    detail:{ asn:'13335', abuse:{ score:0, reports:0, isp:'Cloudflare, Inc.', usage_type:'Content Delivery Network', domain:'cloudflare.com', country:'AU', source:'AbuseIPDB', at:1790000000 }, shodan:{ ip:'1.1.1.1', ports:[53,443], hostnames:['one.one.one.one'], keyed:false, at:1790000000 }, fcc:{id:'130001', name:'AT&T Inc.', holding:'AT&T', states:21, locations:12345678, techs:'Fiber, Cable, Fixed Wireless'} },
     endpoint:true, reaches:['1.1.1.1'], bytes_in: 734003200, bytes_out: 12582912,
     impossible:true, distance_km:15320, floor_ms:153.2, via:'Southern Cross NEXT', why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' },
   // Clears the floor by 4%: physics allows it, a real route does not.
@@ -97,7 +97,7 @@ var CAB = { cables: [
   attribution:"Submarine cable routes from TeleGeography's public cable map." };
 var STATUS = { active:true, last_run:1790200000, destinations:2, hops:11, error:'',
   sources:{ shodan:{ mode:'click', keyed:false, known:4 }, identify:{ on:true, known:13, placed_this_session:11, queued:0, root_sites:1900 }, assistant:{ on:true, provider:'anthropic', model:'claude-haiku-4-5', known:9, queued:2, per_hour:20 }, geofeeds:{ on:true, urls:3, fetched:2, rows:512 }, reputation:{ on:true, known:42, asked_this_session:7 }, providers:{ on:true, prefixes:12345, feeds:{ aws:{name:'AWS', prefixes:8000}, azure:{name:'Microsoft Azure', prefixes:0, error:'no link found'} } }, osm_telecom:{ on:true, ways:1234, regions_loaded:3, regions_total:16, next_region:'Europe, west', weight:0.5 }, corrections:{ on:true, prefixes:3, set_aside:1 }, router_names:{on:true,codes:210}, ipmap:{on:true,answered:21,queued:300,per_minute:20,backing_off_until:0},
-            registry:{on:true,queued:12}, cables:{on:true,loaded:709,error:''}, land_routes:{on:true,loaded:133,error:''} } };
+            registry:{on:true,queued:12}, cables:{on:true,loaded:709,error:''}, land_routes:{on:true,loaded:133,error:''}, fcc:{on:true, as_of:'2025-12-31', files:10608, providers:3758, state:'Kansas', places:600, pulled_at: 1758750000} } };
 
 var ROUTE = { destination:'1.1.1.1',
   inside:{ addresses:['192.168.1.119','2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6'], name:'MacBookPro', vendor:'Apple' },
@@ -111,7 +111,8 @@ var ROUTE = { destination:'1.1.1.1',
       located:true, city:'Topeka', country:'US', rtt_ms:3.4 },
     { id:'s3', index:3, ips:[], silent:true, located:false },
     { id:'h4', index:9, ips:['1.1.1.1'], located:true, city:'Sydney', country:'AU', rtt_ms:18.9, // hop 9 of this route; the shared node says 4
-      impossible:true, why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' } ] };
+      impossible:true, why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms',
+      detail:{fcc:{id:'130001', name:'AT&T Inc.', holding:'AT&T', states:21, locations:12345678, techs:'Fiber, Cable, Fixed Wireless'}} } ] };
 
 FS.get = function(p){
   if (p.indexOf('/api/paths/path') === 0) return Promise.resolve(ROUTE);
@@ -146,6 +147,7 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('Abuse confidence') < 0 || h.indexOf('no reports in 90 days') < 0 || h.indexOf('Content Delivery Network') < 0) throw new Error('a hop with a reputation record should show it');
   if (h.indexOf('51.10.6.166') < 0 || h.indexOf('set aside') < 0 || h.indexOf('Said by') < 0) throw new Error('a rejected placement should be in the ruled-out table with what said it');
   if (h.indexOf('RIPE IPmap') < 0 || h.indexOf('21 positions known') < 0) throw new Error('IPmap progress should be shown');
+  if (h.indexOf('FCC broadband map') < 0) throw new Error('FCC broadband map should be on the sources card');
   if (h.indexOf('Shodan') < 0 || h.indexOf('on click, no key (InternetDB only): 4 addresses on record') < 0) throw new Error('shodan should be on the sources card');
   if (h.indexOf('Look up on Shodan') < 0) throw new Error('a hop without a record should offer the lookup');
   if (h.indexOf('Open ports') < 0 || h.indexOf('53, 443') < 0) throw new Error('a hop with a record should show it');

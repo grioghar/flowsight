@@ -41,46 +41,48 @@ type Module struct {
 	rdns     lookup
 	identity core.Identity
 
-	mu            sync.Mutex
-	lastRun       time.Time
-	traced        int
-	lastErr       string
-	cables        []Cable
-	nets          []cableNet // the same cables stitched back into connected systems
-	landNets      []cableNet // mapped terrestrial routes, where anyone publishes them
-	landRoutes    int
-	landErr       string
-	osmNets       []cableNet // OpenStreetMap telecom lines, at half weight
-	osm           osmState
-	osmUntil      time.Time      // do not ask Overpass again before this
-	hopBoxes      map[string]int // placed hops per OSM region, from the last graph
-	providers     *providerIndex // the clouds' published ranges
-	provider      providerState
-	abuseErr      string
-	shodanAsked   int
-	fcc           fccState
-	censusErr     string
-	shodanErr     string
-	assistQueue   []assistCandidate
-	assistAsked   []time.Time
-	assistTotal   int
-	assistErr     string
-	nsidQueue     []assistCandidate
-	nsidAsked     int
-	nsidPlaced    int
-	rootSites     []rootSite
-	rootByID      map[string]rootSite
-	abuseAsked    int
-	cableErr      string
-	pending       map[string]bool // addresses still needing the slow registry lookup
-	geoPending    map[string]bool // addresses still to be asked about at IPmap
-	ipmapUntil    time.Time       // do not ask IPmap again before this
-	ipmapAnswered int             // answers kept this session, for the status page
-	graphCache    map[string]cachedGraph
-	routes        routeMemo     // cable and land-route searches, answered once per pair of places
-	cands         candidateMemo // cables passing near both ends of a leg, likewise
-	graphBuild    sync.Mutex    // one graph build at a time; the rest wait and reuse it
-	fixes         fixes         // what the database gets wrong, learned from names and measurements
+	mu             sync.Mutex
+	lastRun        time.Time
+	traced         int
+	lastErr        string
+	cables         []Cable
+	nets           []cableNet // the same cables stitched back into connected systems
+	landNets       []cableNet // mapped terrestrial routes, where anyone publishes them
+	landRoutes     int
+	landErr        string
+	osmNets        []cableNet // OpenStreetMap telecom lines, at half weight
+	osm            osmState
+	osmUntil       time.Time      // do not ask Overpass again before this
+	hopBoxes       map[string]int // placed hops per OSM region, from the last graph
+	providers      *providerIndex // the clouds' published ranges
+	provider       providerState
+	abuseErr       string
+	shodanAsked    int
+	fcc            fccState
+	fccSum         *fccSummary
+	fccPullRunning bool // prevent concurrent fccPull runs
+	censusErr      string
+	shodanErr      string
+	assistQueue    []assistCandidate
+	assistAsked    []time.Time
+	assistTotal    int
+	assistErr      string
+	nsidQueue      []assistCandidate
+	nsidAsked      int
+	nsidPlaced     int
+	rootSites      []rootSite
+	rootByID       map[string]rootSite
+	abuseAsked     int
+	cableErr       string
+	pending        map[string]bool // addresses still needing the slow registry lookup
+	geoPending     map[string]bool // addresses still to be asked about at IPmap
+	ipmapUntil     time.Time       // do not ask IPmap again before this
+	ipmapAnswered  int             // answers kept this session, for the status page
+	graphCache     map[string]cachedGraph
+	routes         routeMemo     // cable and land-route searches, answered once per pair of places
+	cands          candidateMemo // cables passing near both ends of a leg, likewise
+	graphBuild     sync.Mutex    // one graph build at a time; the rest wait and reuse it
+	fixes          fixes         // what the database gets wrong, learned from names and measurements
 }
 
 // lookup is the part of the enrich module this needs.
@@ -249,11 +251,17 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("census", 24*time.Hour, m.refreshCensus, core.Delayed())
 	ctx.Every("shodan", 5*time.Minute, m.shodanJob, core.Delayed())
 	ctx.Every("fcc", 24*time.Hour, m.fccJob, core.Delayed())
+	ctx.Every("fccpull", 24*time.Hour, m.fccPull, core.Delayed())
+	_ = m.loadFCCSummary()
 	_ = m.loadRootSites()
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/fcc/files", m.apiFCCFiles, core.Needs("paths.map"),
 		core.Doc("The FCC release's file catalogue from the last check"), core.Params("filter", "substring", "limit", "rows"))
+	ctx.Route("GET", "/api/paths/fcc/summary", m.apiFCCSummary, core.Needs("paths.map"),
+		core.Doc("What was kept from the FCC release: national fixed-broadband providers and the origin state's census places"), core.Params("full", "1 for every provider"))
+	ctx.Route("POST", "/api/paths/fcc/pull", m.apiFCCPull, core.Write(), core.Needs("paths.map"),
+		core.Doc("Run the monthly FCC pull now"))
 	ctx.Route("POST", "/api/paths/fcc/check", m.apiFCCCheck, core.Write(), core.Needs("paths.map"),
 		core.Doc("Test the FCC broadband map credentials and record the current release"))
 	ctx.Route("GET", "/api/paths/shodan", m.apiShodan, core.Needs("paths.map"),

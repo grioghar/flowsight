@@ -80,6 +80,11 @@ Nothing leaves the gateway except:
   from DB-IP or the URL you configure, monthly; no data sent), and reverse
   DNS queries through your own resolver when *Reverse DNS names* is on;
   both are off by default;
+- FCC National Broadband Map checks, when credentials are configured: HTTPS
+  to broadbandmap.fcc.gov with the username and API token as headers, monthly
+  to retrieve the current release catalogue and the national and state-level
+  provider summaries (only summaries; per-location files are skipped; total
+  kept is a few hundred kilobytes);
 - Pi-hole query-log pulls, when servers are configured: HTTPS to the
   Pi-holes you list with the app password you give it (read only);
 - telemetry export (Business) to the collector you configure;

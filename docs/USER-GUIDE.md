@@ -507,6 +507,14 @@ free without a key; with a key (*Settings › paths › Shodan*) the full record
 adds organisation, ISP, operating system and last seen. The mode setting can
 fetch it for every hop instead.
 
+**FCC broadband map.** The National Broadband Map publishes where every provider
+reports serving broadband in the United States. With an account (*Settings ›
+paths › FCC broadband map*), FlowSight checks in monthly for the current
+release and keeps the national provider summaries and the census-place coverage
+for the origin's state. The *Data sources* card shows the release date and what
+was kept; *Pull FCC data* runs the pull now. A hop that matches a provider's
+name is shown on its card with the states served and location count.
+
 **Servers that say where they are.** Root servers and most large resolvers
 answer `id.server` with the name of the instance you reached; FlowSight asks
 each anycast hop once a week and, using the root operators' published site
@@ -823,7 +831,24 @@ in a compact form.
 Every enrolled device with its class (phone, laptop, TV, camera, console,
 printer, IoT), why it was classified so, its address (by name when known;
 with *Settings › enrich* on, bare addresses gain a reverse-DNS name and
-country), vendor, zone and last activity. The classification rules decide
+country), vendor, zone and last activity. The address and name follow the
+device's newest sighting: when a lease moves, the row moves with it, and a
+name nothing live vouches for is dropped rather than left on the wrong
+device. A device with a private (randomised) hardware address has no
+registered maker; FlowSight reads the maker from its DHCP fingerprint,
+vendor class or name and says so (*Apple (private address)*).
+
+**Services** is what the device did in the last day: the applications it
+used, and the ports other local hosts connected to on it with how many came,
+so a row reads "uses Netflix, HTTPS · offers ssh (3), plex (5)". Every
+address the device holds counts, IPv4 and IPv6, current and remembered.
+
+A device marked **not inspected** is on the exclusion list under *Policy ›
+Exclusions and options*, and the marker names the entry. Its traffic is
+never intercepted, decrypted or policed. With inspection on for everything,
+that list is where anything that pins its certificates or cannot carry the
+FlowSight CA belongs; the Devices count at the top says how many are
+excluded. The classification rules decide
 each device's zone, and in monitor mode they keep deciding it: edit a rule
 and every device it covers moves on the next reconcile (every minute by
 default). Choosing a zone from a device's row pins it there, marked

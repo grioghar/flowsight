@@ -63,6 +63,9 @@ type Detail struct {
 	// From Shodan, when looked up.
 	Shodan *ShodanRecord `json:"shodan,omitempty"`
 
+	// From the FCC broadband map, when the operator is a US broadband provider.
+	FCC *fccProvider `json:"fcc,omitempty"`
+
 	// From the routing table.
 	ASN    string `json:"asn,omitempty"`
 	ASName string `json:"as_name,omitempty"`

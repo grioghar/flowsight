@@ -45,13 +45,18 @@ type txnData struct {
 
 // Module is the enroll service.
 type Module struct {
-	ctx           *core.Context
-	mu            sync.RWMutex
-	devices       map[string]*Device // mac -> device
-	zones         *ZonesDoc          // zones and captive settings
-	rules         []*Rule            // classification rules
-	identity      core.Identity      // name/MAC resolution
-	firewall      Firewall           // pf anchor management
+	ctx      *core.Context
+	mu       sync.RWMutex
+	devices  map[string]*Device // mac -> device
+	zones    *ZonesDoc          // zones and captive settings
+	rules    []*Rule            // classification rules
+	identity core.Identity      // name/MAC resolution
+
+	svcMu         sync.Mutex
+	svc           map[string]*DeviceServices
+	svcAt         time.Time
+	svcHours      int
+	firewall      Firewall // pf anchor management
 	lastErr       string
 	lastApplied   time.Time
 	pendingAssign map[string]string     // mac -> zone for pending changes
@@ -94,6 +99,12 @@ type Device struct {
 	Iface       string `json:"iface,omitempty"`
 	FirstSeen   int64  `json:"first_seen"`
 	LastSeen    int64  `json:"last_seen"`
+
+	// Set on the way out of the API, never stored: whether the policy's
+	// exclusion list keeps this device out of interception and inspection,
+	// and which entry does it.
+	Excluded   bool   `json:"excluded,omitempty"`
+	ExcludedBy string `json:"excluded_by,omitempty"`
 }
 
 // ZonesDoc is zones.json.
@@ -205,6 +216,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// API routes
 	ctx.Route("GET", "/api/enroll", m.apiSummary, core.Doc("Enrollment status, zones and device counts"))
+	ctx.Route("GET", "/api/enroll/services", m.apiServices, core.Doc("What each device uses (applications) and offers (ports other local hosts connect to), by MAC"),
+		core.Params("hours", "window, 1-168, default 24"))
 	ctx.Route("GET", "/api/enroll/devices", m.apiDevices, core.Doc("All devices with filtering"),
 		core.Params("zone", "filter by zone", "q", "search query"))
 	ctx.Route("GET", "/api/enroll/zones", m.apiGetZones, core.Doc("Current zones configuration"))
@@ -495,13 +508,21 @@ func (m *Module) reconcile() error {
 			m.devices[mac] = d
 		}
 
-		// Update device info from signals
-		if sig.IP != "" && d.IP == "" {
+		// The newest sighting is the truth about where a device is and what
+		// it calls itself: leases move and names get corrected, and a record
+		// that kept its first address for ever showed the vacuum at the
+		// address the phone has now.
+		if sig.IP != "" {
 			d.IP = sig.IP
 		}
-		if sig.Hostname != "" && d.Hostname == "" {
-			d.Hostname = sig.Hostname
+		if sig.IP6 != "" {
+			d.IP6 = sig.IP6
 		}
+		// No source naming the device now means the name it had is not
+		// known to be its: a lease that named it would still name it. An
+		// unnamed row beats one wearing another device's name, and the
+		// name comes back with the device's next lease.
+		d.Hostname = sig.Hostname
 		if sig.Vendor != "" && d.Vendor == "" {
 			d.Vendor = sig.Vendor
 		}
@@ -532,6 +553,21 @@ func (m *Module) reconcile() error {
 		}
 
 		_ = m.saveDevice(d)
+	}
+
+	// An address seen this round behind one device is not also the address
+	// of another. Whoever else still lists it lost it.
+	holder := map[string]string{}
+	for mac, sig := range signals {
+		if sig.IP != "" {
+			holder[sig.IP] = mac
+		}
+	}
+	for mac, d := range m.devices {
+		if d.IP != "" && holder[d.IP] != "" && holder[d.IP] != mac {
+			d.IP = ""
+			_ = m.saveDevice(d)
+		}
 	}
 
 	// Devices not heard from this round still follow the rules, so a rule
@@ -959,7 +995,7 @@ func (m *Module) emitDeviceFromTransaction(txn *txnData) {
 		m.devices[txn.mac] = d
 	}
 
-	if txn.hostname != "" && d.Hostname == "" {
+	if txn.hostname != "" {
 		d.Hostname = txn.hostname
 	}
 	if txn.vendorClass != "" && d.VendorClass == "" {
@@ -968,8 +1004,14 @@ func (m *Module) emitDeviceFromTransaction(txn *txnData) {
 	if txn.fingerprint != "" && d.Fingerprint == "" {
 		d.Fingerprint = txn.fingerprint
 	}
-	if txn.ip != "" && d.IP == "" {
+	if txn.ip != "" {
 		d.IP = txn.ip
+		for omac, o := range m.devices {
+			if omac != txn.mac && o.IP == txn.ip {
+				o.IP = ""
+				_ = m.saveDevice(o)
+			}
+		}
 	}
 
 	d.LastSeen = time.Now().Unix()
@@ -1028,7 +1070,18 @@ func (m *Module) apiDevices(r *core.Req) (any, error) {
 	if devices == nil {
 		devices = []*Device{}
 	}
-	return map[string]any{"devices": devices}, nil
+	out := make([]*Device, 0, len(devices))
+	excl := m.exclusions()
+	for _, d := range devices {
+		c := *d
+		if c.Vendor == "" {
+			c.Vendor = guessVendor(&c)
+		}
+		c.ExcludedBy = excl.covers(&c)
+		c.Excluded = c.ExcludedBy != ""
+		out = append(out, &c)
+	}
+	return map[string]any{"devices": out, "excluded": excl.entries()}, nil
 }
 
 func (m *Module) matchesQuery(d *Device, q string) bool {

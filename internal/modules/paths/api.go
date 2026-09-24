@@ -35,7 +35,18 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	gf, ai, idn, sh := m.geofeedStatus(), m.assistStatus(), m.identifyStatus(), m.shodanStatus()
 	m.mu.Lock()
 	fccSt := m.fcc
+	fccSum := m.fccSum
 	m.mu.Unlock()
+	fccInfo := map[string]any{"on": fccSt.On, "as_of": fccSt.AsOf, "files": fccSt.Files, "checked_at": fccSt.CheckedAt, "error": fccSt.Error}
+	if fccSum != nil {
+		fccInfo["providers"] = len(fccSum.Providers)
+		fccInfo["state"] = fccSum.StateName
+		fccInfo["places"] = len(fccSum.Places)
+		fccInfo["pulled_at"] = fccSum.PulledAt
+		if len(fccSum.Errors) > 0 {
+			fccInfo["error"] = strings.Join(fccSum.Errors, "; ")
+		}
+	}
 	m.mu.Lock()
 	sources := map[string]any{
 		"cables":       map[string]any{"on": core.Bool(m.ctx.Settings(), "cables", false), "loaded": len(m.cables), "error": m.cableErr},
@@ -46,7 +57,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		"assistant":    ai,
 		"identify":     idn,
 		"shodan":       sh,
-		"fcc":          fccSt,
+		"fcc":          fccInfo,
 		"reputation":   map[string]any{"on": m.abuseKey() != "", "asked_this_session": m.abuseAsked, "known": m.ctx.Store.KVCount(abuseKV), "error": m.abuseErr},
 		"ipmap":        map[string]any{"on": m.ipmapOn(), "answered": m.ctx.Store.KVCount(ipmapKV), "this_session": m.ipmapAnswered, "queued": len(m.geoPending), "per_minute": m.ipmapPerMinute(), "backing_off_until": epoch(m.ipmapUntil)},
 		"registry":     map[string]any{"on": m.registryOK(), "queued": len(m.pending)},
@@ -606,6 +617,7 @@ func (m *Module) describe(nodes []Node, h Home) {
 			if n.Detail == nil {
 				c := d
 				c.Abuse = m.reputationFor(ip)
+				c.FCC = m.fccProviderFor(d.Org)
 				n.Detail = &c
 			}
 			if d.Name != "" && !contains(n.Names, d.Name) {

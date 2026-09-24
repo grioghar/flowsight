@@ -12,6 +12,44 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242319
+
+**Devices tells the truth about names and addresses.** Three faults fed the
+Devices page wrong rows. The enrolment record kept the first address and
+name it ever saw for a device, so a vacuum stayed at the address a phone
+had taken over; a record now follows its newest sighting, and an address
+seen behind one device is cleared from every other. Local addresses were
+named from resolver answers, so a stale record in the local DNS named an
+Amazon speaker after a laptop; resolver answers now name only far ends, and
+rows carrying such a name with nothing live to back it are cleared once.
+The address memory added in 0.9.8r202609241733 let an address that changed
+hands carry the new holder's name to the old holder's hardware address; the
+live tables now win, and a name attaches only to the hardware address the
+live tables put behind the address.
+
+**Devices shows what each device does and whether it is inspected.** A
+*Services* column lists the applications a device used in the last day and
+the ports other local hosts connected to on it, with how many came (`GET
+/api/enroll/services`). A device on the policy's exclusion list is marked
+*not inspected*, naming the entry that excludes it (`excluded` and
+`excluded_by` on `/api/enroll/devices`), and the Devices count says how many
+are excluded. The IPv6 address is shown under the IPv4 one. A device with a
+private (randomised) hardware address, which has no registered maker, is
+named by its DHCP fingerprint, vendor class or hostname: *Apple (private
+address)* and the like.
+
+## 0.9.8r202609242309
+
+**FCC broadband-map data is kept and queryable.** The national provider
+summaries (fixed and mobile broadband) and the origin state's census-place
+summaries are now pulled and kept in compact JSON. The catalog parsing is
+robust to column-name variations across releases and uses `json.Number` to
+handle string record counts. `GET /api/paths/fcc/summary` shows what was
+kept; `POST /api/paths/fcc/pull` runs the pull now. The parser falls back to
+substring matching for numeric columns when exact names vary. The pull job
+never runs concurrently with itself and skips silently when credentials are
+absent.
+
 ## 0.9.8r202609242257
 
 **The FCC release's catalogue is kept and browsable.** After a successful
