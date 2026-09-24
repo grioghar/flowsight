@@ -78,6 +78,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.loadOverrides()
 	ctx.Publish("identity", m)
 	ctx.Publish("member_resolver", m)
+	m.loadSeen()
 	every := time.Duration(core.Int(ctx.Settings(), "refresh_seconds", 30)) * time.Second
 	ctx.Every("refresh", every, m.refresh)
 	ctx.Route("GET", "/api/identity/hosts", m.apiHosts, core.Doc("Known hosts with names, MACs, vendors and last activity"),
@@ -195,6 +196,72 @@ func (m *Module) remember(mac, ip string) {
 
 // rememberedIPs returns every device's addresses, dropping those not seen
 // within the memory window.
+// The address memory is written down, not just held.
+//
+// A device's addresses are learned from the neighbour table, which is a cache
+// of who is reachable now, not a record of who has been here. IPv6 privacy
+// addresses rotate, so an address seen an hour ago has usually aged out of it
+// entirely. Keeping the association only in memory meant every restart threw
+// away everything not currently reachable, and on this network that left 97
+// of 237 IPv6 hosts with no device behind them at all, despite a setting
+// promising to remember them for a day.
+const seenKV = "identity.seen"
+
+func (m *Module) loadSeen() {
+	var stored map[string]map[string]int64
+	if !m.ctx.Store.KVGet(seenKV, &stored) || stored == nil {
+		return
+	}
+	cut := m.memoryCutoff()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.seenAt == nil {
+		m.seenAt = map[string]map[string]int64{}
+	}
+	for mac, ips := range stored {
+		for ip, at := range ips {
+			if at < cut {
+				continue // older than the operator asked us to remember
+			}
+			if m.seenAt[mac] == nil {
+				m.seenAt[mac] = map[string]int64{}
+			}
+			if at > m.seenAt[mac][ip] {
+				m.seenAt[mac][ip] = at
+			}
+		}
+	}
+}
+
+// saveSeen writes the memory back, pruned to the configured window so the
+// record cannot grow without bound.
+func (m *Module) saveSeen() {
+	cut := m.memoryCutoff()
+	m.mu.Lock()
+	out := make(map[string]map[string]int64, len(m.seenAt))
+	for mac, ips := range m.seenAt {
+		keep := map[string]int64{}
+		for ip, at := range ips {
+			if at >= cut {
+				keep[ip] = at
+			}
+		}
+		if len(keep) > 0 {
+			out[mac] = keep
+		}
+	}
+	m.mu.Unlock()
+	_ = m.ctx.Store.KVSet(seenKV, out)
+}
+
+func (m *Module) memoryCutoff() int64 {
+	hours := core.Int(m.ctx.Settings(), "address_memory_hours", 24)
+	if hours < 1 {
+		hours = 1
+	}
+	return time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
+}
+
 func (m *Module) rememberedIPs() map[string][]string {
 	hours := core.Int(m.ctx.Settings(), "address_memory_hours", 24)
 	if hours < 1 {
@@ -425,6 +492,9 @@ func (m *Module) refresh() error {
 		}
 		ups = append(ups, core.HostUpdate{IP: ip, Name: n, Source: "identity", IsLocal: ptr(true)})
 	}
+	// Write the address memory down every cycle, so a restart does not throw
+	// away every association not currently in the neighbour cache.
+	m.saveSeen()
 	return m.ctx.Store.UpsertHosts(ups)
 }
 

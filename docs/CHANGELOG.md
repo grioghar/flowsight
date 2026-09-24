@@ -23,6 +23,23 @@ again. Saved rules are now read exactly as the file is at startup. Nothing
 to do: if you saved rules and then restarted to make them work, they were
 already correct on disk.
 
+## 0.9.8r202609240731
+
+**Which addresses belong to which device now survives a restart.** A device's
+addresses are learned from the neighbour table, which is a cache of who is
+reachable right now rather than a record of who has been here, and IPv6
+privacy addresses rotate out of it within hours. That association was only
+ever held in memory, so every restart discarded everything not currently
+reachable, despite a setting promising to remember it for a day.
+
+On this gateway that left 97 of 237 IPv6 hosts with no device behind them.
+The effect showed up wherever a device means more than one address: the path
+map's device filter listed the same laptop once per address, and an exclusion
+written for one address family could not find the other.
+
+The memory is now written down each cycle and pruned to the window the
+setting asks for, so it cannot grow without bound.
+
 ## 0.9.8r202609240729
 
 **The path map filters by device, and a device means the whole device.** The
