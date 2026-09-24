@@ -402,3 +402,15 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
   text-align: center; border: 1px solid var(--line); border-radius: 3px; font-size: 11px; }
 .maphelp[open] > summary::before { content: "\2212"; }
 .maphelp > summary:hover { color: var(--ink); }
+
+/* You, on the map. A route's first hops are your own machine and gateway,
+   both on private addresses no database can place, so without this the route
+   appeared to start at whichever carrier router answered first -- unattached,
+   a couple of hundred miles from where it really began. */
+.pathmap .home { fill: var(--ink); stroke: var(--panel); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.pathmap .homering { fill: none; stroke: var(--ink); stroke-width: 1.1; opacity: .55; vector-effect: non-scaling-stroke; }
+/* The stretch from you to the first hop anyone can place: real, and of
+   unknown shape, so it is drawn as the guess it is. */
+.pathmap .leg.local { stroke: var(--ink); stroke-width: 1.1; stroke-dasharray: 3 3; opacity: .5; }
+.legend .lg .home { fill: var(--ink); stroke: none; }
+.legend .lg .homering { fill: none; stroke: var(--ink); stroke-width: 1.2; opacity: .6; }

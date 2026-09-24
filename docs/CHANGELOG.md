@@ -12,6 +12,19 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241631
+
+**You are on the map.** A route's first hops are your own machine and your own
+gateway, and both answer on private addresses that no database can place --
+so the route appeared to begin at whichever carrier router replied first, a
+couple of hundred miles away, unattached to anything. The origin was never
+unknown: it is the point every other placement is judged against. It is drawn
+now, and the chosen route reaches it, with the first stretch marked as the
+guess it is and saying how many unplaceable hops it stands in for.
+
+Framing a whole route includes it too, which it did not before: a route drawn
+without its own beginning is not the route.
+
 ## 0.9.8r202609241629
 
 **The map was showing the world twice.** Giving the map the window meant its

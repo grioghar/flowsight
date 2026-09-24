@@ -293,6 +293,13 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
       throw new Error('the route should sit in the map column, before the detail panel');
     // It begins inside, not at the first router that answered.
     if (t.indexOf('MacBookPro') < 0) throw new Error('the trail must start with the device on this network');
+    // And the map has to show where that is. The first hops are private
+    // addresses nothing can place, so without the origin the route appears to
+    // start at whichever carrier router answered first.
+    if (t.indexOf('class="home"') < 0) throw new Error('the origin should be drawn on the map');
+    if (t.indexOf('You are here') < 0) throw new Error('the origin marker should say what it is');
+    if (t.indexOf('class="leg local"') < 0) throw new Error('the route should reach the origin');
+    if (t.indexOf('data-crumb="__origin"') < 0) throw new Error('the inside step should travel to the origin');
     if (t.indexOf('192.168.1.119') < 0) throw new Error('the internal address should be the first step');
     var insideAt = t.indexOf('MacBookPro'), gwAt = t.indexOf('192.168.1.254');
     if (!(insideAt >= 0 && gwAt > insideAt)) throw new Error('the internal address must come before the gateway');

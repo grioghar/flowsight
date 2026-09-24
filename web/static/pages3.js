@@ -360,6 +360,23 @@
       const inRoute = {}; routeHops.forEach(n => { inRoute[n.id] = true; });
 
       const xy = (n) => FS.project(n.lat, n.lon, MAPW, MAPH);
+
+      // Where you are, drawn.
+      //
+      // A route's first hops are your own machine and your own gateway, and
+      // both have private addresses that no database can place. Left out, the
+      // route appeared to begin at whichever carrier router first answered --
+      // a couple of hundred miles away, with nothing joining it to you. The
+      // origin is known: it is the point every other placement is judged
+      // against. So it is on the map, and the route reaches it.
+      const origin = home.ok ? FS.project(home.lat, home.lon, MAPW, MAPH) : null;
+      let originArt = '';
+      if (origin) {
+        const where = home.detected ? [home.detected.city, home.detected.region, home.detected.country].filter(Boolean).join(', ') : '';
+        originArt = `<circle class="homering" data-r="9" cx="${origin[0].toFixed(1)}" cy="${origin[1].toFixed(1)}" r="9"/>`
+          + `<circle class="home" data-r="3.5" cx="${origin[0].toFixed(1)}" cy="${origin[1].toFixed(1)}" r="3.5">`
+          + `<title>You are here\n${home.lat.toFixed(4)}, ${home.lon.toFixed(4)}${where ? '\n' + esc(where) : ''}\nfrom the ${esc(home.source)}</title></circle>`;
+      }
       // Cables first, so they sit behind the routes. A run is broken wherever
       // it wraps the antimeridian rather than drawn straight across the map.
       let cables = '';
@@ -404,6 +421,17 @@
       };
 
       let lines = '', dots = '';
+      if (origin && picked) {
+        const first = routeHops.find(n => n.located);
+        if (first) {
+          const [fx, fy] = xy(first);
+          const skipped = routeHops.filter(n => n.index < first.index).length;
+          lines += `<path class="leg local" d="M${origin[0].toFixed(1)},${origin[1].toFixed(1)} L${near(fx, origin[0]).toFixed(1)},${fy.toFixed(1)}"><title>`
+            + `you \u2192 ${esc(first.ips.join(', '))}`
+            + (skipped ? `\nthrough ${skipped} hop${skipped === 1 ? '' : 's'} on your own network and your carrier's, which have no position` : '')
+            + `</title></path>`;
+        }
+      }
       legs.forEach(l => {
         const a = byId[l.from], b = byId[l.to];
         if (!a || !b || !a.located || !b.located) return;
@@ -522,7 +550,7 @@
         const items = [];
         const ins = route.inside;
         if (ins) {
-          items.push(one({ kind: 'inside', top: 'inside', main: `<b>${esc(ins.name || ins.addresses[0])}</b>`,
+          items.push(one({ kind: 'inside', id: '__origin', top: 'inside', main: `<b>${esc(ins.name || ins.addresses[0])}</b>`,
             sub: ins.addresses.slice(0, 2).join(', ') + (ins.addresses.length > 2 ? ` +${ins.addresses.length - 2}` : '') }));
         }
         routeHops.forEach((n, i) => {
@@ -635,7 +663,7 @@
                 never there. Routes and markers are drawn for real too: a <use>
                 copy cannot be clicked, and a reader who pans past the edge
                 would find a map whose hops no longer answer. */''}
-          ${[-MAPW, 0, MAPW].map(dx => `<g transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${dots}</g>`).join('')}
+          ${[-MAPW, 0, MAPW].map(dx => `<g transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${dots}${originArt}</g>`).join('')}
         </svg>
         ${(() => {
           // Nothing on this map is self-evident: a thick grey line and a thin
@@ -656,6 +684,7 @@
             ${it(sw('leg shared', 'stroke:var(--muted)'), 'a leg several destinations share')}
             ${it(sw('leg', 'stroke:' + FS.palette[0]), 'a leg used by one destination')}
             ${(cab.cables || []).length ? it(sw('cable'), 'submarine cable') : ''}
+            ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="homering" cx="6" cy="6" r="4.5"/><circle class="home" cx="6" cy="6" r="2"/></svg>`, 'you')}
             ${it(dot(FS.palette[2]), 'a hop, sized by how many addresses answered')}
             ${it(dot(FS.palette[2], 'rich'), 'operator known')}
             ${it(dot('', 'ruledout'), 'the latency rules this placement out')}
@@ -871,6 +900,12 @@
           // zoom the reader chose.
           if (li.classList.contains('endpoint') && laid.length > 1) {
             let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+            // A route that does not include its own start is not the route.
+            if (origin && laid.length) {
+              const ox = near(origin[0], laid[0].x);
+              x0 = Math.min(x0, ox); x1 = Math.max(x1, ox);
+              y0 = Math.min(y0, origin[1]); y1 = Math.max(y1, origin[1]);
+            }
             laid.forEach(p => {
               x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
               y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
@@ -880,6 +915,10 @@
             const mid = pz.nearest((x0 + x1) / 2);
             const shift = mid - (x0 + x1) / 2;
             pz.fit(x0 + shift, y0, x1 + shift, y1);
+            return;
+          }
+          if (id === '__origin') {
+            if (origin) pz.moveTo(pz.nearest(origin[0]), origin[1]);
             return;
           }
           const p = laidById[id];

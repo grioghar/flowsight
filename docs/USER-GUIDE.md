@@ -269,6 +269,11 @@ Clicking a step travels to it: the map slides to that hop at the zoom you are
 already using, so you can see which way the route went. Clicking the last step
 frames the whole route instead, zoomed to fit it rather than to the world.
 
+You are drawn on the map, and the chosen route reaches you. Your machine and
+your gateway answer on private addresses nothing can place, so the first
+stretch -- from you to the first hop anyone can locate -- is drawn as the
+estimate it is, and says how many unplaceable hops it covers.
+
 The trail begins inside your network rather than at the first router that
 answered, which is where a traceroute's own output starts. Where more than one
 device used the route, the one with the most flows to that destination is
