@@ -94,6 +94,7 @@ func buildGraph(rows []hopRow) Graph {
 		prev := ""
 		for _, i := range idxs {
 			id, n := nodeFor(i, hops[i])
+			n.ID = id // the legs refer to nodes by this; leaving it empty drops every leg
 			if existing, ok := nodes[id]; ok {
 				mergeAddresses(existing, n)
 			} else {

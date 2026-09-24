@@ -12,6 +12,22 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240721
+
+**The map had nodes and no lines between them.** Legs refer to nodes by an
+identifier that was computed and then never stored, so every leg pointed at
+nothing and the filter, which quite correctly drops a leg whose ends are
+missing, dropped all of them. On the live gateway that was eighty-seven hops
+and zero connections.
+
+**The FlowSight entry in the OPNsense menu now matches the sections around
+it.** It carried a fixed-width icon class that no core section uses, which is
+what made it sit differently from Firewall and Services, and a redundant
+display name. It is now declared exactly as OPNsense declares its own
+sections. The submenu entries gained icons, as the core submenus have, and
+the four pages added recently are in the menu at last: Paths, Data out, Deep
+inspection and Priority.
+
 ## 0.9.8r202609240714
 
 **Path tracing no longer probes things that are not destinations.** The first

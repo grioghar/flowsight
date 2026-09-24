@@ -205,3 +205,33 @@ func (f fakeIdentity) MAC(string) string       { return "" }
 func (f fakeIdentity) Vendor(string) string    { return "" }
 func (f fakeIdentity) LocalNetworks() []string { return nil }
 func (f fakeIdentity) IsLocal(ip string) bool  { return strings.HasPrefix(ip, f.local) }
+
+// Legs refer to nodes by identifier. Building nodes without setting it left
+// every leg pointing at nothing, and the filter, which quite correctly drops
+// a leg whose ends are missing, then dropped all of them. The map came back
+// with eighty-seven nodes and no lines between any of them.
+func TestNodesCarryTheIDTheirLegsReferTo(t *testing.T) {
+	g := buildGraph([]hopRow{
+		{Dst: "a", Index: 1, IP: "10.0.0.1"}, {Dst: "a", Index: 2, IP: "10.0.0.2"},
+		{Dst: "b", Index: 1, IP: "10.0.0.1"}, {Dst: "b", Index: 2, IP: "10.0.0.9"},
+	})
+	ids := map[string]bool{}
+	for _, n := range g.Nodes {
+		if n.ID == "" {
+			t.Fatalf("a node with no identifier: %+v", n)
+		}
+		ids[n.ID] = true
+	}
+	if len(g.Legs) == 0 {
+		t.Fatal("two routes of two hops each must produce legs")
+	}
+	for _, l := range g.Legs {
+		if !ids[l.From] || !ids[l.To] {
+			t.Errorf("leg %s -> %s points at a node that is not in the graph", l.From, l.To)
+		}
+	}
+	// And they must survive a pass through the filter unchanged.
+	if got := filterGraph(g, "", 0, 0); len(got.Legs) != len(g.Legs) {
+		t.Errorf("an empty filter dropped legs: %d became %d", len(g.Legs), len(got.Legs))
+	}
+}
