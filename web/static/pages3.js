@@ -117,10 +117,11 @@
       const byZone = {}; devices.forEach(d => { byZone[d.zone || ''] = (byZone[d.zone || ''] || 0) + 1; });
       const unplaced = byZone[''] || 0;
       el.innerHTML = `<div class="grid cols-4">${kpi('Mode', mode === 'enforce' ? 'enforcing' : 'monitor', mode === 'enforce' ? 'placement and isolation are applied' : 'classifying only; nothing is written', mode === 'enforce' ? 'warn' : '')}${kpi('Devices', num(devices.length), `${num(s.unidentified || 0)} unidentified · ${num(unplaced)} without a zone · ${num(devices.filter(d => d.excluded).length)} excluded from inspection`)}${kpi('Zones', num(zones.length), zones.map(x => `<a href="#zones?zone=${esc(x.id)}">${esc(x.id)}</a> ${num(byZone[x.id] || 0)}`).join(' · ') || 'none defined')}${card('Actions', `<div class="actions"><button class="btn" id="reconcile">Re-identify</button><a class="btn" href="#zones">Zones &amp; placement</a><button class="btn ${mode === 'enforce' ? 'danger' : ''}" id="mode">${mode === 'enforce' ? 'Switch to monitor' : 'Switch to enforce'}</button></div>`)}</div>
-      <div style="margin-top:14px">${card('Devices' + (ctx.params.zone ? ` in zone ${esc(zoneName(zones, ctx.params.zone))}` : ''), table(devices, [{ t: 'Device', f: x => `<b>${esc(x.hostname || x.guest_name || x.mac)}</b>${x.excluded ? ` <span title="excluded from interception, inspection and policy by the entry ${esc(x.excluded_by)} under Policy › Exclusions">${pill('not inspected', 'warn')}</span>` : ''}<div class="muted small mono">${esc(x.mac)}${x.randomized ? ' · private MAC' : ''}</div>`, sort: 'hostname' }, { t: 'Address', f: x => (x.ip ? FS.hostLink(x.ip) : '') + (x.ip6 ? `<div class="muted small mono">${esc(x.ip6)}</div>` : ''), sort: 'ip' }, { t: 'Services', f: svcCell }, { t: 'Vendor', f: x => esc(x.vendor || '') + (x.vendor_class ? `<div class="muted small">${esc(x.vendor_class)}</div>` : ''), sort: 'vendor' }, { t: 'Class', f: x => esc(x.class || ''), sort: 'class' }, { t: 'Zone', f: x => `<select data-mac="${esc(x.mac)}">${zoneOpts(x.zone)}</select>${x.zone ? ` <a class="small" href="#zones?zone=${esc(x.zone)}">view</a>` : ''}${x.pinned ? ' ' + pill('pinned', '') : ''}`, sort: 'zone' }, { t: 'Why', f: x => `<span class="small muted">${esc(x.why || x.rule || '')}</span>` }, { t: 'Seen', f: x => ago(x.last_seen), sort: 'last_seen' }]), ctx.params.zone ? `<a href="#devices">all devices</a>` : zones.map(x => `<a href="#devices?zone=${esc(x.id)}">${esc(x.id)}</a>`).join(' · '))}</div>
+      <div style="margin-top:14px">${card('Devices' + (ctx.params.zone ? ` in zone ${esc(zoneName(zones, ctx.params.zone))}` : ''), table(devices, [{ t: 'Device', f: x => `<b>${esc(x.hostname || x.guest_name || x.mac)}</b>${x.excluded ? ` <span title="excluded from interception, inspection and policy by the entry ${esc(x.excluded_by)} under Policy › Exclusions">${pill('not inspected', 'warn')}</span>` : ''}<div class="muted small mono">${esc(x.mac)}${x.randomized ? ' · private MAC' : ''}</div>`, sort: 'hostname' }, { t: 'Address', f: x => (x.ip ? FS.hostLink(x.ip) : '') + (x.ip6 ? `<div class="muted small mono">${esc(x.ip6)}</div>` : ''), sort: 'ip' }, { t: 'Services', f: svcCell }, { t: 'Vendor', f: x => esc(x.vendor || '') + (x.vendor_class ? `<div class="muted small">${esc(x.vendor_class)}</div>` : ''), sort: 'vendor' }, { t: 'Class', f: x => esc(x.class || ''), sort: 'class' }, { t: 'Zone', f: x => `<select data-mac="${esc(x.mac)}">${zoneOpts(x.zone)}</select>${x.zone ? ` <a class="small" href="#zones?zone=${esc(x.zone)}">view</a>` : ''}${x.pinned ? ' ' + pill('pinned', '') : ''}`, sort: 'zone' }, { t: 'Why', f: x => `<span class="small muted">${esc(x.why || x.rule || '')}</span>` }, { t: 'Seen', f: x => ago(x.last_seen), sort: 'last_seen' }, { t: '', f: x => `<button class="btn small" data-identify="${esc(x.ip || x.mac)}">Identify</button>` }]), ctx.params.zone ? `<a href="#devices">all devices</a>` : zones.map(x => `<a href="#devices?zone=${esc(x.id)}">${esc(x.id)}</a>`).join(' · '))}</div>
       <div class="help" style="margin-top:8px"><b>Devices</b> is the enrolment inventory: one row per physical device (by MAC) learned from DHCP, with a class and a zone, whether or not it is talking right now. <i>Services</i> is what the device did in the last day: the applications it used, and the ports other local hosts connected to on it (with how many came). A device marked <i>not inspected</i> is on the exclusion list under <a href="#policy">Policy › Exclusions and options</a>: its traffic is never intercepted, decrypted or policed, which is where to put anything that pins its certificates or cannot carry the FlowSight CA. A device with a private (randomised) address has no registered maker; the maker shown for one is read from its DHCP fingerprint or its name. <a href="#hosts">IP Addresses</a> is what traffic shows: one row per address seen in flows and DNS in the selected window, with its traffic. A device's address links to its host page. Addresses are shown by name when FlowSight knows one; with <a href="#modules/enrich">Settings › enrich</a> on, bare addresses gain their reverse-DNS name and country.</div>`;
       FS.$$('select[data-mac]', el).forEach(sel => sel.onchange = async () => { const r = await post('/api/enroll/assign', { mac: sel.dataset.mac, zone: sel.value }); FS.toast(r.error || (sel.value ? 'Assigned and pinned' : 'Unpinned: the rules place it'), !!r.error); if (!r.error) FS.render(); });
       FS.$('#reconcile', el).onclick = async () => { const r = await post('/api/enroll/reconcile', {}); FS.toast(r.error || 'Re-identified', !!r.error); FS.render(); };
+      FS.$$('[data-identify]', el).forEach(b => b.onclick = async () => { const ip = b.dataset.identify; const scan = await post('/api/scan/start', { ip, profile: 'identify' }); if (scan.error) { FS.toast(scan.error.includes('disabled') ? 'Scanning disabled: Settings › Scan to enable it' : scan.error, true); return; } FS.toast('Identifying ' + ip + '...'); let result; for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 3000)); result = await get('/api/scan/result?ip=' + ip); if (result && !result.error && result.finished) break; } if (result && !result.error) FS.render(); });
       modeControls(mode, el);
     }
   });
@@ -1563,5 +1564,53 @@
       };
     }
   });
+
+  // ------------------------------------------------------------- Scan
+  FS.registerPage('scan', {
+    title: 'Scan', refresh: 30,
+    async render(el, ctx) {
+      const [status, results] = await Promise.all([get('/api/scan/status'), get('/api/scan/results?hours=24')]);
+      if (status.error) { el.innerHTML = FS.err(status.error); return; }
+      const state = !status.enabled ? pill('disabled', 'warn') : status.running > 0 ? pill('scanning', 'info') : pill('ready', 'ok');
+      el.innerHTML = `<div class="grid cols-4">
+        ${kpi('Status', state, status.nmap_installed ? 'nmap installed' : 'native probes only')}
+        ${kpi('Queue', num(status.queued), status.running ? num(status.running) + ' running' : 'ready')}
+        ${kpi('Last sweep', status.last_sweep ? ago(status.last_sweep) : 'never')}
+        ${card('Actions', `<div class="actions"><button class="btn" id="scan-btn" ${!status.enabled ? 'disabled' : ''}>Scan a host…</button><button class="btn" id="sweep-btn" ${!status.enabled ? 'disabled' : ''}>Sweep all local</button></div>${!status.enabled ? '<div class="small muted" style="margin-top:8px">Enable scanning in Settings › scan</div>' : ''}`)}
+      </div>
+      <div style="margin-top:14px">${card('Recent scans', table((results.results || []), [
+        { t: 'Host', f: x => `<b>${esc(x.hostname || x.ip)}</b>${x.mac ? ` <div class="muted small mono">${esc(x.mac)}</div>` : ''}` },
+        { t: 'OS guess', f: x => x.os_guess ? `<b>${esc(x.os_guess)}</b> (${(x.os_confidence * 100).toFixed(0)}%)` : '—' },
+        { t: 'Open ports', f: x => x.open_ports && x.open_ports.length ? x.open_ports.map(p => `<span class="mono small" title="${esc(p.service || 'unknown')}">${p.port}</span>`).join(' ') : '—' },
+        { t: 'Findings', f: x => x.findings && x.findings.length ? x.findings.map(f => pill(f)).join(' ') : '—' },
+        { t: 'Source', f: x => x.nmap_enhanced ? pill('nmap', 'ok') : pill('native', 'info') },
+        { t: 'Scanned', f: x => x.finished ? ago(x.finished) : '—' }], { empty: 'No scans yet. Scan a host to identify it.' }))}
+      </div>`;
+      FS.$('#scan-btn', el).onclick = () => {
+        const ip = prompt('Scan this host (IP or MAC):', '');
+        if (!ip) return;
+        FS.post('/api/scan/start', { ip, profile: 'identify' }).then(r => {
+          if (r.error) { FS.toast(r.error, true); return; }
+          FS.toast('Scanning ' + ip + '…');
+          let done = false;
+          (async () => { for (let i = 0; i < 60 && !done; i++) { await new Promise(r => setTimeout(r, 3000)); const res = await get('/api/scan/result?ip=' + ip); if (res && res.finished) { done = true; FS.render(); } } })();
+        });
+      };
+      FS.$('#sweep-btn', el).onclick = async () => {
+        if (!await FS.confirm('Scan all devices seen in the last 7 days? This may take a while.')) return;
+        const r = await post('/api/scan/sweep', {});
+        FS.toast(r.error || 'Sweep started', !!r.error);
+        if (!r.error) FS.render();
+      };
+    }
+  });
+
+  FS.scanSummary = async (ip) => {
+    const r = await get('/api/scan/result?ip=' + encodeURIComponent(ip));
+    if (r && !r.error && r.os_guesses) {
+      return r.os_guesses[0];
+    }
+    return null;
+  };
 
 })();

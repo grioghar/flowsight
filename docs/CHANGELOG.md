@@ -12,6 +12,23 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242353
+
+**Scan: what a device is, from the inside.** A new *Scan* page under
+Inventory, off by default, probes local addresses only: ICMP for the TTL, a
+TCP connect scan of the top 100 or 1,000 ports, identity probes over UDP
+(mDNS, SSDP, SNMP, NetBIOS, DNS, NTP), banners on what answers (SSH, HTTP
+and its title, TLS certificate names, mail, RDP, SMB), and an operating
+system guess with its evidence. When nmap is installed on the gateway it is
+used as well (`-sV -O --osscan-guess`) and its service versions win; FlowSight
+never installs it. Every Devices row and every host page has an *Identify*
+button that runs the fast profile (under about ninety seconds) and shows the
+result: OS guess, open ports and services, notable findings such as telnet or
+RDP exposed. Scans are rate-limited, refuse anything outside the local
+networks, are logged as events, and can trip host firewalls or the IDS.
+Settings: enabled, parallelism, port set, nmap use, scheduled sweep and its
+window, packet rate. Routes under `/api/scan/`.
+
 ## 0.9.8r202609242345
 
 **Second-hand names stay second-hand.** Pi-hole's client names come from its
@@ -23,8 +40,6 @@ a chosen name) is no longer imported. The enrich module no longer does
 reverse DNS for local addresses at all: identity names those, and a reverse
 record is at best the same name and at worst the previous holder's. Both
 the name and the address in a host link now open the host page.
-
-## 0.9.8r202609242330
 
 **Complete CRUD API for all configuration.** Every policy, group, schedule,
 zone, device, notification channel, alert rule, QoS rule, category, name override,
@@ -41,8 +56,6 @@ and available in handlers, enabling granular resource manipulation.
 menu areas (Monitor, Inventory, Protect, Administration), with parameter templates,
 live request/response, and copy-as-curl for easy testing.
 
-## 0.9.8r202609242336
-
 **The menu has four areas.** Twenty-five pages in one flat list became
 four groups by what you are doing: *Monitor* (Overview, Sessions,
 Applications, Web, DNS, Map), *Inventory* (IP Addresses, Devices, Zones),
@@ -56,6 +69,15 @@ are unchanged, so bookmarks keep working.
 address is the row and the device it belongs to reads under it, with a
 *Device* column to sort by. The one-row-per-device checkbox still folds a
 device's addresses together.
+
+**Complete OpenAPI documentation and interactive API explorer.** Every API route
+now has proper OpenAPI tags organized into four areas: Monitor (visibility, hosts,
+flows, applications, web, DNS, map, data out), Inventory (devices, zones),
+Protect (policy, QoS, categories, TLS, threats, firewall), and Administration
+(reports, alerts, updates, license, API). The in-product API explorer at the API
+page (Administration group) provides grouped operations, request/response templates,
+live testing, and curl export. All 122+ routes emit proper operationIds and are
+downloadable as an OpenAPI 3.0 JSON specification.
 
 ## 0.9.8r202609242333
 
@@ -81,17 +103,6 @@ address behind the same hardware address into one row, traffic summed and
 the other addresses listed under the name, so a laptop with an IPv4 lease
 and five IPv6 addresses sorts as one host. Addresses with no known device
 stay their own rows. The choice is remembered.
-
-## 0.9.8r202609242330
-
-**Complete OpenAPI documentation and interactive API explorer.** Every API route
-now has proper OpenAPI tags organized into four areas: Monitor (visibility, hosts,
-flows, applications, web, DNS, map, data out), Inventory (devices, zones),
-Protect (policy, QoS, categories, TLS, threats, firewall), and Administration
-(reports, alerts, updates, license, API). The in-product API explorer at the API
-page (Administration group) provides grouped operations, request/response templates,
-live testing, and curl export. All 122+ routes emit proper operationIds and are
-downloadable as an OpenAPI 3.0 JSON specification.
 
 ## 0.9.8r202609242323
 

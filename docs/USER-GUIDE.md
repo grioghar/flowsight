@@ -908,6 +908,21 @@ class, hostname pattern, OUI to a class and a zone). *Plan placement* shows
 what enforce mode would write, *Apply placement* writes it. A captive page
 on the LAN explains to an unplaced device what happens next.
 
+### Scan
+
+Active scanning for local devices: ICMP, TCP/UDP probes, service banners, and
+OS fingerprinting. Restricted to locally-known networks; off by default. Each
+host can be scanned on demand with the **Identify** button (on the Devices or
+host page) or all known devices swept periodically. Scanning is native (no
+external tools) with optional nmap enhancement when installed. The results
+show open ports, inferred OS, detected services and banners, and findings
+(e.g. telnet, unencrypted FTP, exposed RDP). The Scan page lists all recent
+scans: click one to see full details (all ports, all OS guesses with evidence,
+all banners). *Scan a host* prompts for an IP or MAC; *Sweep all local*
+starts a scheduled sweep of devices seen in the last 7 days, respecting a
+time window and rate limit from Settings. Scans originate from the gateway and
+may be detected or rate-limited by host firewalls or IDS.
+
 ## Administration
 
 ### Reports

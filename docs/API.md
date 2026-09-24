@@ -291,3 +291,16 @@ curl -s -X POST -H 'X-Requested-With: Flowsight' http://127.0.0.1:8080/api/polic
 curl -s -H 'X-Flowsight-Token: …' http://gateway:8080/api/system/health
 ```
 
+
+### scan
+
+Active network scanning for local devices only: ICMP, TCP/UDP probes, service detection, OS fingerprinting. Restricted to locally-known networks.
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| POST | `/api/scan/start` | Start a scan on an IP or MAC | ip (address), mac (address), profile (identify/quick/full) |
+| GET | `/api/scan/status` | Queue status, running jobs, nmap installed, last sweep | |
+| GET | `/api/scan/result` | Latest result for an IP: open ports, services, OS guesses with evidence, findings | ip (address), mac (address) |
+| GET | `/api/scan/results` | Latest results for all IPs scanned recently | hours (window, default 24) |
+| POST | `/api/scan/cancel` | Cancel a running scan job | job_id (identifier) |
+| POST | `/api/scan/sweep` | Start a sweep of all devices seen in the last 7 days | |

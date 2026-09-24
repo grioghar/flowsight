@@ -281,3 +281,36 @@ The OpenAPI specification endpoint (`GET /api/openapi.json`) is public and
 contains no authentication secrets; it describes the routes and their
 parameters but not data values. Export it freely for use with external API
 clients and tools.
+
+## Active scanning
+
+The scan module (Scan panel, Inventory › Scan) performs active network probes
+on local devices for ICMP, TCP/UDP ports, service banners, and OS fingerprinting.
+
+**Scope**: Every target must be in a locally-known network (verified by the
+identity module). Scanning across the internet is refused.
+
+**Rate limiting**: All probes (ICMP, UDP) are rate-limited to the configured
+packets-per-second (default 200, configurable). TCP respects connection
+parallelism limits (default 2 hosts, 64 ports per host).
+
+**Default state**: Off. The scan module is disabled by default and must be
+explicitly turned on in Settings › scan.
+
+**Logging**: Every scan (start, finish, cancel) is logged as an event. Open
+ports, services, and findings (e.g. telnet, exposed RDP) are logged as
+findings with severity.
+
+**Origin**: Scans originate from the gateway's IP and MAC and are visible
+in the target's traffic logs as connections from the gateway.
+
+**Side effects**: Active scanning may trigger host firewalls, IDS/IPS systems,
+and rate-limiting on target devices. Some network appliances rate-limit or
+drop ICMP. Some hosts refuse rapid port probes or consider them suspicious.
+Results may be incomplete if targets drop probes.
+
+**Optional nmap enhancement**: When `use_nmap=true` and the nmap binary is
+installed on the gateway, FlowSight uses it to enhance service version
+detection and OS accuracy. nmap is never installed by FlowSight; if present,
+it must be installed and updated separately (e.g. `pkg install nmap` on
+OPNsense).

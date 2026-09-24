@@ -326,3 +326,20 @@ Transparent proxy: server names on every web session, inline blocking at the TLS
 | `pinned_window_minutes` | Refusal window (minutes) | int | `10` |  |
 | `pinned_retest_hours` | Try inspecting a pinned name again after (hours) | int | `168` | 0 never retries. |
 
+
+### scan
+
+Active network scanning for local devices: ICMP, TCP/UDP probes, service detection, OS fingerprinting. Restricted to locally-known networks; off by default. Optional nmap enhancement when installed.
+
+| Key | Setting | Type | Default | Notes |
+|---|---|---|---|---|
+| `enabled` | Enable active scanning | bool | `false` | Master switch. Off: all scans are refused. |
+| `max_parallel_hosts` | Max parallel hosts | int | `2` | Job queue limit. |
+| `max_parallel_ports` | Max parallel ports per host | int | `64` | TCP connect limit per target. |
+| `port_set` | Port set | string | `"top100"` | `top100`, `top1000`, or `custom`. |
+| `custom_ports` | Custom ports | string | `""` | Comma-separated list (e.g. `"22,80,443,3389"`). Used if `port_set` is `custom`. |
+| `os_probe` | Probe for OS fingerprints | bool | `true` | TTL, mDNS, SSDP, SNMP, NetBIOS heuristics; nmap OS detection when installed. |
+| `use_nmap` | Use nmap when installed | bool | `true` | Run nmap (if available) to enhance port service versions and OS accuracy. |
+| `sweep_every_hours` | Sweep interval | int | `0` | 0: disabled. >0: scan all devices seen in the last 7 days every N hours. |
+| `sweep_window` | Sweep time window | string | `""` | Optional UTC time window, e.g. `"02:00-05:00"`. Sweeps only run inside it. |
+| `rate_limit_pps` | Rate limit (packets/sec) | int | `200` | ICMP and UDP probe rate; TCP respects connection limits. |

@@ -100,18 +100,24 @@
     title: 'Host', refresh: 30,
     async render(el, ctx) {
       const ip = ctx.arg; if (!ip) { el.innerHTML = FS.err('no host given'); return; }
-      const d = await get(`/api/visibility/host?ip=${encodeURIComponent(ip)}&${FS.since()}`);
+      const [d, scanData] = await Promise.all([
+        get(`/api/visibility/host?ip=${encodeURIComponent(ip)}&${FS.since()}`),
+        get(`/api/scan/result?ip=${encodeURIComponent(ip)}`)
+      ]);
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
       const h = d.host || {}, dev = d.device || {}, t = d.totals || {}, dt = d.dns_totals || {};
+      const scan = scanData && !scanData.error ? scanData : null;
       FS.setTitle((h.name || ip) + (h.name ? ` · ${ip}` : ''));
+      const identCard = `<dl class="kv"><dt>Address</dt><dd class="mono">${esc(ip)}${(d.addresses || []).length > 1 ? `<div class="small muted" style="margin-top:3px">also ${(d.addresses || []).filter(a => a !== ip).map(a => `<a href="#host/${encodeURIComponent(a)}" class="mono">${esc(a)}</a>`).join(', ')}</div>` : ''}</dd><dt>Name</dt><dd>${esc(h.name || '—')} <a href="#" id="rename" class="small">rename</a></dd><dt>MAC</dt><dd class="mono">${esc(h.mac || '—')}</dd><dt>Vendor</dt><dd>${esc(h.vendor || '—')}</dd><dt>Zone</dt><dd>${esc(dev.zone || h.zone || '—')}</dd><dt>Class</dt><dd>${esc(dev.class || dev.device_type || h.device_type || '—')}</dd><dt>First seen</dt><dd>${h.first_seen ? when(h.first_seen) : '—'}</dd><dt>Last seen</dt><dd>${ago(h.last_seen)}</dd></dl><div class="actions"><button class="btn small" id="identify">Identify device</button></div>`;
       el.innerHTML = `
       <div class="grid cols-4">
-        ${card('Identity', `<dl class="kv"><dt>Address</dt><dd class="mono">${esc(ip)}${(d.addresses || []).length > 1 ? `<div class="small muted" style="margin-top:3px">also ${(d.addresses || []).filter(a => a !== ip).map(a => `<a href="#host/${encodeURIComponent(a)}" class="mono">${esc(a)}</a>`).join(', ')}</div>` : ''}</dd><dt>Name</dt><dd>${esc(h.name || '—')} <a href="#" id="rename" class="small">rename</a></dd><dt>MAC</dt><dd class="mono">${esc(h.mac || '—')}</dd><dt>Vendor</dt><dd>${esc(h.vendor || '—')}</dd><dt>Zone</dt><dd>${esc(dev.zone || h.zone || '—')}</dd><dt>Class</dt><dd>${esc(dev.class || dev.device_type || h.device_type || '—')}</dd><dt>First seen</dt><dd>${h.first_seen ? when(h.first_seen) : '—'}</dd><dt>Last seen</dt><dd>${ago(h.last_seen)}</dd></dl>`)}
+        ${card('Identity', identCard)}
         ${kpi('Traffic', bytes((t.bytes_in || 0) + (t.bytes_out || 0)), `${bytes(t.bytes_in)} down · ${bytes(t.bytes_out)} up`)}
         ${kpi('Flows', num(t.flows), `${num(t.blocked)} blocked`, t.blocked ? 'warn' : '')}
         ${kpi('DNS', num(dt.queries), `${num(dt.blocked)} blocked · ${num(dt.domains)} domains`, dt.blocked ? 'warn' : '')}
       </div>
       <div style="margin-top:14px">${card('Activity', chart([{ name: 'download', points: (d.timeline || []).map(p => [p.t, p.bytes_in]) }, { name: 'upload', points: (d.timeline || []).map(p => [p.t, p.bytes_out]) }, { name: 'blocked', points: (d.timeline || []).map(p => [p.t, p.blocked]) , color: '#dc2626'}], { fmt: bytes, area: true, tall: true }) + FS.legend(['download', 'upload', 'blocked flows']))}</div>
+      ${scan ? `<div style="margin-top:14px">${card('Identification', `<div class="small muted">Scanned ${ago(scan.finished)}</div>` + (scan.os_guesses && scan.os_guesses.length ? `<div><b>OS:</b> ${scan.os_guesses.map(g => esc(g.os)).join(', ')}</div>` : '') + (scan.open_ports && scan.open_ports.length ? `<div><b>Ports:</b> ${scan.open_ports.map(p => p.port).join(', ')}</div>` : '') + (scan.nmap_enhanced ? '<div class="small muted">via nmap</div>' : ''))}</div>` : ''}
       <div class="grid cols-3" style="margin-top:14px">
         ${card('Applications', bars((d.apps || []).map(a => ({ label: a.app, sub: a.category, value: (a.bytes_in || 0) + (a.bytes_out || 0) })), bytes))}
         ${card('Sites', bars((d.domains || []).map(a => ({ label: a.domain, sub: a.category || '', value: (a.bytes_in || 0) + (a.bytes_out || 0), href: '#flows?ip=' + ip + '&domain=' + encodeURIComponent(a.domain) })), bytes))}
@@ -128,6 +134,8 @@
         ${card('Findings', table(d.findings || [], [{ t: 'Severity', f: r => FS.sevPill(r.severity) }, { t: 'Finding', f: r => `<b>${esc(r.title)}</b><div class="muted small">${esc(r.detail || '')}</div>` }]))}
       </div>`;
       FS.$('#rename', el).onclick = async (e) => { e.preventDefault(); const name = prompt('Display name for ' + ip, h.name || ''); if (name === null) return; const r = await post('/api/identity/name', { ip, name }); if (r.error) FS.toast(r.error, true); else FS.render(); };
+      const identBtn = FS.$('#identify', el);
+      if (identBtn) identBtn.onclick = async () => { const scanResp = await post('/api/scan/start', { ip, profile: 'identify' }); if (scanResp.error) { FS.toast(scanResp.error.includes('disabled') ? 'Scanning disabled: Settings › Scan to enable it' : scanResp.error, true); return; } FS.toast('Identifying ' + ip + '...'); let result; for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 3000)); result = await get(`/api/scan/result?ip=${encodeURIComponent(ip)}`); if (result && !result.error && result.finished) break; } if (result && !result.error) FS.render(); };
     }
   });
 
