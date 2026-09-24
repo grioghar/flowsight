@@ -493,6 +493,13 @@ round trip -- and each row marks its hop on the map, travels to it on click,
 and frames the whole route from the endpoint. Both the key and the table fold
 to their titles.
 
+**Anycast, and hops beside their upstream.** Resolvers and root servers are
+announced from dozens of sites at once; the instance you reach is the one
+beside the last router before it. A hop answering within a couple of
+milliseconds of the last placed hop on its route is drawn beside that hop and
+says so, and the well-known anycast ranges are never placed by a database or
+by a measurement made from somewhere else.
+
 **Reputation.** With an AbuseIPDB key (*Settings › paths › Reputation*; free
 at abuseipdb.com under *Account › API*), each hop's card gains a *Reputation*
 block: abuse confidence, reports and reporters, ISP, usage type and domain,

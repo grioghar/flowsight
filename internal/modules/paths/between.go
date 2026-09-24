@@ -90,6 +90,43 @@ func interpolateGaps(g *Graph) {
 				waiting = append(waiting, n)
 			}
 		}
+		// Past the last placed hop there is nothing to interpolate towards,
+		// but there is still the clock. A hop that answers within a couple
+		// of milliseconds of the last placed one is beside it: this is where
+		// an anycast address ends up -- Google's or Cloudflare's resolver
+		// answering from the Dallas site the route just reached -- and where
+		// a final hop the database put on another continent belongs.
+		if anchor != nil {
+			placeNear(anchor, waiting)
+		}
+	}
+}
+
+// nearMS is how much later than its anchor a hop may answer and still be
+// counted as beside it: a couple of milliseconds is a metro, not a journey.
+const nearMS = 3.0
+
+// placeNear puts trailing unplaced hops beside the last placed one when the
+// timing says they are there, and leaves the rest alone.
+func placeNear(a *Node, run []*Node) {
+	for i, n := range run {
+		if n.Located || n.RTT <= 0 {
+			continue
+		}
+		extra := n.RTT - a.RTT
+		if extra < -0.5 || extra > nearMS+a.RTT*0.1 {
+			continue // genuinely further on; nothing honest can be said
+		}
+		// A hair to one side, so several such hops do not stack on the anchor.
+		n.Lat, n.Lon = a.Lat+0.15*float64(i%3-1), a.Lon+0.35*float64(i/3+1)
+		n.Located, n.Source, n.Inferred = true, "near", true
+		n.Between = []string{firstIP(a)}
+		what := "the last hop the route reached"
+		if n.Anycast {
+			what = "an anycast address: the instance reached is the one beside " + firstIP(a)
+		}
+		n.BetweenHow = fmt.Sprintf("%s; answers %.1f ms after %s, which is the same metro, not a journey", what, extra, firstIP(a))
+		n.City, n.Region, n.Country = a.City, a.Region, a.Country
 	}
 }
 

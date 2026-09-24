@@ -12,6 +12,22 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242113
+
+**Where the "too fast" hops actually are.** Of a hundred placements the
+physics had ruled out on a live gateway, eighty-odd were anycast resolvers
+and root servers -- Google, Cloudflare, NS1, Vercara, Apple -- measured by
+RIPE IPmap in Singapore or Johannesburg because that is where most of its
+probes see them, and reached from this network via Dallas at eighteen
+milliseconds. The instance reached is the one beside the upstream hop. The
+map now says so: a hop past the last placed one on a route, answering within
+a couple of milliseconds of it, is put beside it (*beside the last placed
+hop* on its card, with the timing that says so); and the resolver and
+root-server ranges no provider feed lists are carried as a curated anycast
+table, so a database or measured position for them is never believed. The
+AT&T hops the database had in Manhattan and Ashburn at three milliseconds
+fall to the same rule.
+
 ## 0.9.8r202609242108
 
 **AbuseIPDB reputation on every hop.** With a key under *Settings › paths ›

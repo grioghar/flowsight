@@ -628,7 +628,7 @@
         h += grp('Placement');
         if (n.inferred) {
           h += `<div class="endnote">Nothing places this hop: no site in its name and no coordinates for its address block. It answered, though, and the hops either side of it are placed &mdash; so it has been put between them at the point its round trip falls between theirs. That is a guess about where, not about whether: the hop is certainly on this route.</div>`
-            + r('Put between', (n.between || []).join(' and '))
+            + r(n.location_source === 'near' ? 'Put beside' : 'Put between', (n.between || []).join(' and '))
             + r('By', n.between_how, 'soft')
             + r('Source', 'inferred from timing; it is not drawn as a located hop', 'soft');
         } else if (!n.located) {
@@ -641,6 +641,7 @@
                              measured: 'RIPE IPmap \u2014 measured from thousands of probes, not registered',
                              corrected: 'a learned correction \u2014 the address database, overruled for this prefix',
                              provider: 'the provider\u2019s own published range list' + (n.provider ? ' \u2014 ' + n.provider : ''),
+                             near: 'beside the last placed hop \u2014 the timing says the same metro',
                              between: 'inferred from timing' }[n.location_source] || 'address database');
         }
         if (n.distance_km) h += r('Distance used', `${num(n.distance_km)} km${n.via ? ' along ' + n.via : ' (straight line)'}`);

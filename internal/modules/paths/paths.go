@@ -164,6 +164,8 @@ func (m *Module) Info() core.ModuleInfo {
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
 	m.fixes.load(ctx.Store)
+	m.providers = &providerIndex{v4: map[byte][]providerRange{}, v6: map[uint16][]providerRange{}}
+	addKnownAnycast(m.providers)
 	m.fixes.on = core.Bool(ctx.Settings(), "learn_corrections", true)
 	if m.run == nil {
 		m.run = runTraceroute

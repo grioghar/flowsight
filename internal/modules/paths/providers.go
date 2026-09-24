@@ -489,6 +489,7 @@ func (m *Module) discoverAzure() (string, error) {
 // loadProviders reads every compact file into a fresh index.
 func (m *Module) loadProviders(stats map[string]providerStats) error {
 	idx := &providerIndex{v4: map[byte][]providerRange{}, v6: map[uint16][]providerRange{}}
+	addKnownAnycast(idx)
 	dir := m.providersDir()
 	for _, f := range providerFeeds {
 		path := filepath.Join(dir, f.Key+".csv")
@@ -537,6 +538,37 @@ func (m *Module) providerPlace(ip string) *providerRange {
 		return nil
 	}
 	return idx.lookup(ip)
+}
+
+// anycastKnown are the resolver and root-server ranges every provider feed
+// misses: announced from dozens of sites at once, measured by IPmap wherever
+// its probes happen to be, and reached from here at whichever site the
+// upstream hop sits in. Curated, because there is no feed for them.
+var anycastKnown = map[string]string{
+	"8.8.8.0/24": "Google Public DNS", "8.8.4.0/24": "Google Public DNS", "2001:4860:4860::/48": "Google Public DNS",
+	"1.1.1.0/24": "Cloudflare DNS", "1.0.0.0/24": "Cloudflare DNS", "2606:4700:4700::/48": "Cloudflare DNS",
+	"9.9.9.0/24": "Quad9", "149.112.112.0/24": "Quad9", "2620:fe::/48": "Quad9",
+	"208.67.222.0/24": "OpenDNS", "208.67.220.0/24": "OpenDNS", "2620:119:35::/48": "OpenDNS", "2620:119:53::/48": "OpenDNS",
+	"198.51.44.0/24": "NS1", "198.51.45.0/24": "NS1", "2620:4d:4000::/48": "NS1", "2a00:edc0:6259::/48": "NS1",
+	"156.154.100.0/22": "Vercara UltraDNS", "204.74.108.0/24": "Vercara UltraDNS", "204.74.109.0/24": "Vercara UltraDNS", "2001:502:f3ff::/48": "Vercara UltraDNS", "2610:a1:1014::/48": "Vercara UltraDNS",
+	"17.253.0.0/16": "Apple DNS", "2620:149:a44::/48": "Apple DNS",
+	"198.41.0.0/24": "a.root-servers.net", "170.247.170.0/24": "b.root-servers.net", "192.33.4.0/24": "c.root-servers.net",
+	"199.7.91.0/24": "d.root-servers.net", "192.203.230.0/24": "e.root-servers.net", "192.5.5.0/24": "f.root-servers.net",
+	"192.112.36.0/24": "g.root-servers.net", "198.97.190.0/24": "h.root-servers.net", "192.36.148.0/24": "i.root-servers.net",
+	"192.58.128.0/24": "j.root-servers.net", "193.0.14.0/24": "k.root-servers.net", "199.7.83.0/24": "l.root-servers.net",
+	"202.12.27.0/24": "m.root-servers.net", "2001:503:ba3e::/48": "a.root-servers.net", "2801:1b8:10::/48": "b.root-servers.net",
+	"2001:500:2::/48": "c.root-servers.net", "2001:500:2d::/48": "d.root-servers.net", "2001:500:a8::/48": "e.root-servers.net",
+	"2001:500:2f::/48": "f.root-servers.net", "2001:500:12::/48": "g.root-servers.net", "2001:500:1::/48": "h.root-servers.net",
+	"2001:7fe::/33": "i.root-servers.net", "2001:503:c27::/48": "j.root-servers.net", "2001:7fd::/48": "k.root-servers.net",
+	"2001:500:9f::/48": "l.root-servers.net", "2001:dc3::/32": "m.root-servers.net",
+}
+
+func addKnownAnycast(idx *providerIndex) {
+	for cidr, who := range anycastKnown {
+		if _, n, err := net.ParseCIDR(cidr); err == nil {
+			idx.add(providerRange{Net: n, Provider: who, Region: "anycast", Anycast: true})
+		}
+	}
 }
 
 // providerNames lists the feeds, for the card.

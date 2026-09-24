@@ -2,6 +2,7 @@ package paths
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -115,5 +116,38 @@ func TestInterpolationFollowsTheGreatCircle(t *testing.T) {
 	}
 	if a, b := alongGreatCircle(10, 20, 30, 40, 1); math.Abs(a-30) > 0.001 || math.Abs(b-40) > 0.001 {
 		t.Errorf("f=1 should be the end, got %.3f,%.3f", a, b)
+	}
+}
+
+// The end of a route: an anycast resolver answering two milliseconds after
+// the Dallas hop is at Dallas, not in Singapore.
+func TestTrailingHopsWithinAMetroAreBesideTheirAnchor(t *testing.T) {
+	g := Graph{
+		Nodes: []Node{
+			{ID: "d", Index: 6, IPs: []string{"12.1.1.1"}, RTT: 18.3, Located: true, Lat: 32.78, Lon: -96.8, City: "Dallas", Source: "name"},
+			{ID: "g", Index: 7, IPs: []string{"8.8.8.8"}, RTT: 20.2, Located: false, Anycast: true},
+			{ID: "far", Index: 7, IPs: []string{"5.5.5.5"}, RTT: 61, Located: false},
+		},
+		Legs: []Leg{{From: "d", To: "g", Destinations: []string{"8.8.8.8"}}, {From: "d", To: "far", Destinations: []string{"5.5.5.5"}}},
+	}
+	interpolateGaps(&g)
+	if g.Nodes[1].Source != "near" || !g.Nodes[1].Located || g.Nodes[1].City != "Dallas" || !strings.Contains(g.Nodes[1].BetweenHow, "anycast") {
+		t.Fatalf("the resolver should be beside Dallas: %+v", g.Nodes[1])
+	}
+	if g.Nodes[2].Located {
+		t.Fatal("a hop forty milliseconds further on is not beside anything")
+	}
+}
+
+func TestKnownAnycastRangesAreAlwaysKnown(t *testing.T) {
+	idx := &providerIndex{v4: map[byte][]providerRange{}, v6: map[uint16][]providerRange{}}
+	addKnownAnycast(idx)
+	for _, ip := range []string{"8.8.8.8", "1.1.1.1", "199.7.91.13", "156.154.101.3", "198.51.45.1", "2001:4860:4860::8888"} {
+		if r := idx.lookup(ip); r == nil || !r.Anycast {
+			t.Fatalf("%s should be known anycast: %+v", ip, r)
+		}
+	}
+	if idx.lookup("51.10.6.166") != nil {
+		t.Fatal("a Microsoft backbone address is not anycast")
 	}
 }
