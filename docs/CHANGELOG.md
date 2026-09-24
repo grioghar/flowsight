@@ -12,6 +12,32 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241629
+
+**The map was showing the world twice.** Giving the map the window meant its
+box was no longer the two-to-one shape of the world, and an SVG fitted by
+height takes its extra width from outside the viewBox -- which on a map drawn
+three times over to make it wrap is the copy next door. Widen the window far
+enough and the same continent appeared at both ends. The viewBox now takes the
+shape of the element it is drawn in, so what is on screen is exactly what was
+asked for: one world, at every zoom, at any window shape.
+
+That trade has to fall somewhere. A short, wide window cannot show a
+two-to-one world whole without either repeating it sideways or letterboxing
+it, so it crops -- but about the equator, not from the north pole. Anchored at
+the pole it lost the entire southern hemisphere; South America and Australia
+were simply not on the map.
+
+**The key's longer lines ran out of its box.** They were held to one line each
+in a panel narrower than the longest of them. They wrap now, with the swatch
+aligned to the first line so a two-line entry still reads as one item.
+
+**Apply is gone.** Choosing a filter applies it. The button existed to make
+the page wait for permission it did not need, and in the meantime a filter you
+had chosen sat there doing nothing while looking as though it were doing
+something. Lists act on choice; the typed boxes act on Enter or when they lose
+focus.
+
 ## 0.9.8r202609241626
 
 **The map's notes fold away.** They say where the land and the cables come

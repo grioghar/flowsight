@@ -349,21 +349,26 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
    on the map, and the bottom-left corner of an equirectangular world is empty
    ocean. */
 .legend.onmap { position: absolute; left: 12px; bottom: 12px; right: auto;
-  display: flex; flex-direction: column; gap: 3px; max-width: 300px;
+  display: flex; flex-direction: column; gap: 3px; width: 268px; max-width: calc(100% - 24px);
   margin: 0; padding: 9px 11px; border-radius: 8px;
   background: var(--panel); border: 1px solid var(--line);
   box-shadow: 0 2px 10px rgba(0,0,0,.14); z-index: 2;
   font-size: 11px; line-height: 1.35; }
 /* Opaque, not translucent: zoomed in over dense routes a see-through key is
    a key you have to squint at, and the point of it is not squinting. */
-.legend.onmap .lgi { white-space: nowrap; pointer-events: none; }
+/* Wrapping, not nowrap: "the route continues through hops with no known
+   position" does not fit a corner panel on one line, and holding it to one
+   ran it out of the box it was meant to sit in. The swatch aligns to the
+   first line so a two-line entry still reads as one item. */
+.legend.onmap .lgi { white-space: normal; align-items: flex-start; pointer-events: none; }
+.legend.onmap .lgi .lg { margin-top: 3px; }
 .legend.onmap .lgitems { display: flex; flex-direction: column; gap: 3px; }
 .legend.onmap.folded .lgitems { display: none; }
 .lgtoggle { align-self: flex-start; border: 0; background: none; padding: 0 0 2px;
   font: inherit; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--muted); cursor: pointer; }
 .lgtoggle::after { content: " \2212"; }
-.legend.onmap.folded { padding: 5px 9px; }
+.legend.onmap.folded { padding: 5px 9px; width: auto; }
 .legend.onmap.folded .lgtoggle { padding-bottom: 0; }
 .legend.onmap.folded .lgtoggle::after { content: " +"; }
 .lgtoggle:hover { color: var(--ink); }

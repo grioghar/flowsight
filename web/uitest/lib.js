@@ -215,3 +215,53 @@ print('plain table OK');
   this.requestAnimationFrame = realRAF; window.PointerEvent = realPE;
   print('FS.panZoom measures across the antimeridian the short way, and stops at one world OK');
 })();
+
+// A box that is not the shape of the world.
+//
+// With preserveAspectRatio="meet" a viewBox narrower than its container is
+// fitted by height and the extra width comes from outside the viewBox -- on a
+// map drawn three times for wrapping, that is the world next door, and the
+// same continent appears twice. And cropping to fit must not simply lop off
+// the bottom: anchored at the pole, a wide window lost the whole southern
+// hemisphere.
+(function () {
+  var attrs = {}, handlers = {}, boxH = 240, boxW = 720;
+  var svg = {
+    style: { setProperty: function () {} },
+    setAttribute: function (k, v) { attrs[k] = v; },
+    addEventListener: function (n, f) { handlers[n] = f; },
+    getBoundingClientRect: function () { return { left: 0, top: 0, width: boxW, height: boxH }; }
+  };
+  var realPE = window.PointerEvent; window.PointerEvent = undefined;
+  window.addEventListener = window.addEventListener || function () {};
+  var realRAF = this.requestAnimationFrame; this.requestAnimationFrame = undefined;
+  var h = FS.panZoom(svg, 720, 360, { wrapX: true });
+  var box = function () { return attrs.viewBox.split(' ').map(parseFloat); };
+
+  // The viewBox must take the shape of the element, or a neighbouring world
+  // shows beside this one.
+  var v = box();
+  if (Math.abs(v[3] / v[2] - boxH / boxW) > 0.001)
+    throw new Error('viewBox shape does not match the box: ' + v.join(' '));
+  // Exactly one world wide, never more.
+  if (Math.abs(v[2] - 720) > 0.001) throw new Error('a full view should be one world wide, got ' + v[2]);
+  // Cropped about the equator, not from the pole.
+  var mid = v[1] + v[3] / 2;
+  if (Math.abs(mid - 180) > 0.001)
+    throw new Error('a cropped view should centre on the equator, got ' + mid);
+  if (v[1] <= 0) throw new Error('a short box should crop the top as well as the bottom: y=' + v[1]);
+
+  // Zoom keeps the shape.
+  handlers.wheel({ preventDefault: function () {}, deltaY: -1, clientX: 360, clientY: 120 });
+  v = box();
+  if (Math.abs(v[3] / v[2] - boxH / boxW) > 0.001)
+    throw new Error('zooming broke the shape: ' + v.join(' '));
+  // And so does reset.
+  h.reset();
+  v = box();
+  if (Math.abs(v[3] / v[2] - boxH / boxW) > 0.001) throw new Error('reset broke the shape');
+  if (Math.abs((v[1] + v[3] / 2) - 180) > 0.001) throw new Error('reset should recentre on the equator');
+
+  this.requestAnimationFrame = realRAF; window.PointerEvent = realPE;
+  print('FS.panZoom matches its box and crops about the equator OK');
+})();

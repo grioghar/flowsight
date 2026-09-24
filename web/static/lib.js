@@ -302,6 +302,19 @@ FS.panZoom = (svg, w, h, opts) => {
   opts = opts || {};
   const onZoom = opts.onZoom;
   const view = { x: 0, y: 0, w: w, h: h };
+  // The viewBox has to match the shape of the box it is drawn in.
+  //
+  // With preserveAspectRatio="meet", a viewBox narrower than its container is
+  // fitted by height, and the extra width comes from outside the viewBox --
+  // which on a map drawn three times for wrapping is the neighbouring copy of
+  // the world. Widen the window and the same continent appears twice. Taking
+  // the height from the element rather than from the world's proportions
+  // keeps the two in step, so what is on screen is exactly what the viewBox
+  // asked for.
+  const aspect = () => {
+    const r = svg.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 ? r.height / r.width : h / w;
+  };
   // A world map is a cylinder: pan far enough east and you arrive back in the
   // west. The caller says so with wrapX, and draws its content three times, a
   // world apart, so there is always something either side of the edge. All
@@ -333,7 +346,7 @@ FS.panZoom = (svg, w, h, opts) => {
   // Zoom about a point, leaving whatever is under it where it is.
   const zoomAt = (nw, fx, fy) => {
     nw = clampW(nw);
-    const nh = nw * (h / w);
+    const nh = nw * aspect();
     view.x += (view.w - nw) * fx; view.y += (view.h - nh) * fy;
     view.w = nw; view.h = nh; apply();
   };
@@ -425,7 +438,7 @@ FS.panZoom = (svg, w, h, opts) => {
       if (ps.length < 2) return;
       const [a, b] = ps;
       const nw = clampW(g.w * (g.d / spread(a, b)));
-      const nh = nw * (h / w);
+      const nh = nw * aspect();
       const [fx, fy] = frac((a.x + b.x) / 2, (a.y + b.y) / 2);
       view.w = nw; view.h = nh;
       view.x = g.cx - fx * nw; view.y = g.cy - fy * nh;
@@ -445,8 +458,38 @@ FS.panZoom = (svg, w, h, opts) => {
     });
   }
 
+  // Where a full view sits when the box is not the shape of the world.
+  //
+  // A short, wide window cannot show a two-to-one world whole without either
+  // repeating it sideways or letterboxing it, and repeating is what this map
+  // must never do. So it crops top and bottom -- but centred on the equator,
+  // not anchored to the north pole. Anchored, a wide window lost the whole
+  // southern hemisphere: South America and Australia simply were not there.
+  const home = () => {
+    view.w = w;
+    view.h = w * aspect();
+    view.x = 0;
+    view.y = (h - view.h) / 2;
+  };
   svg.style.cursor = 'grab';
+  home();
   apply();
+  // A window that changes shape changes the answer, so the viewBox is put
+  // back in step rather than left to drift into the copy next door.
+  if (typeof ResizeObserver === 'function') {
+    let last = 0;
+    new ResizeObserver(() => {
+      const a = aspect();
+      if (Math.abs(a - last) < 0.0005) return;
+      const grew = last !== 0;
+      last = a;
+      // Keep what is in the middle in the middle as the shape changes.
+      const cy = view.y + view.h / 2;
+      view.h = view.w * a;
+      view.y = grew ? cy - view.h / 2 : (h - view.h) / 2;
+      apply();
+    }).observe(svg);
+  }
 
   // Going somewhere, visibly.
   //
@@ -462,7 +505,7 @@ FS.panZoom = (svg, w, h, opts) => {
   const moveTo = (cx, cy, nw, ms) => {
     stop();
     nw = clampW(nw == null ? view.w : nw);
-    const nh = nw * (h / w);
+    const nh = nw * aspect();
     const from = { x: view.x, y: view.y, w: view.w, h: view.h };
     const to = { x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh };
     const dur = ms == null ? 420 : ms;
@@ -500,7 +543,7 @@ FS.panZoom = (svg, w, h, opts) => {
   };
 
   return {
-    reset: () => { stop(); view.x = 0; view.y = 0; view.w = w; view.h = h; apply(); },
+    reset: () => { stop(); home(); apply(); },
     centre, moveTo, nearest,
     // Frame a box, keeping its aspect honest and leaving room round the edge.
     fit: (x0, y0, x1, y1, pad, ms) => {
@@ -508,7 +551,7 @@ FS.panZoom = (svg, w, h, opts) => {
       const bw = Math.max(Math.abs(x1 - x0), 1e-6), bh = Math.max(Math.abs(y1 - y0), 1e-6);
       // Whichever side is tighter decides the zoom, or the box spills out of
       // the side that was not measured.
-      const nw = clampW(Math.max(bw, bh * (w / h)) * pad);
+      const nw = clampW(Math.max(bw, bh / aspect()) * pad);
       moveTo((x0 + x1) / 2, (y0 + y1) / 2, nw, ms);
     }
   };

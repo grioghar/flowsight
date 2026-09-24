@@ -282,7 +282,8 @@ the antimeridian is drawn as the short hop it is instead of a line across the
 whole map, and a route from here to Asia runs west across the Pacific, which
 is the way the packets went. A key to the marks sits under the map.
 
-**Filters** on country, latency, distance in hops and device. Wheel to zoom,
+**Filters** on country, latency, distance in hops and device. Choosing one
+applies it; there is no Apply to press. *Clear* goes back to everything. Wheel to zoom,
 drag to pan, and *Reset zoom* to go back. On a touchscreen or with a pen, one
 finger pans and two pinch to zoom; a two-finger drag does both at once. A tap
 still opens the hop under your finger rather than being swallowed by the map.

@@ -193,6 +193,10 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // The device filter must be a picker of devices, not a box for typing an
   // address, and one entry per device however many addresses it holds.
   if (h.indexOf('<select id="f-dev"') < 0) throw new Error('the device filter should be a picker');
+  // Choosing a filter applies it. An Apply button leaves a chosen filter
+  // sitting there doing nothing while looking as though it is.
+  if (h.indexOf('id="f-apply"') >= 0) throw new Error('there should be no Apply button');
+  if (h.indexOf('>Apply<') >= 0) throw new Error('there should be no Apply button');
   if (h.indexOf('MacBookPro') < 0 || h.indexOf('roku-ultra') < 0) throw new Error('devices missing from the picker');
   if (h.indexOf('2 addresses') < 0) throw new Error('a multi-address device should say so');
   if (h.indexOf('every device') < 0) throw new Error('there must be a way back to everything');

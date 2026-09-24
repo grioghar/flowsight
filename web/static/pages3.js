@@ -598,7 +598,11 @@
               const n = (d.addresses || []).length;
               return `<option value="${esc(d.key)}" ${sel}>${esc(d.name || d.key)} &middot; ${d.destinations} dest${n > 1 ? ` (${n} addresses)` : ''}</option>`;
             }).join('')}</select></label>
-          <button class="btn small" id="f-apply">Apply</button>
+          ${/* No Apply. A filter you have chosen and not applied is a filter
+                that is not doing anything while looking as though it is, and
+                the button existed only to make the page wait for permission
+                it did not need. Selects act on choice; the typed boxes act on
+                Enter or when they lose focus, which is what change gives. */''}
           <button class="btn small" id="f-clear">Clear</button>
           <button class="btn small" id="f-reset">Reset zoom</button>
         </div>
@@ -904,7 +908,10 @@
         if (picked) p.push('dst=' + encodeURIComponent(picked));
         FS.go('paths' + (p.length ? '?' + p.join('&') : ''));
       };
-      FS.$('#f-apply', el).onclick = go;
+      ['#f-country', '#f-dev', '#f-lat', '#f-hops'].forEach(sel => {
+        const c = FS.$(sel, el);
+        if (c) c.onchange = go;
+      });
       FS.$('#f-clear', el).onclick = () => FS.go('paths');
       FS.$('#f-reset', el).onclick = () => FS.panZoomHandle && FS.panZoomHandle.reset();
     }
