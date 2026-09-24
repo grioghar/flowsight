@@ -220,6 +220,47 @@ never will by design (see [Security](SECURITY.md)). Traffic that never
 crosses the firewall, such as two devices on the same subnet talking to
 each other, is not seen by any of this; only routed traffic is.
 
+### Paths (Pro)
+
+Where traffic actually goes, measured rather than assumed. Everything else in
+FlowSight watches the first hop; this traces the rest of the route and keeps
+what it finds.
+
+**It only traces what you already talk to.** Destinations come from your own
+flow history, a few per run on a timer. Nothing is probed that this network
+has not already contacted, and addresses inside the network are skipped
+because they have no route worth drawing.
+
+**A path belongs to a destination, not to a device.** Everything leaves
+through the same gateway, so the route to a given address is the same
+whichever device asked for it. Filtering by device is a join: it shows the
+routes used by the destinations that device has talked to, without tracing
+anything extra.
+
+**Shared legs are drawn once.** Every route out of your network starts the
+same way, and drawn literally that is a hundred lines on top of each other. A
+leg used by several destinations becomes one thicker grey line carrying them
+all; coloured lines belong to a single destination. Where one position
+answers from several addresses, which is how a carrier balances across
+parallel links, that is one point carrying several addresses rather than
+several points.
+
+**Filters** on country, latency, distance in hops and device. Wheel to zoom,
+drag to pan.
+
+**What the map does not claim.** The background is a longitude and latitude
+grid, not a drawing of land, because the coordinates come from an address
+database and that database is dependable for end-user addresses and rough for
+carrier equipment. A router often resolves to wherever its address block was
+registered rather than where it sits. Hops with no coordinates are listed
+underneath rather than placed at zero, which would pile a stack of routers
+into the Gulf of Guinea. Hops that never answered are counted and not drawn
+at all, and they keep their position in the numbering so the path is not
+quietly reported as shorter than it is.
+
+This needs the city-level database, since the country one carries no
+coordinates. See *Settings › enrich › How much detail*.
+
 ### Devices, zones and IPv6
 
 **A device is one thing, not one address.** A phone has an IPv4 address, one

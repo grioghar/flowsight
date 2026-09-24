@@ -122,6 +122,15 @@ FlowSight is driven entirely through a JSON HTTP API; the UI uses nothing else. 
 | GET | `/api/mitm/status` | Deep inspection: whether it is listening and what it has seen |  |
 | GET | `/api/mitm/requests` | The most recent decrypted requests with their headers | limit (rows), q (substring) |
 
+### paths
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/paths/status` | Whether tracing is on, how many destinations have a route, and when |  |
+| GET | `/api/paths/destinations` | Destinations with a measured route | limit (rows) |
+| GET | `/api/paths/path` | Every hop to one destination, with names and locations | dst (destination) |
+| GET | `/api/paths/graph` | The whole picture as nodes and legs, with shared legs collapsed | device (source address), country (filter), max_latency (ms), max_hops |
+
 ### policy
 
 | Method | Path | What | Parameters |

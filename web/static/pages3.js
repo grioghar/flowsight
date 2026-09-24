@@ -295,4 +295,120 @@
     }
   });
 
+  // ------------------------------------------------------------- Paths
+  // A map of where traffic goes, drawn from measured routes.
+  //
+  // Two honesties are built into the drawing rather than written in a
+  // caption. Legs shared by several destinations are one line in a neutral
+  // colour, because that is literally one piece of wire carrying both. And
+  // hops with no coordinates are not placed at zero, which would pile a
+  // stack of routers into the Gulf of Guinea; they go in their own row
+  // underneath, counted and named.
+  const MAPW = 720, MAPH = 360;
+  FS.registerPage('paths', {
+    title: 'Paths', refresh: 120,
+    async render(el, ctx) {
+      const q = [];
+      if (ctx.params.device) q.push('device=' + encodeURIComponent(ctx.params.device));
+      if (ctx.params.country) q.push('country=' + encodeURIComponent(ctx.params.country));
+      if (ctx.params.max_latency) q.push('max_latency=' + encodeURIComponent(ctx.params.max_latency));
+      if (ctx.params.max_hops) q.push('max_hops=' + encodeURIComponent(ctx.params.max_hops));
+      const [st, g, dests] = await Promise.all([
+        get('/api/paths/status'),
+        get('/api/paths/graph' + (q.length ? '?' + q.join('&') : '')),
+        get('/api/paths/destinations?limit=400')]);
+      if (st.error && !g.nodes) { el.innerHTML = FS.err(st.error); return; }
+
+      const nodes = g.nodes || [], legs = g.legs || [];
+      const byId = {}; nodes.forEach(n => byId[n.id] = n);
+      const located = nodes.filter(n => n.located);
+      const unlocated = nodes.filter(n => !n.located && !n.silent);
+      const silent = nodes.filter(n => n.silent).length;
+
+      // One colour per destination for the legs only it uses; everything
+      // shared takes a single neutral colour, which is what "these are the
+      // same leg" should look like.
+      const dstColour = {};
+      let ci = 0;
+      legs.forEach(l => (l.destinations || []).forEach(d => {
+        if (!(d in dstColour)) dstColour[d] = FS.palette[ci++ % FS.palette.length];
+      }));
+      const legColour = (l) => l.shared ? 'var(--muted)' : (dstColour[(l.destinations || [])[0]] || FS.palette[0]);
+
+      const xy = (n) => FS.project(n.lat, n.lon, MAPW, MAPH);
+      let lines = '', dots = '';
+      legs.forEach(l => {
+        const a = byId[l.from], b = byId[l.to];
+        if (!a || !b || !a.located || !b.located) return;
+        const [x1, y1] = xy(a), [x2, y2] = xy(b);
+        const n = (l.destinations || []).length;
+        lines += `<path class="leg ${l.shared ? 'shared' : ''}" stroke="${legColour(l)}" d="M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}</title></path>`;
+      });
+      located.forEach(n => {
+        const [x, y] = xy(n);
+        const label = [n.city, n.region, n.country].filter(Boolean).join(', ');
+        dots += `<circle class="hop" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2 + Math.min(3, n.ips.length)).toFixed(1)}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${n.names && n.names.length ? '\n' + esc(n.names.join(', ')) : ''}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}</title></circle>`;
+      });
+
+      const countries = {};
+      nodes.forEach(n => { if (n.country) countries[n.country] = (countries[n.country] || 0) + 1; });
+
+      el.innerHTML = `<div class="grid cols-4">
+        ${kpi('Destinations with a route', num((dests.destinations || []).length), `${num(st.hops)} hops measured`)}
+        ${kpi('Placed on the map', num(located.length), `${num(unlocated.length)} have no coordinates`, unlocated.length > located.length ? 'warn' : '')}
+        ${kpi('Shared legs', num(legs.filter(l => l.shared).length), `of ${num(legs.length)} total`)}
+        ${card('Tracing', st.active ? `<div>${pill('on', 'ok')}</div><div class="small muted" style="margin-top:6px">Last run ${st.last_run > 0 ? ago(st.last_run) : 'not yet'}.</div>`
+          : `<div>${pill('off', '')}</div><div class="small muted" style="margin-top:6px">Switch it on in <a href="#modules?m=paths">Settings &rsaquo; paths</a>. Nothing is probed that this network has not already contacted.</div>`)}</div>
+
+      <div style="margin-top:14px">${card('Where the traffic goes', `
+        <div class="actions" style="margin-bottom:8px">
+          <label class="small">Country
+            <select id="f-country"><option value="">any</option>${Object.keys(countries).sort().map(c => `<option value="${esc(c)}" ${ctx.params.country === c ? 'selected' : ''}>${esc(c)} (${countries[c]})</option>`).join('')}</select></label>
+          <label class="small">Slower than (ms) <input id="f-lat" type="number" min="0" style="width:80px" value="${esc(ctx.params.max_latency || '')}" placeholder="any"></label>
+          <label class="small">Within hops <input id="f-hops" type="number" min="1" max="64" style="width:70px" value="${esc(ctx.params.max_hops || '')}" placeholder="any"></label>
+          <label class="small">Device <input id="f-dev" style="width:130px" value="${esc(ctx.params.device || '')}" placeholder="any address"></label>
+          <button class="btn small" id="f-apply">Apply</button>
+          <button class="btn small" id="f-clear">Clear</button>
+          <button class="btn small" id="f-reset">Reset zoom</button>
+        </div>
+        <svg class="pathmap" id="pathmap" viewBox="0 0 ${MAPW} ${MAPH}" preserveAspectRatio="xMidYMid meet">
+          ${FS.graticule(MAPW, MAPH, 30)}${lines}${dots}
+        </svg>
+        <div class="help" style="margin-top:8px">Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. The grid is longitude and latitude, not a map of land: these coordinates come from an address database and are dependable for end-user addresses and rough for carrier equipment.</div>`)}</div>
+
+      ${unlocated.length || silent ? `<div class="unlocated">${card('Not on the map', table(unlocated.map(n => ({
+          index: n.index, ips: n.ips.join(', '), names: (n.names || []).join(', '), country: n.country || '' })), [
+          { t: 'Hop', f: r => num(r.index), num: true, sort: 'index' },
+          { t: 'Address', f: r => `<span class="mono small">${esc(r.ips)}</span>`, sort: 'ips' },
+          { t: 'Name', f: r => esc(r.names) || '<span class="muted">none</span>', sort: 'names' },
+          { t: 'Country', f: r => esc(r.country) || '<span class="muted">unknown</span>', sort: 'country' }],
+          { empty: 'Every hop has coordinates.' }),
+          `${num(silent)} hop${silent === 1 ? '' : 's'} never answered and are not shown at all`)}</div>` : ''}
+
+      <div style="margin-top:14px">${card('Destinations', table(dests.destinations || [], [
+        { t: 'Destination', f: r => `<b>${esc(r.name || r.dst)}</b>${r.name ? `<div class="muted small mono">${esc(r.dst)}</div>` : ''}`, sort: 'dst' },
+        { t: 'Where', f: r => esc([r.city, r.country].filter(Boolean).join(', ')) || '<span class="muted">unknown</span>', sort: 'country' },
+        { t: 'Hops', f: r => num(r.hops), num: true, sort: 'hops' },
+        { t: 'Answered', f: r => num(r.answered), num: true, sort: 'answered' },
+        { t: 'Reached', f: r => r.complete ? pill('yes', 'ok') : pill('no', ''), sort: 'complete' },
+        { t: 'Traced', f: r => ago(r.ts), sort: 'ts' }],
+        { empty: 'Nothing traced yet.' }))}</div>`;
+
+      FS.panZoomHandle = FS.panZoom(FS.$('#pathmap', el), MAPW, MAPH);
+      const go = () => {
+        const p = [];
+        const c = FS.$('#f-country', el).value, la = FS.$('#f-lat', el).value,
+              ho = FS.$('#f-hops', el).value, dv = FS.$('#f-dev', el).value.trim();
+        if (c) p.push('country=' + encodeURIComponent(c));
+        if (la) p.push('max_latency=' + encodeURIComponent(la));
+        if (ho) p.push('max_hops=' + encodeURIComponent(ho));
+        if (dv) p.push('device=' + encodeURIComponent(dv));
+        FS.go('paths' + (p.length ? '?' + p.join('&') : ''));
+      };
+      FS.$('#f-apply', el).onclick = go;
+      FS.$('#f-clear', el).onclick = () => FS.go('paths');
+      FS.$('#f-reset', el).onclick = () => FS.panZoomHandle && FS.panZoomHandle.reset();
+    }
+  });
+
 })();

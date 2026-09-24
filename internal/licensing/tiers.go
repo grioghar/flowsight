@@ -60,6 +60,8 @@ var Features = []Feature{
 		Desc: "Community allows three policies and two schedules."},
 	{Key: "retention.extended", Tier: TierPro, Title: "Extended history",
 		Desc: "Keep 90 days of history instead of 7 (Business: 365)."},
+	{Key: "paths.map", Tier: TierPro, Title: "Path mapping",
+		Desc: "The route to the places this network talks to: every hop with its name, carrier and location, collapsed where paths share a leg."},
 	{Key: "qos.shape", Tier: TierPro, Title: "Traffic priority",
 		Desc: "Decide who waits when the link is full: move the queue onto this firewall and share the link by weight, with ceilings per device or service."},
 	{Key: "deep.inspect", Tier: TierBusiness, Title: "Deep inspection",

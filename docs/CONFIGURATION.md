@@ -153,6 +153,20 @@ Deep inspection: the proxy hands each decrypted request and response over by ICA
 | `preview_bytes` | Body preview (bytes) | int | `4096` | How much of each body the proxy sends for decoding. Nothing is stored. |
 | `keep_requests` | Recent requests kept in memory | int | `500` |  |
 
+### paths (Pro tier)
+
+Traces the route to destinations this network already contacts, and keeps what it finds.
+
+| Key | Setting | Type | Default | Notes |
+|---|---|---|---|---|
+| `active` | Trace paths | bool | `false` | Off: nothing is traced. Nothing is ever probed that the network has not already contacted. |
+| `per_run` | Destinations traced per run | int | `6` | A traceroute takes seconds; runs are five minutes apart. |
+| `retrace_hours` | Trace a destination again after (hours) | int | `24` | How stale a route may get before it is measured again. |
+| `max_destinations` | Destinations kept | int | `300` | Busiest first; the long tail is left alone. |
+| `trace_ipv6` | Trace IPv6 destinations too | bool | `true` |  |
+
+Needs `enrich` with `geoip_detail` set to `city`, since the country database carries no coordinates.
+
 ### policy
 
 The declarative policy document, its compiler and continuous reconciliation onto every backend.

@@ -12,6 +12,38 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240704
+
+**Paths: where traffic actually goes, measured.** A new page and module under
+Visibility. Everything else in FlowSight watches the first hop; this traces
+the rest of the route to the destinations your network already contacts, a
+few at a time on a timer, and keeps what it finds. Nothing is probed that the
+network has not already talked to.
+
+A path belongs to a destination rather than a device, because everything
+leaves through the same gateway. Filtering by device is a join over your own
+flow history, so it costs no extra probes.
+
+**Many routes fold into one picture.** Every route out starts the same way,
+and drawn literally that is a hundred lines on top of each other. A leg used
+by several destinations becomes one thicker line in a neutral colour;
+coloured lines belong to a single destination. A position answering from
+several addresses, which is how a carrier balances across parallel links, is
+one point carrying several addresses rather than several points. Filters on
+country, latency, distance in hops and device, with wheel to zoom and drag to
+pan.
+
+**Three things the map refuses to pretend.** The background is a longitude
+and latitude grid, not a drawing of land, because these coordinates are
+dependable for end-user addresses and rough for carrier equipment. Hops with
+no coordinates are listed underneath rather than placed at zero, which would
+pile a stack of routers into the Gulf of Guinea. Hops that never answered are
+counted and not drawn, and they keep their place in the numbering so a path
+is never quietly reported as shorter than it is.
+
+Needs the city-level location database, since the country one carries no
+coordinates.
+
 ## 0.9.8r202609240658
 
 **Location lookup can now answer with coordinates, not just a country.**

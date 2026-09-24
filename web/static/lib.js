@@ -261,6 +261,61 @@ FS.strip = (rows, fmt) => {
   return `<div class="strip">${seg}</div><div class="striplegend small">${leg}</div>`;
 };
 
+// Equirectangular projection: longitude straight onto x, latitude onto y.
+// It distorts area badly towards the poles and that is fine here, because
+// the coordinates being plotted are themselves approximate and the point is
+// relative position, not cartography.
+FS.project = (lat, lon, w, h) => [(Number(lon) + 180) / 360 * w, (90 - Number(lat)) / 180 * h];
+
+// A graticule, not a map of land. Drawing coastlines would imply the points
+// are accurate to a coastline, and for router addresses they are not.
+FS.graticule = (w, h, step) => {
+  step = step || 30;
+  let out = '';
+  for (let lon = -180; lon <= 180; lon += step) {
+    const x = (lon + 180) / 360 * w;
+    out += `<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${h}" class="grat"/>`;
+    if (lon > -180 && lon < 180) out += `<text x="${x.toFixed(1)}" y="${h - 3}" class="gratlabel">${lon}&deg;</text>`;
+  }
+  for (let lat = -90; lat <= 90; lat += step) {
+    const y = (90 - lat) / 180 * h;
+    out += `<line x1="0" y1="${y.toFixed(1)}" x2="${w}" y2="${y.toFixed(1)}" class="grat"/>`;
+    if (lat > -90 && lat < 90) out += `<text x="3" y="${(y - 3).toFixed(1)}" class="gratlabel">${lat}&deg;</text>`;
+  }
+  return out;
+};
+
+// Wheel to zoom, drag to pan, by rewriting the viewBox. Kept here because
+// more than one page will want it.
+FS.panZoom = (svg, w, h) => {
+  if (!svg) return;
+  const view = { x: 0, y: 0, w: w, h: h };
+  const apply = () => svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const k = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+    const r = svg.getBoundingClientRect();
+    const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+    const nw = Math.min(w * 4, Math.max(w / 40, view.w * k));
+    const nh = nw * (h / w);
+    view.x += (view.w - nw) * fx; view.y += (view.h - nh) * fy;
+    view.w = nw; view.h = nh; apply();
+  }, { passive: false });
+  let drag = null;
+  svg.addEventListener('mousedown', (e) => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y }; });
+  window.addEventListener('mouseup', () => { drag = null; });
+  svg.addEventListener('mousemove', (e) => {
+    if (!drag) return;
+    const r = svg.getBoundingClientRect();
+    view.x = drag.vx - (e.clientX - drag.x) * (view.w / r.width);
+    view.y = drag.vy - (e.clientY - drag.y) * (view.h / r.height);
+    apply();
+  });
+  svg.style.cursor = 'grab';
+  apply();
+  return { reset: () => { view.x = 0; view.y = 0; view.w = w; view.h = h; apply(); } };
+};
+
 // --------------------------------------------------------------- state
 FS.state = { hours: Number(localStorage.getItem('fs.hours') || 24), page: '', params: {} };
 FS.setHours = (h) => { FS.state.hours = h; try { localStorage.setItem('fs.hours', h); } catch (e) {} FS.render(); };

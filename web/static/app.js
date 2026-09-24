@@ -2,7 +2,7 @@
 'use strict';
 (function () {
   const { $, $$, esc, get } = FS;
-  const ICONS = { qos: '⇅', egress: '⇱', license: '◈', zones: '▦', deep: '⌖', overview: '◉', hosts: '▣', flows: '⇄', apps: '◇', web: '◍', dns: '◎', threats: '⚠', tls: '🔒', policy: '☰', groups: '⦿', categories: '▤', firewall: '▦', enroll: '⌂', reports: '▥', alerts: '🔔', system: '⚙', findings: '✓', events: '≡', modules: '⚙', audit: '≡' };
+  const ICONS = { paths: '⇢', qos: '⇅', egress: '⇱', license: '◈', zones: '▦', deep: '⌖', overview: '◉', hosts: '▣', flows: '⇄', apps: '◇', web: '◍', dns: '◎', threats: '⚠', tls: '🔒', policy: '☰', groups: '⦿', categories: '▤', firewall: '▦', enroll: '⌂', reports: '▥', alerts: '🔔', system: '⚙', findings: '✓', events: '≡', modules: '⚙', audit: '≡' };
   const ORDER = { Visibility: 1, Security: 2, Policy: 3, Operations: 4 };
   let timer = null;
 
