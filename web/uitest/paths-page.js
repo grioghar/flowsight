@@ -35,13 +35,15 @@ var GRAPH = { nodes: [
   { id:'h35', index:6, ips:['51.10.49.216'], names:['po1.owr03.lax31.ntwk.msn.net'], located:true,
     lat:34.0522, lon:-118.2437, country:'US', region:'CA', city:'Los Angeles', rtt_ms:134.7,
     location_source:'name', database_said:'London, England, GB', moved_km:8756, db_lat:51.5072, db_lon:-0.1276,
-    detail:{ pop_code:'lax', pop_city:'Los Angeles, CA, US', asn:'8075',
+    detail:{ pop_code:'lax', pop_city:'Los Angeles, CA, US', pop_score:0.95, pop_how:'code',
+      pop_why:'134.7 ms fits 3000 km; better than London', asn:'8075',
       as_name:'MICROSOFT-CORP-MSN-AS-BLOCK - Microsoft Corporation, US', prefix:'51.10.0.0/15',
       rir:'ripencc', allocated:'1993-09-01', net_name:'MSFT-51-10', org:'Microsoft Corporation',
       org_addr:'One Microsoft Way, Redmond, WA, 98052, United States',
       facilities:[{ name:'Equinix LA1 - Los Angeles', address:'600 W 7th St, Los Angeles, CA, 90017-3859, US' }],
       facilities_scoped:true } },
   { id:'h4', index:4, ips:['1.1.1.1'], located:true, lat:-33.86, lon:151.20, country:'AU', city:'Sydney', rtt_ms:18.9,
+    endpoint:true, reaches:['1.1.1.1'],
     impossible:true, distance_km:15320, floor_ms:153.2, via:'Southern Cross NEXT', why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' },
   // Clears the floor by 4%: physics allows it, a real route does not.
   { id:'h7', index:7, ips:['62.115.143.52'], located:true, lat:51.5072, lon:-0.1276, country:'GB', city:'London', rtt_ms:73.2,
@@ -207,6 +209,17 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // way out of it in one click.
   if (h.indexOf('id="mapfilter"') < 0) throw new Error('narrowing the map needs to announce itself');
   if (h.indexOf('id="mapfilter-off"') < 0) throw new Error('the narrowing must be closable');
+  // A destination and a router it crossed on the way are different things and
+  // must not be drawn alike.
+  if (h.indexOf('class="endpoint"') < 0) throw new Error('endpoints need a mark of their own');
+  if (h.indexOf('ENDPOINT') < 0) throw new Error('the hover should say it is an endpoint');
+  if (h.indexOf('an endpoint: traffic was going here') < 0)
+    throw new Error('the legend should explain the endpoint mark');
+  if (h.indexOf('Traffic was going here; the hops before it are the way in') < 0)
+    throw new Error("the endpoint's card should say what it is");
+  // And the inference has to show its working, not just its answer.
+  if (h.indexOf('Confidence') < 0) throw new Error('a reading of a name needs a confidence');
+  if (h.indexOf('How it was settled') < 0) throw new Error('it should say what decided it');
   var chip = h.slice(h.indexOf('id="mapfilter"'), h.indexOf('id="mapfilter"') + 200);
   if (chip.indexOf('hidden') < 0) throw new Error('the chip should start hidden, before anything is narrowed');
   if (h.indexOf('>Apply<') >= 0) throw new Error('there should be no Apply button');

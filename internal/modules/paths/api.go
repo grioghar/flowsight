@@ -72,8 +72,8 @@ func (m *Module) apiPath(r *core.Req) (any, error) {
 		return nil, err
 	}
 	g := buildGraph(rows)
-	m.locate(g.Nodes)
 	h := m.home()
+	m.locate(g.Nodes, h)
 	m.checkPlausible(g.Nodes, h)
 	sort.Slice(g.Nodes, func(i, j int) bool { return g.Nodes[i].Index < g.Nodes[j].Index })
 	out := map[string]any{"destination": dst, "hops": g.Nodes, "home": h,
@@ -166,11 +166,12 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 		return nil, err
 	}
 	g := buildGraph(rows)
-	m.locate(g.Nodes)
+	h := m.home()
+	m.locate(g.Nodes, h)
 	// Before anything measures the legs: a placed hop whose neighbours could
 	// not be placed would otherwise be drawn with nothing attached to it.
 	bridgeGaps(&g)
-	h := m.home()
+	markEndpoints(&g)
 	m.checkPlausible(g.Nodes, h)
 	m.annotateCables(g)
 	g = filterGraph(g, r.Q("country", ""), float64(r.QInt("max_latency", 0, 0, 100000)), r.QInt("max_hops", 0, 0, 64))
@@ -365,7 +366,7 @@ func (m *Module) hops(where string, args ...any) ([]hopRow, error) {
 }
 
 // locate fills in names and coordinates for every node.
-func (m *Module) locate(nodes []Node) {
+func (m *Module) locate(nodes []Node, h Home) {
 	var ips []string
 	for _, n := range nodes {
 		ips = append(ips, n.IPs...)
@@ -392,7 +393,7 @@ func (m *Module) locate(nodes []Node) {
 			}
 		}
 	}
-	m.describe(nodes)
+	m.describe(nodes, h)
 }
 
 // describe attaches operator detail, and lets a router's own name overrule the
@@ -405,7 +406,7 @@ func (m *Module) locate(nodes []Node) {
 // first-hand and the database is not, so the name wins -- and what the
 // database claimed is kept alongside, because this is an inference and a
 // reader is entitled to check it.
-func (m *Module) describe(nodes []Node) {
+func (m *Module) describe(nodes []Node, h Home) {
 	pairs := map[string]string{}
 	for i := range nodes {
 		n := &nodes[i]
@@ -443,18 +444,37 @@ func (m *Module) describe(nodes []Node) {
 			if d.Name != "" && !contains(n.Names, d.Name) {
 				n.Names = append(n.Names, d.Name)
 			}
-			if d.PoPLat == 0 && d.PoPLon == 0 {
+			// Where the name points is decided here, against the clock.
+			// A name is a proposal; the round trip is evidence, and a
+			// reading it rules out is not used however well it reads.
+			match, score, why := m.placeFromName(d.Name, n.RTT, h)
+			if score <= 0 || match.Pop.City == "" {
+				if n.Detail != nil {
+					n.Detail.PoPWhy = why
+				}
+				continue
+			}
+			if n.Detail != nil {
+				n.Detail.PoPCode, n.Detail.PoPCity = match.Code, match.Pop.City
+				n.Detail.PoPLat, n.Detail.PoPLon = match.Pop.Lat, match.Pop.Lon
+				n.Detail.PoPScore, n.Detail.PoPHow, n.Detail.PoPWhy = score, match.Kind, why
+			}
+			// A reading has to be worth more than the database to replace it.
+			// A published code clears this easily; a contraction clears it
+			// only when the round trip actually fits, which is the line
+			// between reading a name and guessing at one.
+			if score < 0.55 {
 				continue
 			}
 			if n.Located && n.Source == "database" {
-				if km := greatCircleKM(n.Lat, n.Lon, d.PoPLat, d.PoPLon); km > 250 {
+				if km := greatCircleKM(n.Lat, n.Lon, match.Pop.Lat, match.Pop.Lon); km > 250 {
 					n.DatabaseSaid = strings.Join(nonEmpty(n.City, n.Region, n.Country), ", ")
 					n.MovedKM = km
 					n.DBLat, n.DBLon = n.Lat, n.Lon
 				}
 			}
-			n.Lat, n.Lon, n.Located, n.Source = d.PoPLat, d.PoPLon, true, "name"
-			n.City, n.Region, n.Country = splitPlace(d.PoPCity)
+			n.Lat, n.Lon, n.Located, n.Source = match.Pop.Lat, match.Pop.Lon, true, "name"
+			n.City, n.Region, n.Country = splitPlace(match.Pop.City)
 			break
 		}
 	}

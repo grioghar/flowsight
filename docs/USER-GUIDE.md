@@ -323,12 +323,23 @@ right of it gives, in this order and under these headings:
 - *Measured* -- the round trip, and where the hop falls in the route. This is
   observation; nothing else on the card is.
 - *Resolved* -- the router's own name, from reverse DNS.
+- *Endpoint* -- if the hop is one. An endpoint is an address this network was
+  talking to; every other hop is a router it crossed on the way. Endpoints
+  carry a ring of their own on the map, and clicking one opens the whole
+  journey to it.
 - *Site, read from the router name* -- carriers write the site into the
   hostname. `po1.owr03.lax31.ntwk.msn.net` says Los Angeles; `ae10.edge1.dal2.
   sp.lumen.tech` says Dallas; `172-11-154-1.lightspeed.tpkaks.sbcglobal.net`
-  says Topeka, Kansas. Reading that code is an inference and is labelled as
-  one, but it is first-hand in a way a database is not, so it overrules the
-  database when the two disagree.
+  says Topeka, Kansas. Shortened forms are read too -- `palo-bb4` for Palo
+  Alto, `kanc` for Kansas City, `sjo` for San Jose.
+
+  Those shortenings are ambiguous, so nothing is decided on the name alone.
+  Every reading is a candidate and the round trip settles them: a name cannot
+  place a hop somewhere light could not have reached in the time measured. The
+  card gives a confidence and says what decided it. A published code the
+  measurement supports scores near 100%; a contraction the measurement merely
+  fails to contradict scores lower, and below 70% it is shown but does not
+  overrule the address database.
 - *Who runs it* -- which network announces the address today, taken from the
   public routing table, plus the registry's record of the allocation: the
   regional registry, the date, the allocation's name, and who it is

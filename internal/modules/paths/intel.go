@@ -49,6 +49,12 @@ type Detail struct {
 	PoPCity string  `json:"pop_city,omitempty"`
 	PoPLat  float64 `json:"pop_lat,omitempty"`
 	PoPLon  float64 `json:"pop_lon,omitempty"`
+	// How much to believe it, nought to one, and why. A published code
+	// checked against the clock scores near one; a contraction the clock
+	// merely fails to contradict scores far less, and says so.
+	PoPScore float64 `json:"pop_score,omitempty"`
+	PoPHow   string  `json:"pop_how,omitempty"`
+	PoPWhy   string  `json:"pop_why,omitempty"`
 
 	// From the routing table.
 	ASN    string `json:"asn,omitempty"`
@@ -584,15 +590,12 @@ func (m *Module) describeFast(pairs map[string]string, budget time.Duration) (ma
 	return out, cold
 }
 
-// fromName is everything a router's own name gives up, which is the part that
-// decides where it is drawn.
+// fromName records the name. Where it points is settled later, in describe(),
+// because that needs the round trip and the origin -- and because a decision
+// that depends on a measurement must not be cached against an address as
+// though it were a property of it.
 func fromName(host string) Detail {
-	var d Detail
-	d.Name = host
-	if code, p, ok := decodePoP(host); ok {
-		d.PoPCode, d.PoPCity, d.PoPLat, d.PoPLon = code, p.City, p.Lat, p.Lon
-	}
-	return d
+	return Detail{Name: host}
 }
 
 // note remembers addresses that still need the slow lookup.

@@ -12,6 +12,45 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241650
+
+**The name proposes; the clock disposes.**
+
+Reading a place out of a router's name matched a fixed list of codes, which
+gets `dfw01` and `Dallas3` and misses `palo-bb4`, `kanc` and `sjo` -- Palo
+Alto, Kansas City and San Jose, written the way anyone writes a name in a
+field that is too short. Those forms are now generated from the city list
+itself: a prefix of the name, or the front of each word run together.
+
+Generating them makes the answers ambiguous, and that is the whole problem.
+"san" is three cities. A decoder that picks between them confidently is worse
+than one that does not pick at all, because a wrong placement is drawn with
+exactly the authority of a right one.
+
+So nothing is decided on the text. Every reading is a candidate and the
+candidates are settled against the measurement: a round trip of 19 ms cannot
+have reached a city 8,000 km away whatever the name says, and one of 140 ms
+has no business claiming somewhere down the road. What survives carries a
+score and the reason for it -- *"read as a contraction of San Jose; 50.0 ms
+fits 2400 km; better than San Diego"* -- so a reader can see which of the two
+did the work. A published code that the clock supports scores near one; a
+reading has to be worth more than the database to replace it, and below that
+line it is shown but does not move the hop.
+
+Being *slow* counts for almost nothing either way, which took a pass over
+live data to get right. A packet can be queued or sent the long way round, and
+neither argues about where it ended up. Scoring slowness as evidence against
+buried real readings: Arelion's `kanc-bb2-link` is Kansas City and answers in
+30 ms from two hundred kilometres away, because the path goes elsewhere first.
+
+**Endpoints look like endpoints.** The last hop of a route is the thing that
+was being reached, and on a map of four hundred routes those are the points a
+reader is looking for -- the rest is plumbing. They were drawn identically to
+every carrier router in between. They now carry a ring of their own, say so on
+hover and in their card, and clicking one opens the journey to it: the trail
+from this network to that address, the map narrowed to that route, the whole
+of it framed, and its detail already open.
+
 ## 0.9.8r202609241643
 
 **Clicking a hop now shows only the routes that run through it**, and says so.

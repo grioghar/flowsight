@@ -479,7 +479,11 @@
           dots += `<path class="corrected" d="M${px.toFixed(1)},${py.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}"/><circle class="ghost" data-r="2.5" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5"/>`;
         }
         const hr = (2 + Math.min(3, n.ips.length)).toFixed(1);
-        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'TOO FAST: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
+        // An endpoint is somewhere this network was talking to; everything
+        // else is a router it crossed on the way. Drawn the same, there was
+        // no telling the destination from the plumbing.
+        if (n.endpoint) dots += `<circle class="endpoint" data-r="8" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"/>`;
+        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${n.endpoint ? ' isend' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.endpoint ? '\nENDPOINT — traffic was going here' : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'TOO FAST: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
       });
 
       // What a hop is, told in the order the evidence deserves: what was
@@ -491,11 +495,15 @@
         const d = n.detail || {};
         const r = (k, v, cls) => v ? `<div class="hr ${cls || ''}"><span>${esc(k)}</span><b>${esc(v)}</b></div>` : '';
         const grp = (t) => `<div class="hg">${esc(t)}</div>`;
-        let h = `<h4>Hop ${n.index} &mdash; <span class="mono">${esc(n.ips.join(', '))}</span></h4>`;
+        let h = `<h4>${n.endpoint ? 'Endpoint' : 'Hop ' + n.index} &mdash; <span class="mono">${esc(n.ips.join(', '))}</span></h4>`;
+        if (n.endpoint) h += `<div class="endnote">Traffic was going here; the hops before it are the way in. Click it on the map to follow the whole path from you.</div>`;
         h += grp('Measured') + r('Round trip', n.rtt_ms ? n.rtt_ms + ' ms' : '');
         if (n.names && n.names.length) h += grp('Resolved') + r('Router name', n.names.join(', '));
+        if (!d.pop_city && d.pop_why) h += r('Name suggests', d.pop_why, 'warn');
         if (d.pop_city) {
           h += grp('Site, read from the router name') + r('Code in the name', d.pop_code) + r('Site', d.pop_city);
+          if (d.pop_score) h += r('Confidence', `${Math.round(d.pop_score * 100)}%${d.pop_how ? ' — matched as a ' + d.pop_how : ''}`, d.pop_score < 0.55 ? 'soft' : '');
+          if (d.pop_why) h += r('How it was settled', d.pop_why, 'soft');
           if (n.database_said) h += r('The database said', `${n.database_said} — ${num(Math.round(n.moved_km))} km away; the name is first-hand, so it wins`, 'warn');
         }
         if (d.asn) {
@@ -691,7 +699,8 @@
             ${it(sw('leg', 'stroke:' + FS.palette[0]), 'a leg used by one destination')}
             ${(cab.cables || []).length ? it(sw('cable'), 'submarine cable') : ''}
             ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="homering" cx="6" cy="6" r="4.5"/><circle class="home" cx="6" cy="6" r="2"/></svg>`, 'you')}
-            ${it(dot(FS.palette[2]), 'a hop, sized by how many addresses answered')}
+            ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="endpoint" cx="6" cy="6" r="4.6"/><circle cx="6" cy="6" r="2.2" fill="${FS.palette[2]}"/></svg>`, 'an endpoint: traffic was going here')}
+            ${it(dot(FS.palette[2]), 'a hop it crossed on the way')}
             ${it(dot(FS.palette[2], 'rich'), 'operator known')}
             ${it(dot('', 'ruledout'), 'the latency rules this placement out')}
             ${it(dot('', 'doubtful'), 'too fast for any built route')}
@@ -910,8 +919,16 @@
         const id = c.getAttribute('data-hop');
         c.addEventListener('mouseenter', () => select(id));
         c.addEventListener('click', () => {
-          select(id);
           const n0 = byId[id];
+          // An endpoint is a destination, and what a reader wants from one is
+          // the journey to it, not a closer look at the dot. So it opens that
+          // route: the trail from this network to it, the map narrowed to it,
+          // and the whole thing framed.
+          if (n0 && n0.endpoint && (n0.reaches || []).length && n0.reaches[0] !== picked) {
+            FS.go('paths?' + routeQ(n0.reaches[0]));
+            return;
+          }
+          select(id);
           litRoute(routeOf(id), (n0 && n0.ips ? n0.ips[0] : id));
           const pz = FS.panZoomHandle;
           const n = byId[id];
@@ -951,6 +968,26 @@
       const laidById = {}; laid.forEach(p => laidById[p.id] = p);
       const H = () => FS.panZoomHandle;
 
+      // The whole journey in view: from you, through every placed hop, to the
+      // endpoint. A route drawn without its own beginning is not the route,
+      // so the origin is in the box.
+      const fitRoute = () => {
+        const pz = H();
+        if (!pz || !laid.length) return;
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        if (origin) {
+          const ox = near(origin[0], laid[0].x);
+          x0 = Math.min(x0, ox); x1 = Math.max(x1, ox);
+          y0 = Math.min(y0, origin[1]); y1 = Math.max(y1, origin[1]);
+        }
+        laid.forEach(p => {
+          x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+          y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+        });
+        const mid = pz.nearest((x0 + x1) / 2), shift = mid - (x0 + x1) / 2;
+        pz.fit(x0 + shift, y0, x1 + shift, y1);
+      };
+
       crumbEls.forEach(li => {
         const id = li.getAttribute('data-crumb');
         const mark = () => select(id);
@@ -963,22 +1000,7 @@
           // "how far did that go". Everything before it travels, keeping the
           // zoom the reader chose.
           if (li.classList.contains('endpoint') && laid.length > 1) {
-            let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-            // A route that does not include its own start is not the route.
-            if (origin && laid.length) {
-              const ox = near(origin[0], laid[0].x);
-              x0 = Math.min(x0, ox); x1 = Math.max(x1, ox);
-              y0 = Math.min(y0, origin[1]); y1 = Math.max(y1, origin[1]);
-            }
-            laid.forEach(p => {
-              x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
-              y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
-            });
-            // Framed where it was laid out, then slid to the copy of the world
-            // nearest the view, so the map travels rather than jumping.
-            const mid = pz.nearest((x0 + x1) / 2);
-            const shift = mid - (x0 + x1) / 2;
-            pz.fit(x0 + shift, y0, x1 + shift, y1);
+            fitRoute();
             return;
           }
           if (id === '__origin') {
@@ -1023,6 +1045,20 @@
         const c = FS.$(sel, el);
         if (c) c.onchange = go;
       });
+      // Arriving with a route chosen: show the whole of it, narrowed to it,
+      // with the endpoint's detail open -- which is what was asked for by
+      // coming here.
+      if (picked && laid.length) {
+        const end = routeHops.filter(n => n.located).slice(-1)[0];
+        litRoute([picked], picked);
+        if (end) select(end.id);
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => requestAnimationFrame(fitRoute));
+        } else {
+          fitRoute();
+        }
+      }
+
       const off = FS.$('#mapfilter-off', el);
       if (off) off.onclick = () => {
         litRoute(null);

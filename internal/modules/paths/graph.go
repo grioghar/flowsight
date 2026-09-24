@@ -39,6 +39,12 @@ type Node struct {
 	Index   int     `json:"index"`                     // distance from here, in hops
 	RTT     float64 `json:"rtt_ms,omitempty"`
 	Silent  bool    `json:"silent,omitempty"` // nothing answered at this position
+	// Endpoint marks a node that is somewhere traffic was actually going,
+	// rather than a router it passed through on the way. It is the difference
+	// between a place this network talks to and a place it merely crosses,
+	// which is most of what a reader is looking for.
+	Endpoint bool     `json:"endpoint,omitempty"`
+	Reaches  []string `json:"reaches,omitempty"` // destinations this node is
 	// Impossible marks a placement the measured latency rules out: the point
 	// is too far away to have answered as quickly as it did. The location is
 	// wrong, not the measurement.
@@ -311,5 +317,36 @@ func bridgeGaps(g *Graph) {
 		sort.Strings(l.Destinations)
 		l.Shared = len(l.Destinations) > 1
 		g.Legs = append(g.Legs, *l)
+	}
+}
+
+// markEndpoints records which nodes are destinations rather than routers on
+// the way to one.
+//
+// A traceroute's last hop is the thing that was being reached, and on a map
+// of four hundred routes those are the points a reader is actually looking
+// for -- the rest is plumbing. They were drawn identically to every carrier
+// router in between, so there was no way to tell a place this network talks
+// to from one it merely crosses.
+func markEndpoints(g *Graph) {
+	// Every destination any leg serves. A node holding one of those
+	// addresses is where that traffic was going.
+	dsts := map[string]bool{}
+	for _, l := range g.Legs {
+		for _, d := range l.Destinations {
+			dsts[d] = true
+		}
+	}
+	for i := range g.Nodes {
+		n := &g.Nodes[i]
+		for _, ip := range n.IPs {
+			if dsts[ip] {
+				n.Endpoint = true
+				if !contains(n.Reaches, ip) {
+					n.Reaches = append(n.Reaches, ip)
+				}
+			}
+		}
+		sort.Strings(n.Reaches)
 	}
 }
