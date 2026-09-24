@@ -12,6 +12,16 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242027
+
+**The Overview's site-to-endpoint lookup is indexed and remembered.** The
+join added in the previous revision read a day of flows with nothing on the
+site column to seek by, and cost the Overview two seconds a load. The flow
+table gains an index on site and time, and the answer is kept for two
+minutes, which is well inside how fast it changes. The index is built once
+on first start after the update, which on a large history takes some
+seconds.
+
 ## 0.9.8r202609242025
 
 **Every top site on the Overview links to its endpoint on the Map.** A site

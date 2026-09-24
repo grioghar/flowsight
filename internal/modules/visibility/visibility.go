@@ -46,6 +46,10 @@ func (b *FlowBus) publish(fl []core.Flow) {
 }
 
 type Module struct {
+	epMu     sync.Mutex              // guards the site->endpoint memo below
+	epBest   map[string]endpointPick // site -> endpoint, from the last join
+	epKey    string                  // what that join was for
+	epAt     time.Time               // and when
 	ctx      *core.Context
 	nt       *ntopng
 	bus      *FlowBus
@@ -744,6 +748,23 @@ func (m *Module) endpointsFor(domains []map[string]any, since int64) {
 	if len(names) == 0 {
 		return
 	}
+	// The Overview asks every couple of minutes and the answer moves slower
+	// than that; the join is remembered briefly against the sites asked
+	// about, so a page refresh is a lookup rather than a pass over the day.
+	memoKey := fmt.Sprintf("%d|%s", since-since%300, strings.Join(names, ","))
+	m.epMu.Lock()
+	if m.epAt.Add(2*time.Minute).After(time.Now()) && m.epKey == memoKey {
+		for _, d := range domains {
+			if n, _ := d["domain"].(string); n != "" {
+				if p, ok := m.epBest[n]; ok {
+					d["dst_ip"], d["traced"] = p.ip, p.traced
+				}
+			}
+		}
+		m.epMu.Unlock()
+		return
+	}
+	m.epMu.Unlock()
 	in := strings.Join(ph, ",")
 	rows, err := m.ctx.Store.Rows(`SELECT f.domain AS domain, f.dst_ip AS ip, SUM(f.bytes_in+f.bytes_out) AS b,
 		MAX(CASE WHEN p.dst IS NULL THEN 0 ELSE 1 END) AS traced
@@ -758,12 +779,7 @@ func (m *Module) endpointsFor(domains []map[string]any, since int64) {
 			return
 		}
 	}
-	type pick struct {
-		ip     string
-		b      int64
-		traced bool
-	}
-	best := map[string]pick{}
+	best := map[string]endpointPick{}
 	for _, r := range rows {
 		dom, _ := r["domain"].(string)
 		ip, _ := r["ip"].(string)
@@ -771,9 +787,12 @@ func (m *Module) endpointsFor(domains []map[string]any, since int64) {
 		traced := asInt64(r["traced"]) > 0
 		cur, ok := best[dom]
 		if !ok || (traced && !cur.traced) || (traced == cur.traced && b > cur.b) {
-			best[dom] = pick{ip, b, traced}
+			best[dom] = endpointPick{ip, b, traced}
 		}
 	}
+	m.epMu.Lock()
+	m.epBest, m.epKey, m.epAt = best, memoKey, time.Now()
+	m.epMu.Unlock()
 	for _, d := range domains {
 		if n, _ := d["domain"].(string); n != "" {
 			if p, ok := best[n]; ok {
@@ -781,6 +800,14 @@ func (m *Module) endpointsFor(domains []map[string]any, since int64) {
 			}
 		}
 	}
+}
+
+// endpointPick is one site's endpoint: the address, how much went there,
+// and whether the map has a route to it.
+type endpointPick struct {
+	ip     string
+	b      int64
+	traced bool
 }
 
 func asInt64(v any) int64 {
