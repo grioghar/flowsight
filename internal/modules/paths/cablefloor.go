@@ -30,8 +30,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/grioghar/flowsight/internal/core"
 )
 
 // cableFloorMinKM is the distance below which the cables are not consulted.
@@ -72,11 +70,40 @@ func (f *floorMemo) key(aLat, aLon, bLat, bLon float64) string {
 
 func ftoa(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
 
+// maxAshoreKM is how far inland an end may be and still be served by a cable.
+//
+// It is deliberately generous. Asking a cable to pass close to both ends is
+// the right question when you want to know which cable carried a leg, and the
+// wrong one here: this asks how far the packet had to travel, and the run
+// overland to reach the sea is part of that journey rather than a reason to
+// discard the crossing. A gateway in Kansas is fifteen hundred kilometres
+// from salt water and no cable comes near it; with a proximity gate, every
+// transatlantic route it takes was rejected and nothing was measured along a
+// cable at all.
+const maxAshoreKM = 2500
+
+const minCableShare = 0.55
+
+// minCableShare is how much of the journey has to be on the cable before the
+// route is believed.
+//
+// The run ashore is measured as a straight line, and a straight line does not
+// know about water. Left unchecked, the search happily joins two enormous
+// "overland" legs to a short local cable and calls it the shortest way: the
+// first version picked Greenland Connect, Sunoque I and a festoon off
+// Colombia for crossings out of Kansas, because a tiny cable with vast
+// imaginary approaches beat a real transatlantic trunk. A crossing worth the
+// name is mostly the crossing.
+
 // cableRouteKM is the shortest way between two places that the cable record
-// actually offers: out to a cable, along it, and ashore at the other end.
+// actually offers: overland to a cable, along it, and overland again at the
+// far end, with both runs ashore counted.
 //
 // It is a minimum over every cable serving both ends, because the check it
 // feeds needs a bound nothing can beat rather than a best guess at the path.
+// The minimum does the work a proximity gate used to: a cable landing near
+// both ends beats one that needs a thousand kilometres of driving, without
+// having to rule the second out in advance.
 func cableRouteKM(cables []Cable, aLat, aLon, bLat, bLon, nearKM float64) cableRoute {
 	best := cableRoute{KM: math.MaxFloat64}
 	for _, c := range cables {
@@ -92,7 +119,11 @@ func cableRouteKM(cables []Cable, aLat, aLon, bLat, bLon, nearKM float64) cableR
 			}
 			// The whole journey: the run ashore at each end counts, or a
 			// cable that lands a hundred kilometres away looks free.
-			total := runLengthKM(run[lo:hi+1]) + da + db
+			along := runLengthKM(run[lo : hi+1])
+			total := along + da + db
+			if total <= 0 || along/total < minCableShare {
+				continue // mostly imaginary overland; not this crossing
+			}
 			if total < best.KM {
 				best = cableRoute{KM: total, Name: c.Name, OK: true}
 			}
@@ -130,11 +161,10 @@ func (m *Module) pathKM(aLat, aLon, bLat, bLon float64) (km float64, via string)
 	r, seen := m.floors.m[key]
 	m.floors.mu.Unlock()
 	if !seen {
-		near := float64(500)
-		if m.ctx != nil {
-			near = float64(core.Int(m.ctx.Settings(), "cable_near_km", 400))
-		}
-		r = cableRouteKM(cables, aLat, aLon, bLat, bLon, near)
+		// Not cable_near_km: that setting answers "did this cable carry the
+		// leg", where being close matters. Here the overland run is part of
+		// the distance, and the shortest total decides.
+		r = cableRouteKM(cables, aLat, aLon, bLat, bLon, maxAshoreKM)
 		m.floors.mu.Lock()
 		m.floors.m[key] = r
 		m.floors.mu.Unlock()

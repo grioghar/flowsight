@@ -187,3 +187,56 @@ func TestTheFloorIsNeverLowered(t *testing.T) {
 		t.Fatalf("the bound went below the straight line: %.0f < %.0f", km, straight)
 	}
 }
+
+// The origin that found this bug: a gateway in Kansas, fifteen hundred
+// kilometres from salt water. Requiring a cable to pass near both ends
+// rejected every transatlantic crossing it makes, and nothing was measured
+// along a cable at all. The run overland is part of the journey.
+func TestAnInlandOriginStillReachesTheCables(t *testing.T) {
+	atlantic := []Cable{{Name: "Test Atlantic", Legs: [][]LatLon{{
+		{Lat: 40.7, Lon: -74.0}, // New York
+		{Lat: 47.0, Lon: -45.0},
+		{Lat: 50.5, Lon: -10.0},
+		{Lat: 50.1, Lon: -5.5}, // Cornwall
+	}}}}
+	m := &Module{cables: atlantic}
+	// Manhattan, Kansas to London.
+	km, via := m.pathKM(39.1836, -96.5717, 51.5072, -0.1276)
+	if via == "" {
+		t.Fatalf("an inland origin found no cable route; got %.0f km by the straight line", km)
+	}
+	straight := greatCircleKM(39.1836, -96.5717, 51.5072, -0.1276)
+	if km <= straight {
+		t.Errorf("the cable route should be longer than the straight line: %.0f vs %.0f", km, straight)
+	}
+	// And still a believable journey, not a trip round the world.
+	if km > straight*1.5 {
+		t.Errorf("route implausibly long: %.0f km against a straight line of %.0f", km, straight)
+	}
+}
+
+// The run ashore is a straight line, and a straight line does not know about
+// water. Without a check on how much of the journey is actually on the cable,
+// the search joins two enormous imaginary overland legs to a short local
+// cable and calls it the shortest way -- it picked Greenland Connect and a
+// festoon off Colombia for crossings out of Kansas.
+func TestAShortLocalCableCannotStandInForACrossing(t *testing.T) {
+	decoy := Cable{Name: "Greenland Connect", Legs: [][]LatLon{{
+		{Lat: 64.2, Lon: -51.7}, {Lat: 65.6, Lon: -37.6}, // a few hundred km
+	}}}
+	real := Cable{Name: "Real Atlantic", Legs: [][]LatLon{{
+		{Lat: 40.7, Lon: -74.0}, {Lat: 47.0, Lon: -45.0},
+		{Lat: 50.5, Lon: -10.0}, {Lat: 50.1, Lon: -5.5},
+	}}}
+	// The decoy alone must not be accepted for a Kansas-to-London trip.
+	m := &Module{cables: []Cable{decoy}}
+	if km, via := m.pathKM(39.1836, -96.5717, 51.5072, -0.1276); via != "" {
+		t.Errorf("a short Arctic cable stood in for an Atlantic crossing: %q at %.0f km", via, km)
+	}
+	// With a real trunk present, that is the one chosen.
+	m = &Module{cables: []Cable{decoy, real}}
+	km, via := m.pathKM(39.1836, -96.5717, 51.5072, -0.1276)
+	if via != "Real Atlantic" {
+		t.Errorf("expected the trunk, got %q at %.0f km", via, km)
+	}
+}
