@@ -45,7 +45,10 @@ type Cable struct {
 }
 
 // LatLon is a point on a cable.
-type LatLon struct{ Lat, Lon float64 }
+type LatLon struct {
+	Lat float64 `json:"lat"`
+	Lon float64 `json:"lon"`
+}
 
 // Candidate is a cable a leg could have crossed, with the stretch of it that
 // lies between the two ends.
@@ -295,5 +298,11 @@ func (m *Module) annotateCables(g Graph) {
 		}
 		l.Cables = candidates(cables, a.Lat, a.Lon, b.Lat, b.Lon, near, observed)
 		l.StraightKM = math.Round(straight)
+		// The best reading of which crossing this was, and the shape of it,
+		// so the leg can be drawn along the cable rather than ruled straight
+		// through water no cable goes near.
+		if r := m.drawRoute(a.Lat, a.Lon, b.Lat, b.Lon); r.OK {
+			l.Via, l.ViaKM, l.Route = r.Name, math.Round(r.KM), r.Route
+		}
 	}
 }

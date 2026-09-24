@@ -82,8 +82,15 @@ type Leg struct {
 	// not be placed. The traffic certainly went this way; what is unknown is
 	// where it was in between, so the leg is drawn differently rather than
 	// presented as one hop to the next.
-	Gap     bool `json:"gap,omitempty"`
-	Through int  `json:"through,omitempty"` // hops crossed that have no position
+	// Via, ViaKM and Route describe the crossing this leg most likely made:
+	// which cable, how long the journey really is, and the shape of it. A
+	// traceroute never names a cable, so this is the shortest published route
+	// that fits -- offered as the best reading of the evidence, not as fact.
+	Via     string   `json:"via,omitempty"`
+	ViaKM   float64  `json:"via_km,omitempty"`
+	Route   []LatLon `json:"route,omitempty"`
+	Gap     bool     `json:"gap,omitempty"`
+	Through int      `json:"through,omitempty"` // hops crossed that have no position
 }
 
 // Graph is what the map draws.

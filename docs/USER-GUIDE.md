@@ -380,7 +380,13 @@ shortest published route joining the two places, counting the run ashore at
 each end, and names it in the tables and on the hop card. Under 1,200 km the
 straight line stands, because that trip is made on land; a cable route more
 than twice the straight line is ignored as a different journey. The bound is
-never lowered below the straight line. This needs *Show submarine cables* on. A hop that
+never lowered below the straight line. This needs *Show submarine cables* on.
+
+A leg that crosses an ocean is drawn along that cable rather than straight
+across the map, bending where the cable bends. Hovering it names the cable and
+gives both distances, the route and the straight line. FlowSight is reading
+the evidence, not reporting a fact: a traceroute never names a cable, so this
+is the shortest published route that fits the two ends and the latency. A hop that
 answers faster than that floor is not where the database says it is, and the
 map circles it and lists it with the numbers. On a typical network several
 hops fail this: anycast addresses are the usual cause, because the block is

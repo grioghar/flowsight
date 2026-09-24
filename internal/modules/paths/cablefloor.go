@@ -43,11 +43,15 @@ const cableFloorMinKM = 1200
 // took to get somewhere the straight line reaches in half.
 const cableFloorMaxRatio = 2.0
 
-// cableRoute is the shortest published path between two places.
+// cableRoute is the shortest published path between two places, and the shape
+// of it: the points a packet would pass through, ashore at each end and along
+// the cable in between. The shape is what lets the map draw the journey
+// rather than a straight line across an ocean the cable does not cross.
 type cableRoute struct {
-	KM   float64
-	Name string
-	OK   bool
+	KM    float64
+	Name  string
+	Route []LatLon
+	OK    bool
 }
 
 type floorMemo struct {
@@ -125,7 +129,21 @@ func cableRouteKM(cables []Cable, aLat, aLon, bLat, bLon, nearKM float64) cableR
 				continue // mostly imaginary overland; not this crossing
 			}
 			if total < best.KM {
-				best = cableRoute{KM: total, Name: c.Name, OK: true}
+				// The shape as well as the length: from where the packet
+				// started, out to the cable, along every point of it in the
+				// right direction, and ashore at the far end.
+				pts := make([]LatLon, 0, hi-lo+3)
+				pts = append(pts, LatLon{Lat: aLat, Lon: aLon})
+				seg := run[lo : hi+1]
+				if ia > ib {
+					for i := len(seg) - 1; i >= 0; i-- {
+						pts = append(pts, seg[i])
+					}
+				} else {
+					pts = append(pts, seg...)
+				}
+				pts = append(pts, LatLon{Lat: bLat, Lon: bLon})
+				best = cableRoute{KM: total, Name: c.Name, Route: pts, OK: true}
 			}
 		}
 	}
@@ -173,4 +191,25 @@ func (m *Module) pathKM(aLat, aLon, bLat, bLon float64) (km float64, via string)
 		return km, ""
 	}
 	return r.KM, r.Name
+}
+
+// drawRoute gives a leg the shape of the crossing it most likely made, so the
+// map can follow the cable instead of ruling a straight line through water no
+// cable goes near.
+func (m *Module) drawRoute(aLat, aLon, bLat, bLon float64) cableRoute {
+	if greatCircleKM(aLat, aLon, bLat, bLon) < cableFloorMinKM {
+		return cableRoute{}
+	}
+	m.mu.Lock()
+	cables := m.cables
+	m.mu.Unlock()
+	if len(cables) == 0 {
+		return cableRoute{}
+	}
+	r := cableRouteKM(cables, aLat, aLon, bLat, bLon, maxAshoreKM)
+	straight := greatCircleKM(aLat, aLon, bLat, bLon)
+	if !r.OK || r.KM <= straight || r.KM > straight*cableFloorMaxRatio {
+		return cableRoute{}
+	}
+	return r
 }

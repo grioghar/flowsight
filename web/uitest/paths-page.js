@@ -47,7 +47,11 @@ var GRAPH = { nodes: [
   legs: [
     { from:'h2', to:'h3', destinations:['1.1.1.1','8.8.8.8'], shared:true },
     { from:'h3', to:'h4', destinations:['1.1.1.1'], shared:false, straight_km:13500,
-      cables:[{ name:'Southern Cross NEXT', km:13700, floor_ms:137 }] },
+      cables:[{ name:'Southern Cross NEXT', km:13700, floor_ms:137 }],
+      // A crossing follows its cable, including over the antimeridian.
+      via:'Southern Cross NEXT', via_km:13700,
+      route:[{lat:32.78,lon:-96.80},{lat:21.3,lon:-157.8},{lat:-8.0,lon:179.0},
+             {lat:-20.0,lon:-179.0},{lat:-33.86,lon:151.20}] },
     // Stands in for hops that could not be placed; without it h35 is a dot
     // with nothing attached to it.
     { from:'h4', to:'h35', destinations:['1.1.1.1'], shared:false, gap:true, through:3 } ] };
@@ -210,6 +214,22 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   // checked.
   if (h.indexOf('along Southern Cross NEXT') < 0)
     throw new Error('a cable-measured distance should name its cable');
+  // The crossing is drawn along the cable, not ruled straight through water
+  // the cable does not go near.
+  if (h.indexOf('drawn along Southern Cross NEXT') < 0)
+    throw new Error('a sea crossing should say which cable it follows');
+  var crossing = h.slice(h.indexOf('Southern Cross NEXT') - 1400, h.indexOf('Southern Cross NEXT'));
+  var dAttr = crossing.lastIndexOf(' d="');
+  var path = crossing.slice(dAttr + 4, crossing.indexOf('"', dAttr + 4));
+  if ((path.match(/L/g) || []).length < 3)
+    throw new Error('a cable route needs its bends, got: ' + path);
+  // Every step must be a short one: a point that snapped back across the map
+  // would leave a segment most of a world wide.
+  var xs = path.replace('M','').split(/[ L]+/).map(function(p){ return parseFloat(p.split(',')[0]); });
+  for (var q = 1; q < xs.length; q++) {
+    if (Math.abs(xs[q] - xs[q-1]) > 360)
+      throw new Error('a run over the antimeridian snapped back across the map: ' + xs.join(' '));
+  }
   if (h.indexOf('straight line') < 0)
     throw new Error('a distance not measured along a cable should say so');
   if (h.indexOf('DOUBTFUL: ') < 0) throw new Error('hover text should distinguish doubtful from ruled out');

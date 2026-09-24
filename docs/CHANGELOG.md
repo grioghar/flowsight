@@ -12,6 +12,37 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241549
+
+**Sea crossings are drawn along their cable.** A leg that crosses an ocean no
+longer runs straight across the map; it follows the published route of the
+cable that most likely carried it, bending where the cable bends. A straight
+line there is not a simplification, it is a claim about water the cable does
+not go near, and it understates the journey by however far the real route
+wanders.
+
+Hovering names the cable and gives both distances: the route and the straight
+line, so the difference is visible rather than asserted.
+
+**Picking that cable took two corrections, both found by deploying it and
+looking at the answers.**
+
+First: nothing was measured along a cable at all. The search wanted a cable
+within four hundred kilometres of both ends, which is the right question for
+"did this cable carry this leg" and the wrong one for "how far did the packet
+travel". The gateway is in Kansas, fifteen hundred kilometres from salt water,
+so every crossing it makes was discarded. The run overland is part of the
+journey, not grounds for throwing the crossing away.
+
+Then, with that relaxed, it began choosing Greenland Connect, Sunoque I and a
+festoon off Colombia for crossings out of Kansas. The run ashore is measured
+as a straight line and a straight line does not know about water, so a tiny
+local cable with two vast imaginary approaches beat a real transatlantic
+trunk. A crossing now has to be mostly the crossing -- at least 55% of the
+journey on the cable itself -- and the answers became EXA North and South,
+Tata TGN-Atlantic South, AEC-1 and Amitie, which are the trunks that are
+actually there.
+
 ## 0.9.8r202609241539
 
 **Distances between continents are now measured along the cables, not across

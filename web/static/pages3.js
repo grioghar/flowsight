@@ -409,6 +409,23 @@
         if (!a || !b || !a.located || !b.located) return;
         const [x1, y1] = xy(a); let [x2, y2] = xy(b);
         x2 = near(x2, x1);
+        // A crossing follows its cable. Drawing it straight rules a line
+        // through water the cable does not go near and understates the
+        // journey; the route is the shape the packet actually took, as far as
+        // the cable record can say. Each point is shifted by whole worlds to
+        // sit nearest the one before, so a run over the antimeridian bends
+        // round rather than snapping back across the map.
+        let d = `M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}`;
+        if ((l.route || []).length > 1) {
+          let prev = null;
+          d = l.route.map(p => {
+            let [px, py] = FS.project(p.lat, p.lon, MAPW, MAPH);
+            px = prev === null ? near(px, x1) : near(px, prev);
+            prev = px;
+            return `${px.toFixed(1)},${py.toFixed(1)}`;
+          }).join(' L');
+          d = 'M' + d;
+        }
         const n = (l.destinations || []).length;
         const cbl = (l.cables || []).length
           ? `\ncould have crossed: ${l.cables.map(c => `${c.name} (${num(c.km)} km)`).join(', ')}`
@@ -417,7 +434,7 @@
         // A leg standing in for hops that could not be placed is a weaker
         // claim than one router to the next, and is drawn as one.
         const gap = l.gap ? ' gapleg' : '';
-        lines += `<path class="leg ${l.shared ? 'shared' : ''}${rc}${gap}" data-dsts="${esc((l.destinations || []).join(' '))}" stroke="${legColour(l)}" d="M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${l.gap ? `\nthrough ${l.through} hop${l.through === 1 ? '' : 's'} with no known position` : ''}${esc(cbl)}</title></path>`;
+        lines += `<path class="leg ${l.shared ? 'shared' : ''}${rc}${gap}" data-dsts="${esc((l.destinations || []).join(' '))}" stroke="${legColour(l)}" d="${d}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${l.gap ? `\nthrough ${l.through} hop${l.through === 1 ? '' : 's'} with no known position` : ''}${l.via ? `\ndrawn along ${esc(l.via)} — ${num(l.via_km)} km, against ${num(l.straight_km)} km straight` : ''}${esc(cbl)}</title></path>`;
       });
       located.forEach(n => {
         const [x, y] = xy(n);
@@ -662,6 +679,7 @@
             ${it(dot('', 'ruledout'), 'the latency rules this placement out')}
             ${it(dot('', 'doubtful'), 'possible, but only just: doubtful')}
             ${it(sw('leg gapleg', 'stroke:var(--muted)'), 'the route continues through hops with no known position')}
+            ${it(sw('leg', 'stroke:' + FS.palette[4]), 'a sea crossing, drawn along its likeliest cable')}
             ${it(sw('corrected'), 'correction: database \u2192 the site in the router\u2019s name')}
             ${picked ? it(sw('leg onroute', 'stroke:' + FS.palette[0]), 'the route you picked; the rest is dimmed') : ''}
           </div>`;
