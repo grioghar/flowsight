@@ -49,8 +49,11 @@ type Node struct {
 	// collapsing them would either overstate the one or hide the other.
 	Tight      bool    `json:"tight,omitempty"`
 	DistanceKM float64 `json:"distance_km,omitempty"`
-	FloorMS    float64 `json:"floor_ms,omitempty"`
-	Why        string  `json:"why,omitempty"`
+	// Via names the cable the distance was measured along, when the straight
+	// line was not the honest measure. Empty means the great circle was used.
+	Via     string  `json:"via,omitempty"`
+	FloorMS float64 `json:"floor_ms,omitempty"`
+	Why     string  `json:"why,omitempty"`
 	// DatabaseSaid records where the address database put this hop, kept only
 	// when the router's own name contradicted it. A reader who trusts the
 	// database more than the naming convention can see both and judge.

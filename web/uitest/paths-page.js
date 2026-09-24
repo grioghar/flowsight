@@ -39,7 +39,7 @@ var GRAPH = { nodes: [
       facilities:[{ name:'Equinix LA1 - Los Angeles', address:'600 W 7th St, Los Angeles, CA, 90017-3859, US' }],
       facilities_scoped:true } },
   { id:'h4', index:4, ips:['1.1.1.1'], located:true, lat:-33.86, lon:151.20, country:'AU', city:'Sydney', rtt_ms:18.9,
-    impossible:true, distance_km:14071, floor_ms:140.7, why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' },
+    impossible:true, distance_km:15320, floor_ms:153.2, via:'Southern Cross NEXT', why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' },
   // Clears the floor by 4%: physics allows it, a real route does not.
   { id:'h7', index:7, ips:['62.115.143.52'], located:true, lat:51.5072, lon:-0.1276, country:'GB', city:'London', rtt_ms:73.2,
     tight:true, distance_km:7000, floor_ms:70.0, why:'answers in 73.2 ms against a floor of 70 ms for 7000 km: possible only with a perfectly straight path and no equipment delay, which is 4% above the theoretical minimum' },
@@ -205,6 +205,13 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('Placements the latency makes doubtful') < 0) throw new Error('doubtful placements need their own table');
   if (h.indexOf('just not provably') < 0) throw new Error('the doubtful table must say what it is not claiming');
   if (h.indexOf('possible, but only just') < 0) throw new Error('the legend should explain the doubtful mark');
+  // Between continents the distance is along a cable, not across the map, and
+  // the page has to say which measure it used or the arithmetic cannot be
+  // checked.
+  if (h.indexOf('along Southern Cross NEXT') < 0)
+    throw new Error('a cable-measured distance should name its cable');
+  if (h.indexOf('straight line') < 0)
+    throw new Error('a distance not measured along a cable should say so');
   if (h.indexOf('DOUBTFUL: ') < 0) throw new Error('hover text should distinguish doubtful from ruled out');
   // The counts must not be conflated.
   if ((h.match(/class="ruledout"/g) || []).length === (h.match(/class="doubtful"/g) || []).length &&

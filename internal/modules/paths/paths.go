@@ -48,6 +48,7 @@ type Module struct {
 	cables   []Cable
 	cableErr string
 	pending  map[string]bool // addresses still needing the slow registry lookup
+	floors   *floorMemo      // cable-route distances, worked out once per place
 }
 
 // lookup is the part of the enrich module this needs.

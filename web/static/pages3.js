@@ -469,6 +469,8 @@
         }
         h += grp('Placement') + r('Shown at', [n.city, n.region, n.country].filter(Boolean).join(', '))
            + r('Source', n.location_source === 'name' ? 'the router\u2019s own name' : 'address database');
+        if (n.distance_km) h += r('Distance used', `${num(n.distance_km)} km${n.via ? ' along ' + n.via : ' (straight line)'}`);
+        if (n.floor_ms) h += r('Fastest possible', `${n.floor_ms} ms`);
         if (n.why) h += r(n.impossible ? 'Impossible' : 'Doubtful', n.why, 'warn');
         return h;
       };
@@ -536,10 +538,11 @@
           { t: 'Answered in', f: r => `${r.rtt} ms`, num: true, sort: 'rtt' },
           { t: 'Floor', f: r => `${r.floor} ms`, num: true, sort: 'floor' },
           { t: 'Over floor', f: r => r.floor > 0 ? `${((r.rtt / r.floor - 1) * 100).toFixed(0)}%` : '—', num: true, sort: 'rtt' },
-          { t: 'Away', f: r => `${num(r.km)} km`, num: true, sort: 'km' }];
+          { t: 'Away', f: r => `${num(r.km)} km`, num: true, sort: 'km' },
+          { t: 'Measured', f: r => r.via ? `<span class="small">along ${esc(r.via)}</span>` : '<span class="muted small">straight line</span>', sort: 'via' }];
       const plRow = (n) => ({ index: n.index, ips: n.ips.join(', '),
           where: [n.city, n.region, n.country].filter(Boolean).join(', '),
-          rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km });
+          rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km, via: n.via || '' });
       const doubtful = nodes.filter(n => n.tight);
       const doubtOut = doubtful.length ? `<div style="margin-top:14px">${card('Placements the latency makes doubtful', table(doubtful.map(plRow), plCols),
           'these clear the floor, but only just. The floor assumes a dead straight fibre with nothing attached to it, and no real route is either: a packet follows coasts and rights of way and is switched at every hop. A placement a few per cent above the minimum is claiming a journey that does not exist, so it is probably wrong in the same way as the table above — just not provably')}</div>` : '';
@@ -547,14 +550,15 @@
       const rulesOut = impossible.length ? `<div style="margin-top:14px">${card('Placements the physics rules out', table(impossible.map(n => ({
           index: n.index, ips: n.ips.join(', '),
           where: [n.city, n.region, n.country].filter(Boolean).join(', '),
-          rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km })), [
+          rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km, via: n.via || '' })), [
           { t: 'Hop', f: r => num(r.index), num: true, sort: 'index' },
           { t: 'Address', f: r => `<span class="mono small">${esc(r.ips)}</span>`, sort: 'ips' },
           { t: 'Database says', f: r => esc(r.where) || '<span class="muted">unknown</span>', sort: 'where' },
           { t: 'Answered in', f: r => `${r.rtt} ms`, num: true, sort: 'rtt' },
           { t: 'Could not beat', f: r => `${r.floor} ms`, num: true, sort: 'floor' },
-          { t: 'Away', f: r => `${num(r.km)} km`, num: true, sort: 'km' }]),
-          'light in fibre covers about 200,000 km/s, so nothing can answer sooner than twice the distance divided by that')}</div>` : '';
+          { t: 'Away', f: r => `${num(r.km)} km`, num: true, sort: 'km' },
+          { t: 'Measured', f: r => r.via ? `<span class="small">along ${esc(r.via)}</span>` : '<span class="muted small">straight line</span>', sort: 'via' }]),
+          'light in fibre covers about 200,000 km/s, so nothing can answer sooner than twice the distance divided by that. Between continents the distance is measured along the shortest cable that joins the two, not across the map: cables follow shelves and come ashore where there is a station, so the real journey is longer than the straight line and the floor correspondingly higher')}</div>` : '';
 
       const countries = {};
       nodes.forEach(n => { if (n.country) countries[n.country] = (countries[n.country] || 0) + 1; });

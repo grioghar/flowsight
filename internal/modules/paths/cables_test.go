@@ -107,3 +107,83 @@ func TestLoadCablesReadsLonLatOrder(t *testing.T) {
 		t.Errorf("length looks wrong: %v km", cs[0].KM)
 	}
 }
+
+// A floor is only worth having if the distance behind it is one a packet
+// could actually be asked to cover. These are laid out as a cable would be:
+// out to the coast, across, and ashore.
+func TestCableRouteMeasuresTheWholeJourney(t *testing.T) {
+	// A crossing whose two ends are inland, so the runs ashore matter.
+	cables := []Cable{{Name: "Test Atlantic", Legs: [][]LatLon{{
+		{Lat: 40.7, Lon: -74.0}, // New York
+		{Lat: 45.0, Lon: -50.0},
+		{Lat: 50.0, Lon: -20.0},
+		{Lat: 51.5, Lon: -5.0}, // Cornwall
+	}}}}
+	r := cableRouteKM(cables, 40.7, -74.0, 51.5, -5.0, 500)
+	if !r.OK {
+		t.Fatal("a cable joining both ends was not found")
+	}
+	straight := greatCircleKM(40.7, -74.0, 51.5, -5.0)
+	if r.KM <= straight {
+		t.Errorf("a cable route cannot be shorter than the straight line: %.0f vs %.0f", r.KM, straight)
+	}
+	if r.Name != "Test Atlantic" {
+		t.Errorf("the route should name its cable, got %q", r.Name)
+	}
+	// The distance ashore at each end must be counted, or a cable landing a
+	// hundred kilometres away looks free.
+	inland := cableRouteKM(cables, 41.5, -74.5, 51.5, -5.0, 500)
+	if !inland.OK || inland.KM <= r.KM {
+		t.Errorf("moving an endpoint inland should lengthen the route: %.0f vs %.0f", inland.KM, r.KM)
+	}
+}
+
+// Two places a cable happens to pass must not be joined by it when the trip
+// is plainly overland, or a coastal cable would accuse perfectly good
+// placements of being impossible.
+func TestShortTripsIgnoreTheCables(t *testing.T) {
+	m := &Module{cables: []Cable{{Name: "Coastal", Legs: [][]LatLon{{
+		{Lat: 34.0, Lon: -118.2}, {Lat: 30.0, Lon: -125.0}, {Lat: 37.8, Lon: -122.4},
+	}}}}}
+	// Los Angeles to San Francisco: about 560 km, and the cable goes out to
+	// sea and back.
+	km, via := m.pathKM(34.0, -118.2, 37.8, -122.4)
+	if via != "" {
+		t.Errorf("a short overland trip should not be measured along a cable, got %q", via)
+	}
+	straight := greatCircleKM(34.0, -118.2, 37.8, -122.4)
+	if math.Abs(km-straight) > 0.001 {
+		t.Errorf("expected the straight line, got %.0f vs %.0f", km, straight)
+	}
+}
+
+// A cable that wanders far enough is describing a different journey, not a
+// longer version of this one, and must not set the bound.
+func TestAbsurdlyLongCableRoutesAreRejected(t *testing.T) {
+	m := &Module{cables: []Cable{{Name: "The Long Way", Legs: [][]LatLon{{
+		{Lat: 51.5, Lon: -0.1},  // London
+		{Lat: -34.0, Lon: 18.4}, // ... via Cape Town
+		{Lat: -33.9, Lon: 151.2},
+		{Lat: 40.7, Lon: -74.0}, // ... to New York
+	}}}}}
+	straight := greatCircleKM(51.5, -0.1, 40.7, -74.0)
+	km, via := m.pathKM(51.5, -0.1, 40.7, -74.0)
+	if via != "" {
+		t.Errorf("a route round the world should be rejected, got %q at %.0f km", via, km)
+	}
+	if math.Abs(km-straight) > 0.001 {
+		t.Errorf("should fall back to the straight line, got %.0f", km)
+	}
+}
+
+// The bound must never drop below the straight line, whatever the cables say.
+func TestTheFloorIsNeverLowered(t *testing.T) {
+	m := &Module{cables: []Cable{{Name: "Impossible Shortcut", Legs: [][]LatLon{{
+		{Lat: 51.5, Lon: -0.1}, {Lat: 40.7, Lon: -74.0},
+	}}}}}
+	straight := greatCircleKM(51.5, -0.1, 40.7, -74.0)
+	km, _ := m.pathKM(51.5, -0.1, 40.7, -74.0)
+	if km < straight-0.001 {
+		t.Fatalf("the bound went below the straight line: %.0f < %.0f", km, straight)
+	}
+}

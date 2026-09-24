@@ -12,6 +12,40 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241539
+
+**Distances between continents are now measured along the cables, not across
+the map.**
+
+The plausibility check asks whether a round trip could have covered the
+distance, and "the distance" was the straight line over the earth's surface.
+No packet travels that. Between continents it travels along a cable, and
+cables do not go straight: they follow continental shelves, skirt trenches and
+fishing grounds, come ashore where there is a station to land at, and are laid
+with slack. The published routes are a tenth or more longer than the great
+circle across the Atlantic, and a great deal more than that round Africa.
+
+So where a crossing plausibly applies, the distance is the shortest published
+cable route between the two places -- out to the cable, along it, and ashore
+at the far end, with both runs ashore counted. The floor rises accordingly,
+and every hop it moves was being judged against a journey nobody can make. The
+tables and the hop card say which measure was used and name the cable, because
+a floor you cannot check is just an assertion.
+
+The shortest such route, not the likeliest: the check needs a bound nothing
+can beat, so it takes the fastest way the packet could have gone.
+
+Cables are consulted only where they describe this trip. Under 1,200 km the
+straight line stands, because that journey is made on land and a coastal cable
+that happens to pass both ends would give a long way round and accuse
+perfectly good placements. A route more than twice the straight line is
+rejected for the same reason: at that point it is a different journey, not a
+longer version of this one. And the bound is never lowered -- a cable cannot
+undercut the straight line, and the code will not let it.
+
+This needs *Show submarine cables* on, which also downloads the map it
+measures against.
+
 ## 0.9.8r202609241537
 
 **Hop detail sits beside the map, not under it.** It used to be below, so

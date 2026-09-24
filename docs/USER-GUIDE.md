@@ -369,8 +369,18 @@ solid red one: doubted, not disproved. The band is *Settings › paths › Call 
 placement doubtful within (%) of the floor*, 15% by default; zero turns it off.
 
 **Placements the physics rules out.** Light in fibre covers about 200,000 km
-per second, so a round trip cannot beat twice the straight-line distance
-divided by that, before any routing detour or equipment delay. A hop that
+per second, so a round trip cannot beat twice the distance divided by that,
+before any routing detour or equipment delay.
+
+Between continents that distance is measured along the cables rather than
+across the map. Cables follow continental shelves, skirt trenches and come
+ashore where there is a station, so the real journey is longer than the
+straight line and the floor correspondingly higher. FlowSight takes the
+shortest published route joining the two places, counting the run ashore at
+each end, and names it in the tables and on the hop card. Under 1,200 km the
+straight line stands, because that trip is made on land; a cable route more
+than twice the straight line is ignored as a different journey. The bound is
+never lowered below the straight line. This needs *Show submarine cables* on. A hop that
 answers faster than that floor is not where the database says it is, and the
 map circles it and lists it with the numbers. On a typical network several
 hops fail this: anycast addresses are the usual cause, because the block is

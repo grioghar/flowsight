@@ -181,15 +181,18 @@ func (m *Module) checkPlausible(nodes []Node, h Home) {
 		if !n.Located || n.RTT <= 0 {
 			continue
 		}
-		km := greatCircleKM(h.Lat, h.Lon, n.Lat, n.Lon)
+		// The distance a packet would actually have to cover, which between
+		// continents is along a cable and not across the map.
+		km, via := m.pathKM(h.Lat, h.Lon, n.Lat, n.Lon)
 		floor := floorMS(km)
 		n.DistanceKM = math.Round(km)
 		n.FloorMS = math.Round(floor*10) / 10
+		n.Via = via
 		switch {
 		case n.RTT < floor:
 			n.Impossible = true
-			n.Why = fmt.Sprintf("answers in %.1f ms, but %.0f km away cannot answer in less than %.0f ms",
-				n.RTT, km, floor)
+			n.Why = fmt.Sprintf("answers in %.1f ms, but %.0f km away%s cannot answer in less than %.0f ms",
+				n.RTT, km, viaPhrase(via), floor)
 		case floor > 0 && n.RTT <= floor*(1+margin):
 			// Possible, and still almost certainly wrong.
 			//
@@ -201,8 +204,16 @@ func (m *Module) checkPlausible(nodes []Node, h Home) {
 			// with no detour and no equipment in it, which is not a claim
 			// physics forbids but is one nothing in the real world satisfies.
 			n.Tight = true
-			n.Why = fmt.Sprintf("answers in %.1f ms against a floor of %.0f ms for %.0f km: possible only with a perfectly straight path and no equipment delay, which is %.0f%% above the theoretical minimum",
-				n.RTT, floor, km, (n.RTT/floor-1)*100)
+			n.Why = fmt.Sprintf("answers in %.1f ms against a floor of %.0f ms for %.0f km%s: possible only with a perfect path and no equipment delay, which is %.0f%% above the minimum",
+				n.RTT, floor, km, viaPhrase(via), (n.RTT/floor-1)*100)
 		}
 	}
+}
+
+// viaPhrase names the cable a distance was measured along, when one was.
+func viaPhrase(via string) string {
+	if via == "" {
+		return ""
+	}
+	return " by the shortest cable route (" + via + ")"
 }
