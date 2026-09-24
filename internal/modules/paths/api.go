@@ -106,6 +106,11 @@ func (m *Module) apiPath(r *core.Req) (any, error) {
 	if inside := m.insideFor(dst, strings.TrimSpace(r.Q("device", ""))); inside != nil {
 		out["inside"] = inside
 	}
+	// Whose traffic this route carried, and what it was: the near end of
+	// the journey, beside the far end.
+	if t := m.talkersFor(dst, r.QInt("hours", 24, 1, 24*30)); t != nil {
+		out["talkers"] = t
+	}
 	return out, nil
 }
 

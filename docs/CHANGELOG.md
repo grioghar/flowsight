@@ -12,6 +12,20 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242044
+
+**Who was talking, and about what.** A route said where the traffic went;
+it now also says whose it was and what it was doing. Under the trail, a
+*Who and what* block lists every device on this network that talked to the
+endpoint in the last day -- named, grouped by device rather than by address
+-- and under each device its services, busiest first: the application the
+flow was classified as, the name it was for, and the protocol and port
+(`QUIC · one.one.one.one · udp/443`). A device links to the map narrowed to
+it. The endpoint's own detail card carries a compact form of the same. The
+figures come from the flow table, which gains an index by destination so
+the question is answered in milliseconds; `GET /api/paths/talkers?dst=`
+answers it on its own.
+
 ## 0.9.8r202609242039
 
 **OpenStreetMap's telecom lines, as a low-weight land-route source.** Where

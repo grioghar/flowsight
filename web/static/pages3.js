@@ -371,6 +371,33 @@
       const hopNo = (n) => (picked && routeIndex[n.id] != null) ? routeIndex[n.id] : n.index;
       const hopRTT = (n) => (picked && routeRTT[n.id]) ? routeRTT[n.id] : n.rtt_ms;
 
+      // Who was talking, and about what. The route says where the traffic
+      // went; this says whose it was and what it was doing -- device by
+      // device, and under each the services: the application, the name it
+      // was for, the port. It sits with the trail, because the near end of
+      // the journey belongs beside the far end.
+      const svcLabel = (s) => [s.app, s.domain, s.port ? `${s.proto ? s.proto + '/' : ''}${s.port}` : (s.proto || '')].filter(Boolean).join(' \u00b7 ') || 'unclassified';
+      const talkersHTML = (t, compact) => {
+        if (!t || !(t.devices || []).length) return '';
+        const devs = compact ? t.devices.slice(0, 4) : t.devices;
+        const rows = devs.map(d => {
+          const svcs = (d.services || []).slice(0, compact ? 3 : 6).map(s =>
+            `<li class="svc" data-svc="${esc(s.app || '')}"><span class="svcn">${esc(svcLabel(s))}</span><span class="svcb">${bytes((s.bytes_in || 0) + (s.bytes_out || 0))}</span></li>`).join('');
+          const more = (d.services || []).length > (compact ? 3 : 6) ? `<li class="svc muted small">+${(d.services || []).length - (compact ? 3 : 6)} more</li>` : '';
+          return `<li class="talker">
+            <div class="tkhead"><a href="#paths?${esc(routeQ(picked))}&device=${encodeURIComponent(d.key)}" title="Narrow the map to this device"><b>${esc(d.name || d.addresses[0])}</b></a>${d.vendor ? ` <span class="muted small">${esc(d.vendor)}</span>` : ''}<span class="tkb">${bytes((d.bytes_in || 0) + (d.bytes_out || 0))} \u00b7 ${num(d.flows)} flow${d.flows === 1 ? '' : 's'}</span></div>
+            ${d.name ? `<div class="muted small mono">${esc(d.addresses.slice(0, 2).join(', '))}${d.addresses.length > 2 ? ` +${d.addresses.length - 2}` : ''}</div>` : ''}
+            <ul class="svcs">${svcs}${more}</ul></li>`;
+        }).join('');
+        const summary = (t.services || []).slice(0, 4).map(svcLabel).join(', ');
+        return `<div class="talkers${compact ? ' compact' : ''}">
+          <div class="tkgrp">Who and what \u2014 last ${t.hours} h</div>
+          ${summary ? `<div class="small muted" style="margin-bottom:6px">${esc(summary)}</div>` : ''}
+          <ul class="tklist">${rows}${compact && t.devices.length > 4 ? `<li class="muted small">+${t.devices.length - 4} more devices in the trail below</li>` : ''}</ul>
+        </div>`;
+      };
+
+
       const xy = (n) => FS.project(n.lat, n.lon, MAPW, MAPH);
 
       // Where you are, drawn.
@@ -562,6 +589,7 @@
           if (n.bytes_in || n.bytes_out) {
             h += grp('Traffic, last 24 hours') + r('Received from it', bytes(n.bytes_in || 0)) + r('Sent to it', bytes(n.bytes_out || 0));
           }
+          if (picked && (n.reaches || []).includes(picked) && route && route.talkers) h += talkersHTML(route.talkers, true);
         }
         h += grp('Measured') + r('Round trip', n.rtt_ms ? n.rtt_ms + ' ms' : '');
         if (n.names && n.names.length) h += grp('Resolved') + r('Router name', n.names.join(', '));
@@ -718,6 +746,7 @@
         return `<div class="trailbox">
           <div class="trailhead">Route to ${esc(dest.name || picked)}</div>
           <ol class="trail">${items.join('')}</ol>
+          ${talkersHTML(route.talkers, false)}
           <div class="help" style="margin-top:8px">Left to right, from the machine on this network that made the connection to the address it reached. Hover a step to pick it out on the map. A step with no answer still carried the traffic; its position is kept so the numbering stays honest.${route.inside ? '' : ' No flow records name the device that used this route, so the trail begins at the first router.'}</div>
           <div class="actions" style="margin-top:8px"><button class="btn small" id="r-clear">Show every route</button></div>
         </div>`;

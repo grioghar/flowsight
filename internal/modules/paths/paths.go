@@ -170,6 +170,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("osm", 6*time.Hour, m.refreshOSM, core.Delayed())
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
+	ctx.Route("GET", "/api/paths/talkers", m.apiTalkers, core.Needs("paths.map"),
+		core.Doc("Which devices talked to an endpoint and over which services (application, name, port)"),
+		core.Params("dst", "the endpoint", "hours", "window, default 24"))
 	ctx.Route("GET", "/api/paths/corrections", m.apiCorrections, core.Needs("paths.map"),
 		core.Doc("What the address database has been shown to get wrong: corrected prefixes and distrusted registrant coordinates"))
 	ctx.Route("POST", "/api/paths/corrections/forget", m.apiForgetFix, core.Write(), core.Needs("paths.map"),

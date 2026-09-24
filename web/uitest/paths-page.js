@@ -99,6 +99,10 @@ var STATUS = { active:true, last_run:1790200000, destinations:2, hops:11, error:
 
 var ROUTE = { destination:'1.1.1.1',
   inside:{ addresses:['192.168.1.119','2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6'], name:'MacBookPro', vendor:'Apple' },
+  talkers:{ hours:24, flows:31, services:[{app:'QUIC', domain:'one.one.one.one', port:443, proto:'udp', bytes_in:9000, bytes_out:1200, flows:20}],
+    devices:[{ key:'192.168.1.119', name:'MacBookPro', vendor:'Apple', addresses:['192.168.1.119','2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6'], bytes_in:9000, bytes_out:1200, flows:20,
+      services:[{app:'QUIC', domain:'one.one.one.one', port:443, proto:'udp', bytes_in:9000, bytes_out:1200, flows:20},{app:'DNS', port:53, proto:'udp', bytes_in:300, bytes_out:200, flows:11}] },
+     { key:'192.168.1.53', name:'pihole', addresses:['192.168.1.53'], bytes_in:100, bytes_out:50, flows:11, services:[{app:'DNS', port:53, proto:'udp', bytes_in:100, bytes_out:50, flows:11}] }] },
   hops:[
     { id:'h1', index:1, ips:['192.168.1.254'], located:false },
     { id:'h2', index:2, ips:['172.11.154.1'], names:['172-11-154-1.lightspeed.tpkaks.sbcglobal.net'],
@@ -416,6 +420,11 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     if (t.indexOf('data-layer="arrows"') < 0) throw new Error('arrows should be a switch in the key');
     if (t.indexOf('id="routebox"') < 0) throw new Error('the route should be tabled on the map');
     if (t.indexOf('id="mapfilter-next"') < 0) throw new Error('the chip should be able to offer the next route through a hop');
+    // Who and what: the devices behind the route and their services.
+    if (t.indexOf('Who and what') < 0) throw new Error('the trail should say who was talking');
+    if (t.indexOf('QUIC \u00b7 one.one.one.one \u00b7 udp/443') < 0) throw new Error('services should read app · name · proto/port');
+    if ((t.match(/class="talker"/g) || []).length !== 2 && (t.match(/class="talker"/g) || []).length !== 3) throw new Error('both devices should be listed');
+    if (t.indexOf('device=192.168.1.53') < 0) throw new Error('a device should link to the map narrowed to it');
     var rbRows = (t.match(/class="rb[ "]/g) || []).length;
     if (rbRows !== 5) throw new Error('route table should list inside + 4 hops, got ' + rbRows);
     if (!/class="rb[^"]*endpoint"/.test(t) || t.indexOf('class="rb inside"') < 0) throw new Error('route table should mark its ends');

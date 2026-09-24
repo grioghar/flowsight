@@ -58,6 +58,7 @@ CREATE INDEX IF NOT EXISTS flows_src ON flows(src_ip, ts);
 CREATE INDEX IF NOT EXISTS flows_key ON flows(key);
 CREATE INDEX IF NOT EXISTS flows_app ON flows(app, ts);
 CREATE INDEX IF NOT EXISTS flows_domain ON flows(domain, ts);
+CREATE INDEX IF NOT EXISTS flows_dst ON flows(dst_ip, ts);
 
 CREATE TABLE IF NOT EXISTS rollup_app (
     bucket INTEGER NOT NULL, src_ip TEXT NOT NULL, app TEXT NOT NULL,

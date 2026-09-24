@@ -473,6 +473,12 @@ line and rarely the buried long-haul a packet rides. Road-traced files are thinn
 the points that change a route's shape by more than a kilometre before use,
 so a large one costs a second or two to load rather than a core for a day.
 
+**Who and what.** Under a chosen route's trail, every device on this network
+that talked to the endpoint in the last day is listed by name, and under each
+its services -- application, the name it was for, protocol and port -- busiest
+first. Click a device to narrow the map to it. The endpoint's card shows the
+same in brief.
+
 **Clicking a hop opens its route.** Any hop not on the chosen route loads the
 route it belongs to, busiest first when there are several, with the hop
 selected; the chip above the map then reads *route 1 of N through …* with
