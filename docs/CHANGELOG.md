@@ -12,6 +12,16 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609242321
+
+**A lease is authoritative for its address.** The device table learned its
+names from the hosts table, and the hosts table took names from the device
+table, so a name wrongly attached once (an Amazon speaker called after a
+laptop) circulated for ever even after its source was gone. The device table
+now names only addresses no lease covers, and a leased address that nothing
+names any more has the echoed name cleared from its hosts row. Names come
+back with the device's next lease or DHCP request.
+
 ## 0.9.8r202609242319
 
 **Devices tells the truth about names and addresses.** Three faults fed the

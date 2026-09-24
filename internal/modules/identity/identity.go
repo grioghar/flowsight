@@ -493,7 +493,19 @@ func (m *Module) refresh() error {
 	for ip, n := range static {
 		names[ip] = n
 	}
-	// Enrolment / device table contributions.
+	// Enrolment / device table contributions. A lease is authoritative for
+	// the address it covers: a device that sent no hostname with its lease
+	// has no name from DHCP, and the device table, which learned its name
+	// from the hosts table in the first place, must not hand the old one
+	// back and keep it alive. The device table names only addresses no
+	// lease covers.
+	leased := map[string]bool{}
+	for _, l := range leases {
+		if l.IP != "" {
+			leased[l.IP] = true
+		}
+	}
+	devName := map[string]string{}
 	drows, _ := m.ctx.Store.Rows(`SELECT mac, ip, hostname, guest_name FROM devices WHERE ip IS NOT NULL`)
 	for _, r := range drows {
 		ip, _ := r["ip"].(string)
@@ -503,7 +515,12 @@ func (m *Module) refresh() error {
 		if ip == "" {
 			continue
 		}
-		if _, ok := names[ip]; !ok {
+		if h != "" {
+			devName[ip] = h
+		} else if g != "" {
+			devName[ip] = g
+		}
+		if _, ok := names[ip]; !ok && !leased[ip] {
 			if h != "" {
 				names[ip] = h
 			} else if g != "" {
@@ -584,6 +601,14 @@ func (m *Module) refresh() error {
 	// rather than naming the wrong device.
 	for _, ip := range moved {
 		_ = m.ctx.Store.Exec(`UPDATE hosts SET name=NULL WHERE ip=?`, ip)
+	}
+	// A leased address nothing names now, whose hosts row still carries the
+	// device table's name for it, is wearing an echo: the device table got
+	// that name from the hosts table. Clear it so the echo stops.
+	for ip := range leased {
+		if names[ip] == "" && devName[ip] != "" {
+			_ = m.ctx.Store.Exec(`UPDATE hosts SET name=NULL WHERE ip=? AND name=?`, ip, devName[ip])
+		}
 	}
 	// Repair what an earlier release did: local addresses named after a
 	// resolver answer. Where the row's name is exactly what the resolver
