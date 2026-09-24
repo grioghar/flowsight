@@ -12,6 +12,29 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241624
+
+**The map fills the screen, and everything that belongs with it is on the
+screen too.**
+
+The map is what the page is for, and it was third: below a row of counters and
+the location card, so reaching it meant scrolling, and reading a hop's detail
+meant scrolling back. It is now the first thing on the page, sized to the
+window rather than to a slice of a scroll, with the detail panel beside it and
+the route beneath it. The summaries follow underneath, where a summary
+belongs.
+
+**The route moved into the map column.** It had been below the map card, which
+meant clicking a step scrolled the panel it fills out of view -- the exact
+problem the panel was moved beside the map to solve, reintroduced one level
+down. It now runs as a single line under the map, scrolling sideways rather
+than wrapping: twenty hops wrapped into five rows took the map's own height to
+say something that reads perfectly well as one line.
+
+**The key cannot be scrolled away from.** It sits in the map's bottom corner,
+and now that the map is bounded to the window, so is the key -- wherever you
+are on the map, and at whatever zoom, it is in front of you.
+
 ## 0.9.8r202609241617
 
 **The key is a panel on the map, and it folds.** It had been a band across the

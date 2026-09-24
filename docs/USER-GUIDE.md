@@ -250,8 +250,13 @@ answers from several addresses, which is how a carrier balances across
 parallel links, that is one point carrying several addresses rather than
 several points.
 
+The map fills the window, with the hop detail beside it and the route beneath
+it, so nothing you click scrolls what it fills out of view. The key sits in
+the map's bottom corner and stays there at any zoom; fold it away with *Key*
+if it is covering something.
+
 **One route at a time.** Click a destination in the table and the page draws
-that route as a trail, left to right, one step per link: the machine on your
+that route as a trail under the map, left to right, one step per link: the machine on your
 network that made the connection, your gateway, each carrier router in turn,
 and the address reached, marked as the endpoint. Hovering a step lights up its
 dot on the map and opens its detail; the route's legs are lifted out of the

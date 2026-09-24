@@ -276,6 +276,11 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   FS.pages.paths.render(el2, { params:{ dst:'1.1.1.1' } }).then(function(){
     var t = el2.innerHTML;
     if (t.indexOf('class="trail"') < 0) throw new Error('a chosen route should be drawn as a trail');
+    // The route belongs inside the map column, beside the detail panel, so a
+    // step and the panel it fills are on screen together.
+    var col = t.indexOf('class="mapcol"'), tb = t.indexOf('class="trailbox"'), pan = t.indexOf('class="hoppanel"');
+    if (!(col >= 0 && col < tb && tb < pan))
+      throw new Error('the route should sit in the map column, before the detail panel');
     // It begins inside, not at the first router that answered.
     if (t.indexOf('MacBookPro') < 0) throw new Error('the trail must start with the device on this network');
     if (t.indexOf('192.168.1.119') < 0) throw new Error('the internal address should be the first step');

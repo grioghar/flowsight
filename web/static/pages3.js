@@ -506,7 +506,7 @@
       // machines this was -- is usually the thing they came to find out.
       const crumbs = () => {
         if (!picked) return '';
-        if (!routeHops.length) return card('Route', `<div class="muted small">No route stored for ${esc(picked)} yet.</div>`);
+        if (!routeHops.length) return `<div class="trailbox"><div class="muted small">No route stored for ${esc(picked)} yet.</div></div>`;
         const dest = (dests.destinations || []).find(d => d.dst === picked) || {};
         const one = (o) => {
           const cls = ['crumb'];
@@ -538,10 +538,14 @@
             main: `<b>${esc((n.names || [])[0] || n.ips[0])}</b>${n.ips.length > 1 ? ` <span class="muted">+${n.ips.length - 1}</span>` : ''}`,
             sub: [where, n.rtt_ms ? n.rtt_ms + ' ms' : ''].filter(Boolean).join(' \u00b7 ') }));
         });
-        const title = `Route to ${esc(dest.name || picked)}`;
-        return card(title, `<ol class="trail">${items.join('')}</ol>
+        // A plain block rather than a card: it lives inside the map column
+        // now, and a card inside a card is a border for the sake of one.
+        return `<div class="trailbox">
+          <div class="trailhead">Route to ${esc(dest.name || picked)}</div>
+          <ol class="trail">${items.join('')}</ol>
           <div class="help" style="margin-top:8px">Left to right, from the machine on this network that made the connection to the address it reached. Hover a step to pick it out on the map. A step with no answer still carried the traffic; its position is kept so the numbering stays honest.${route.inside ? '' : ' No flow records name the device that used this route, so the trail begins at the first router.'}</div>
-          <div class="actions" style="margin-top:8px"><button class="btn small" id="r-clear">Show every route</button></div>`);
+          <div class="actions" style="margin-top:8px"><button class="btn small" id="r-clear">Show every route</button></div>
+        </div>`;
       };
       const trail = crumbs();
 
@@ -581,42 +585,7 @@
       const countries = {};
       nodes.forEach(n => { if (n.country) countries[n.country] = (countries[n.country] || 0) + 1; });
 
-      el.innerHTML = `<div class="grid cols-4">
-        ${kpi('Destinations with a route', num((dests.destinations || []).length), `${num(st.hops)} hops measured`)}
-        ${kpi('Placed on the map', num(located.length), `${num(unlocated.length)} have no coordinates`, unlocated.length > located.length ? 'warn' : '')}
-        ${kpi('Ruled out by latency', num(impossible.length), impossible.length ? 'too far away to have answered that fast' : 'every placement is possible', impossible.length ? 'bad' : '')}
-        ${card('Tracing', st.active ? `<div>${pill('on', 'ok')}</div><div class="small muted" style="margin-top:6px">Last run ${st.last_run > 0 ? ago(st.last_run) : 'not yet'}.</div>`
-          : `<div>${pill('off', '')}</div><div class="small muted" style="margin-top:6px">Switch it on in <a href="#modules?m=paths">Settings &rsaquo; paths</a>. Nothing is probed that this network has not already contacted.</div>`)}</div>
-
-      <div style="margin-top:14px">${card('Your location', `
-        <div class="small">${home.ok
-          ? `Drawing from <b>${home.lat.toFixed(4)}, ${home.lon.toFixed(4)}</b> <span class="muted">(${esc(home.source)})</span>`
-          : `<span class="sev-high">Not known yet.</span> Without it the map has no origin and nothing can be checked against the speed of light.`}</div>
-        ${(() => {
-          // The address the world sees this network as, beside the coordinates
-          // the map is drawn from. Shown whether or not the coordinates came
-          // from it: a reader checking where the map thinks they are wants the
-          // address in front of them either way.
-          const v4 = home.public_v4 || [], v6 = home.public_v6 || [];
-          if (!v4.length && !v6.length) {
-            return `<div class="muted small" style="margin-top:4px">No public address found on this gateway&rsquo;s own interfaces.</div>`;
-          }
-          const one = (ip) => `<span class="mono">${esc(ip)}</span>${ip === home.public_address && (v4.length + v6.length) > 1 ? ' <span class="muted">(used for the origin)</span>' : ''}`;
-          const line = (label, ips) => ips.length
-            ? `<div class="small" style="margin-top:3px"><span class="muted" style="display:inline-block;min-width:46px">${label}</span>${ips.map(one).join(', ')}</div>` : '';
-          return line('IPv4', v4) + line('IPv6', v6);
-        })()}
-        ${home.detected && (home.detected.lat || home.detected.lon) ? `<div class="muted small" style="margin-top:4px">That address is registered near ${esc([home.detected.city, home.detected.region, home.detected.country].filter(Boolean).join(', '))} &mdash; usually the right town, occasionally the wrong state.</div>` : ''}
-        <div class="actions" style="margin-top:8px">
-          <input id="h-lat" style="width:110px" placeholder="latitude" value="${home.ok ? home.lat.toFixed(4) : ''}">
-          <input id="h-lon" style="width:110px" placeholder="longitude" value="${home.ok ? home.lon.toFixed(4) : ''}">
-          <button class="btn primary" id="h-save">Save</button>
-          <button class="btn" id="h-browser">Use this browser's location</button>
-          ${home.detected && (home.detected.lat || home.detected.lon) ? `<button class="btn" id="h-detect">Use the public address</button>` : ''}
-          ${home.configured ? `<button class="btn" id="h-clear">Go back to detecting it</button>` : ''}
-        </div>
-        <div class="help" style="margin-top:6px">${esc(home.note || '')}</div>`)}</div>
-
+      el.innerHTML = `
       <div style="margin-top:14px">${card('Where the traffic goes', `
         <div class="actions" style="margin-bottom:8px">
           <label class="small">Country
@@ -695,6 +664,7 @@
           </div>`;
         })()}
         </div>
+        ${trail}
         </div>
         <aside class="hoppanel" id="hoppanel">
           <div class="hphead">Hop detail</div>
@@ -704,7 +674,41 @@
         </div>
         <div class="help" style="margin-top:8px">Land outlines are Natural Earth 1:110m, public domain. ${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. Coordinates come from an address database: dependable for end-user addresses and rough for carrier equipment, which is why placements the measured latency rules out are circled rather than trusted. Where a router's hostname carries a site code, that is used instead of the database, and an amber line shows where the two disagreed.</div>`)}</div>
 
-      ${trail ? `<div style="margin-top:14px">${trail}</div>` : ''}
+      <div class="grid cols-4">
+        ${kpi('Destinations with a route', num((dests.destinations || []).length), `${num(st.hops)} hops measured`)}
+        ${kpi('Placed on the map', num(located.length), `${num(unlocated.length)} have no coordinates`, unlocated.length > located.length ? 'warn' : '')}
+        ${kpi('Ruled out by latency', num(impossible.length), impossible.length ? 'too far away to have answered that fast' : 'every placement is possible', impossible.length ? 'bad' : '')}
+        ${card('Tracing', st.active ? `<div>${pill('on', 'ok')}</div><div class="small muted" style="margin-top:6px">Last run ${st.last_run > 0 ? ago(st.last_run) : 'not yet'}.</div>`
+          : `<div>${pill('off', '')}</div><div class="small muted" style="margin-top:6px">Switch it on in <a href="#modules?m=paths">Settings &rsaquo; paths</a>. Nothing is probed that this network has not already contacted.</div>`)}</div>
+
+      <div style="margin-top:14px">${card('Your location', `
+        <div class="small">${home.ok
+          ? `Drawing from <b>${home.lat.toFixed(4)}, ${home.lon.toFixed(4)}</b> <span class="muted">(${esc(home.source)})</span>`
+          : `<span class="sev-high">Not known yet.</span> Without it the map has no origin and nothing can be checked against the speed of light.`}</div>
+        ${(() => {
+          // The address the world sees this network as, beside the coordinates
+          // the map is drawn from. Shown whether or not the coordinates came
+          // from it: a reader checking where the map thinks they are wants the
+          // address in front of them either way.
+          const v4 = home.public_v4 || [], v6 = home.public_v6 || [];
+          if (!v4.length && !v6.length) {
+            return `<div class="muted small" style="margin-top:4px">No public address found on this gateway&rsquo;s own interfaces.</div>`;
+          }
+          const one = (ip) => `<span class="mono">${esc(ip)}</span>${ip === home.public_address && (v4.length + v6.length) > 1 ? ' <span class="muted">(used for the origin)</span>' : ''}`;
+          const line = (label, ips) => ips.length
+            ? `<div class="small" style="margin-top:3px"><span class="muted" style="display:inline-block;min-width:46px">${label}</span>${ips.map(one).join(', ')}</div>` : '';
+          return line('IPv4', v4) + line('IPv6', v6);
+        })()}
+        ${home.detected && (home.detected.lat || home.detected.lon) ? `<div class="muted small" style="margin-top:4px">That address is registered near ${esc([home.detected.city, home.detected.region, home.detected.country].filter(Boolean).join(', '))} &mdash; usually the right town, occasionally the wrong state.</div>` : ''}
+        <div class="actions" style="margin-top:8px">
+          <input id="h-lat" style="width:110px" placeholder="latitude" value="${home.ok ? home.lat.toFixed(4) : ''}">
+          <input id="h-lon" style="width:110px" placeholder="longitude" value="${home.ok ? home.lon.toFixed(4) : ''}">
+          <button class="btn primary" id="h-save">Save</button>
+          <button class="btn" id="h-browser">Use this browser's location</button>
+          ${home.detected && (home.detected.lat || home.detected.lon) ? `<button class="btn" id="h-detect">Use the public address</button>` : ''}
+          ${home.configured ? `<button class="btn" id="h-clear">Go back to detecting it</button>` : ''}
+        </div>
+        <div class="help" style="margin-top:6px">${esc(home.note || '')}</div>`)}</div>
 
       ${rulesOut}
       ${doubtOut}

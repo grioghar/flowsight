@@ -212,8 +212,22 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
    its own contents; the page does not move when a different hop is picked,
    which is what made the old layout unusable -- by the time you had scrolled
    to the detail, the hop you clicked was off screen. */
-.mapsplit { display: flex; gap: 14px; align-items: stretch; }
-.mapsplit .mapcol { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+/* The map is the page, so it is given the screen rather than a slice of a
+   scroll. Bounded to the viewport, the map, the route and the detail are all
+   in front of the reader at once -- and the key, which lives in the map's
+   bottom corner, cannot be scrolled off. Clamped rather than pure vh so a
+   short window still gets a usable map and a tall one does not get an
+   unreadable letterbox. */
+.mapsplit { display: flex; gap: 14px; align-items: stretch;
+  height: clamp(420px, calc(100vh - 210px), 900px); }
+.mapsplit .mapcol { flex: 1 1 auto; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; }
+/* The map takes what the route trail leaves. */
+.mapsplit .mapframe { flex: 1 1 auto; min-height: 0; }
+.mapsplit .pathmap { width: 100%; height: 100%; }
+/* Embedded in the host GUI there is no viewport to measure -- the frame is
+   sized from its own content, so asking for a share of it is circular. */
+.embedded .mapsplit { height: 620px; }
 .hoppanel { flex: 0 0 360px; display: flex; flex-direction: column; min-height: 0;
   padding: 0; background: var(--panel-2, rgba(127,127,127,.06));
   border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -223,10 +237,11 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .hoppanel .hpbody { padding: 12px 14px; overflow: auto; flex: 1 1 auto; min-height: 0; }
 .hoppanel .hphint { padding: 8px 14px; border-top: 1px solid var(--line); flex: none; }
 @media (max-width: 980px) {
-  /* Too narrow for two columns: stack, and give the panel a fixed height so
-     it cannot push the rest of the page out of reach. */
-  .mapsplit { flex-direction: column; }
-  .hoppanel { flex: none; max-height: 46vh; }
+  /* Too narrow for two columns: stack, and give each a height of its own so
+     neither pushes the other off the screen. */
+  .mapsplit { flex-direction: column; height: auto; }
+  .mapsplit .mapframe { flex: none; height: 46vh; min-height: 260px; }
+  .hoppanel { flex: none; max-height: 40vh; }
 }
 .hoppanel h4 { margin: 0 0 8px; font-size: 13.5px; }
 .hoppanel .hg { margin: 11px 0 4px; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
@@ -356,3 +371,17 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
   /* Too little map left to cover: put it back underneath. */
   .legend.onmap { position: static; background: none; border: 0; backdrop-filter: none; padding: 6px 0; }
 }
+
+
+/* The route, under the map and beside the detail panel, so a step and the
+   panel it fills are on screen together. It scrolls sideways rather than
+   wrapping: twenty hops wrapped into five rows would take the map's height to
+   show something that reads perfectly well as one line. */
+.trailbox { flex: none; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line);
+  max-height: 34%; display: flex; flex-direction: column; min-height: 0; }
+.trailhead { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 5px; flex: none; }
+.trailbox .trail { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; }
+.trailbox .crumb { flex: none; }
+.trailbox .help, .trailbox .actions { flex: none; }
+.trailbox .help { margin-top: 6px !important; }
