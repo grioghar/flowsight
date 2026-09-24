@@ -12,6 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241834
+
+**The land routes cost a gigabyte of memory; they now cost nothing to
+speak of.** A heap profile of the running gateway put 979 MB of its 1,045 MB
+in the stitching of the land-route file, and with it the twenty garbage
+collections a second that were the daemon's remaining CPU. The cause was the
+shape of the data: one AfTerFibre route is 4,789 runs with a median of five
+points, more than half ending exactly where the next begins, and joining every
+run end to every run within 75 km made fifty million edges. Runs that end
+where another starts are now chained into one line first, each line is
+thinned, and each end is joined to its three nearest neighbours only. The
+whole African set is 21,000 points and 58,000 edges, builds in a third of a
+second and holds no measurable heap. Submarine cables come out of the same
+code unchanged -- their runs were never dense enough to notice.
+
 ## 0.9.8r202609241829
 
 **The last unremembered cable scan is remembered.** Each rebuild also asked,

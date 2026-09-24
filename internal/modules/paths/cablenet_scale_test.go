@@ -3,6 +3,7 @@ package paths
 import (
 	"math"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -67,6 +68,24 @@ func TestBuildNetJoinsDenseRunsQuickly(t *testing.T) {
 	}
 }
 
+// Parallel runs a few kilometres apart -- a road traced twice, a route with
+// its return leg -- must not be cross-linked point by point.
+func TestBuildNetParallelRunsStaySparse(t *testing.T) {
+	a := denseRun(4000, 10, 20, 0.004, 0.004)
+	b := denseRun(4000, 10.02, 20.02, 0.004, 0.004)
+	c := denseRun(4000, 10.04, 20.04, 0.004, 0.004)
+	n := buildNet(Cable{Name: "p", Legs: [][]LatLon{a, b, c}})
+	edges := 0
+	for _, adj := range n.Adj {
+		edges += len(adj)
+	}
+	// Along-run edges are two per point; between runs, at most two per run
+	// end per other run.
+	if limit := 2*len(n.Pts) + 2*2*3*3; edges > limit {
+		t.Fatalf("%d edges for %d points; parallel runs were cross-linked", edges, len(n.Pts))
+	}
+}
+
 func TestAfTerFibreBuildsInTime(t *testing.T) {
 	p := os.Getenv("FLOWSIGHT_AFTERFIBRE")
 	if p == "" {
@@ -76,14 +95,59 @@ func TestAfTerFibreBuildsInTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
 	start := time.Now()
-	pts := 0
+	nets := make([]cableNet, 0, len(routes))
 	for _, r := range routes {
-		pts += len(buildNet(r).Pts)
+		nets = append(nets, buildNet(r))
 	}
 	el := time.Since(start)
-	t.Logf("%d routes, %d points after thinning, %s", len(routes), pts, el.Round(time.Millisecond))
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+	pts, edges := 0, 0
+	for _, n := range nets {
+		pts += len(n.Pts)
+		for _, adj := range n.Adj {
+			edges += len(adj)
+		}
+	}
+	held := int64(after.HeapInuse) - int64(before.HeapInuse)
+	t.Logf("%d routes, %d points, %d edges, %s, %d MB held", len(routes), pts, edges, el.Round(time.Millisecond), held>>20)
 	if el > 10*time.Second {
 		t.Fatalf("too slow: %s", el)
+	}
+	if held > 64<<20 {
+		t.Fatalf("holding %d MB for the land routes", held>>20)
+	}
+}
+
+func TestChainRunsJoinsPiecesEitherWayRound(t *testing.T) {
+	// A road drawn in four pieces: forwards, forwards, then one piece drawn
+	// back to front, then a piece leading in before the first.
+	p := func(lat, lon float64) LatLon { return LatLon{Lat: lat, Lon: lon} }
+	a := []LatLon{p(0, 0), p(0, 0.1), p(0, 0.2)}
+	b := []LatLon{p(0, 0.2), p(0, 0.3)}
+	c := []LatLon{p(0, 0.5), p(0, 0.4), p(0, 0.3)} // reversed
+	d := []LatLon{p(0, -0.1), p(0, 0)}             // leads into a
+	far := []LatLon{p(5, 5), p(5, 5.1)}
+	out := chainRuns([][]LatLon{a, b, c, d, far})
+	if len(out) != 2 {
+		t.Fatalf("want 2 runs, got %d", len(out))
+	}
+	var long []LatLon
+	for _, r := range out {
+		if len(r) > len(long) {
+			long = r
+		}
+	}
+	if len(long) != 7 {
+		t.Fatalf("chained run has %d points, want 7: %v", len(long), long)
+	}
+	for i := 1; i < len(long); i++ {
+		if step := long[i].Lon - long[i-1].Lon; math.Abs(step-0.1) > 1e-9 && math.Abs(step+0.1) > 1e-9 {
+			t.Fatalf("chain is not monotonic at %d: %v", i, long)
+		}
 	}
 }

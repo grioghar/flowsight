@@ -42,66 +42,200 @@ type cableNet struct {
 
 // buildNet stitches a cable's runs together.
 //
-// Submarine runs are tens of points each and any method works. Terrestrial
-// data is not like that: AfTerFibre traces roads, and one run can be six
-// thousand points a few hundred metres apart. Two things keep that tractable.
-// Each run is first thinned to the points that change its shape by more than
-// thinKM -- the length along it is unchanged to within that -- and the
-// cross-run join walks a grid of one-degree cells instead of comparing every
-// point with every other, which on the full African set was twenty-five
-// billion great-circle distances and never finished.
+// Submarine data is tens of runs of tens of points and any method works.
+// Terrestrial data is not like that. AfTerFibre traces roads: one route is
+// nearly five thousand runs with a median of five points, more than half of
+// them ending exactly where the next begins, and a few of them six thousand
+// points a few hundred metres apart. Three steps make that tractable, and
+// each is a no-op on data that does not need it.
+//
+// Runs that end where another starts are chained into one, so a road drawn
+// in a thousand pieces is one run. Each run is then thinned to the points
+// that change its shape by more than thinKM, which leaves its length
+// unchanged to within that. Finally each run's two ends are joined to the
+// nearest point of the few closest other runs within joinKM -- that is what
+// "runs meet" means: a spur starts on the trunk, a segment recorded apart
+// ends where the next begins. The first version joined every point to every
+// point within that distance, which for parallel road-traced runs made fifty
+// million edges and a gigabyte of heap for a connectivity two edges per run
+// end gives just as well.
 func buildNet(c Cable) cableNet {
 	n := cableNet{Name: c.Name}
-	runOf := []int{}
-	for ri, run := range c.Legs {
-		for _, p := range thinRun(run, thinKM) {
-			n.Pts = append(n.Pts, p)
-			runOf = append(runOf, ri)
-		}
-	}
-	n.Adj = make([][]cableEdge, len(n.Pts))
-	// Along each run.
-	for i := 1; i < len(n.Pts); i++ {
-		if runOf[i] != runOf[i-1] {
+	var runs [][]LatLon
+	starts := []int{}
+	for _, run := range chainRuns(c.Legs) {
+		run = thinRun(run, thinKM)
+		if len(run) == 0 {
 			continue
 		}
-		a, b := i-1, i
-		km := greatCircleKM(n.Pts[a].Lat, n.Pts[a].Lon, n.Pts[b].Lat, n.Pts[b].Lon)
+		starts = append(starts, len(n.Pts))
+		runs = append(runs, run)
+		n.Pts = append(n.Pts, run...)
+	}
+	n.Adj = make([][]cableEdge, len(n.Pts))
+	link := func(a, b int, km float64) {
 		n.Adj[a] = append(n.Adj[a], cableEdge{b, km})
 		n.Adj[b] = append(n.Adj[b], cableEdge{a, km})
 	}
-	if len(c.Legs) < 2 {
-		return n
+	// Along each run.
+	for ri, run := range runs {
+		base := starts[ri]
+		for i := 1; i < len(run); i++ {
+			link(base+i-1, base+i, greatCircleKM(run[i-1].Lat, run[i-1].Lon, run[i].Lat, run[i].Lon))
+		}
 	}
-	// Between runs, wherever they meet. Points are bucketed by whole degree;
-	// joinKM is under a degree of latitude, so a neighbour is always in the
-	// same or an adjacent row, and within a few columns depending on how far
-	// north the row is.
-	cells := map[[2]int][]int{}
-	for i, p := range n.Pts {
-		cells[cellOf(p)] = append(cells[cellOf(p)], i)
-	}
-	for i, p := range n.Pts {
-		c0 := cellOf(p)
-		span := lonSpan(p.Lat)
-		for dr := -1; dr <= 1; dr++ {
-			for dc := -span; dc <= span; dc++ {
-				col := ((c0[1]+dc)%360 + 360) % 360
-				for _, j := range cells[[2]int{c0[0] + dr, col}] {
-					if j <= i || runOf[i] == runOf[j] {
-						continue
-					}
-					km := greatCircleKM(p.Lat, p.Lon, n.Pts[j].Lat, n.Pts[j].Lon)
-					if km > joinKM {
-						continue
-					}
-					n.Adj[i] = append(n.Adj[i], cableEdge{j, km})
-					n.Adj[j] = append(n.Adj[j], cableEdge{i, km})
+	// Between runs: each end to the nearest point of its few closest
+	// neighbours.
+	for ri, run := range runs {
+		ends := []int{0, len(run) - 1}
+		if len(run) == 1 {
+			ends = ends[:1]
+		}
+		for _, ei := range ends {
+			e := run[ei]
+			from := starts[ri] + ei
+			var best []nearRun
+			for rj, other := range runs {
+				if rj == ri {
+					continue
 				}
+				ix, km := nearestOn(other, e.Lat, e.Lon)
+				if ix < 0 || km > joinKM {
+					continue
+				}
+				best = insertNear(best, nearRun{starts[rj] + ix, km}, joinFanout)
+			}
+			for _, b := range best {
+				link(from, b.at, b.km)
 			}
 		}
 	}
 	return n
+}
+
+// joinFanout is how many other runs an end may be joined to. Two keeps a
+// chain connected through a break; three covers a junction.
+const joinFanout = 3
+
+// nearRun is a candidate join: a point index and how far away it is.
+type nearRun struct {
+	at int
+	km float64
+}
+
+// insertNear keeps the k closest, sorted.
+func insertNear(xs []nearRun, x nearRun, k int) []nearRun {
+	i := len(xs)
+	for i > 0 && xs[i-1].km > x.km {
+		i--
+	}
+	if i >= k {
+		return xs
+	}
+	xs = append(xs, x)
+	copy(xs[i+1:], xs[i:])
+	xs[i] = x
+	if len(xs) > k {
+		xs = xs[:k]
+	}
+	return xs
+}
+
+// chainKM is how close a run's end must be to another's for the two to be
+// one line drawn in pieces. Half a kilometre is far below the join distance
+// and far above the coordinate noise of a road tracing.
+const chainKM = 0.5
+
+// chainRuns merges runs end to end. A run whose last point sits on another
+// run's first is continued by it; on another run's last, continued by it
+// reversed. Ends are indexed by rounded coordinate so the search is a map
+// lookup, and the result is at most as many runs as it was given.
+func chainRuns(runs [][]LatLon) [][]LatLon {
+	if len(runs) < 2 {
+		return runs
+	}
+	type endRef struct {
+		run  int
+		head bool // true for the first point, false for the last
+	}
+	key := func(p LatLon) [2]int { return [2]int{int(math.Round(p.Lat * 200)), int(math.Round(p.Lon * 200))} } // ~500 m cells
+	ends := map[[2]int][]endRef{}
+	for i, r := range runs {
+		if len(r) == 0 {
+			continue
+		}
+		ends[key(r[0])] = append(ends[key(r[0])], endRef{i, true})
+		ends[key(r[len(r)-1])] = append(ends[key(r[len(r)-1])], endRef{i, false})
+	}
+	used := make([]bool, len(runs))
+	// A neighbour whose end lies within chainKM of p, in this or an adjacent
+	// cell, not yet used and not run i itself.
+	findNext := func(p LatLon, self int) (endRef, bool) {
+		k := key(p)
+		for dr := -1; dr <= 1; dr++ {
+			for dc := -1; dc <= 1; dc++ {
+				for _, ref := range ends[[2]int{k[0] + dr, k[1] + dc}] {
+					if ref.run == self || used[ref.run] {
+						continue
+					}
+					r := runs[ref.run]
+					q := r[0]
+					if !ref.head {
+						q = r[len(r)-1]
+					}
+					if greatCircleKM(p.Lat, p.Lon, q.Lat, q.Lon) <= chainKM {
+						return ref, true
+					}
+				}
+			}
+		}
+		return endRef{}, false
+	}
+	var out [][]LatLon
+	for i := range runs {
+		if used[i] || len(runs[i]) == 0 {
+			continue
+		}
+		used[i] = true
+		chain := append([]LatLon(nil), runs[i]...)
+		// Extend forwards from the tail, then backwards from the head.
+		for {
+			ref, ok := findNext(chain[len(chain)-1], -1)
+			if !ok {
+				break
+			}
+			used[ref.run] = true
+			r := runs[ref.run]
+			if ref.head {
+				chain = append(chain, r[1:]...)
+			} else {
+				for j := len(r) - 2; j >= 0; j-- {
+					chain = append(chain, r[j])
+				}
+			}
+		}
+		for {
+			ref, ok := findNext(chain[0], -1)
+			if !ok {
+				break
+			}
+			used[ref.run] = true
+			r := runs[ref.run]
+			var prefix []LatLon
+			if ref.head {
+				// The other run starts here; it runs away from us, so it is
+				// reversed to lead in.
+				for j := len(r) - 1; j >= 1; j-- {
+					prefix = append(prefix, r[j])
+				}
+			} else {
+				prefix = append(prefix, r[:len(r)-1]...)
+			}
+			chain = append(prefix, chain...)
+		}
+		out = append(out, chain)
+	}
+	return out
 }
 
 // thinKM is how far a point may sit off the line between its neighbours
@@ -109,26 +243,6 @@ func buildNet(c Cable) cableNet {
 // here -- the join tolerance is 75 -- and it turns road tracings into the few
 // hundred vertices that matter.
 const thinKM = 1.0
-
-// cellOf is the one-degree grid cell a point falls in: row by latitude,
-// column by longitude, both shifted to be non-negative.
-func cellOf(p LatLon) [2]int {
-	return [2]int{int(math.Floor(p.Lat)) + 90, ((int(math.Floor(p.Lon)) % 360) + 360) % 360}
-}
-
-// lonSpan is how many columns either side of a cell can hold a point within
-// joinKM at this latitude. Columns narrow towards the poles.
-func lonSpan(lat float64) int {
-	cosLat := math.Cos(lat * math.Pi / 180)
-	if cosLat < 0.05 {
-		return 180
-	}
-	span := int(math.Ceil(joinKM/(111.32*cosLat))) + 1
-	if span > 180 {
-		span = 180
-	}
-	return span
-}
 
 // thinRun is Ramer-Douglas-Peucker on a run: keep the ends, then keep any
 // point further than tolKM off the chord between kept points, and repeat on
