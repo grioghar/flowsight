@@ -12,6 +12,38 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241726
+
+**Every entry in the key is a switch.** A key that only names the marks leaves
+you to pick one kind of line out of twelve hundred by eye; one that turns them
+off does the picking. Cables, shared legs, single-destination legs, sea
+crossings, the bridges over unplaceable hops, endpoints, ordinary hops,
+corrections, both plausibility marks and your own position each switch
+independently, and the choice is remembered. Two of them -- *operator known*
+and *the route you picked* -- are emphasis rather than a layer of their own,
+so switching those removes the emphasis; hiding the hop would be a different
+claim.
+
+**Each leg of a selected route carries what it cost.** The panel gives one
+hop's round trip, but the question is where the time went, and that is the
+difference between one hop and the next. It is written along the leg, appears
+only for the route you have picked, and holds its size as you zoom.
+
+**A refresh no longer throws away your view.** The page redraws itself every
+couple of minutes; zoomed in on a hop, that dropped you back at the whole
+world -- the page deciding it knew better than the person using it. Where you
+are, what you have narrowed to and which hop is selected all survive a
+refresh. Changing route, device or filter still starts fresh, because then you
+have asked for something else.
+
+**The map uses an ultrawide screen.** Splitting the width by a ratio meant a
+wider screen made the tables wider too, which they did not need: on 2560
+pixels the map was using 37% of the glass while the destinations table sat in
+a thousand pixels it had no use for. The side column now takes what it needs
+and the map takes the rest -- 52% of the same screen, 1338 by 669 instead of
+962 by 481 -- and a tall screen gives the map the height rather than capping
+it at what a laptop has.
+
 ## 0.9.8r202609241716
 
 **A placement is no longer called impossible on a margin thinner than the

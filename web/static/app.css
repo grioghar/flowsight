@@ -462,7 +462,12 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
    them takes the right, and the whole page is one screenful. The right column
    scrolls its own contents rather than the page, so the map never moves. */
 @media (min-width: 1750px) {
-  .pagewide { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  /* The side column takes what it needs and no more; everything left over
+     goes to the map. Splitting the width by a ratio meant a wider screen made
+     the tables wider too, which they did not need -- on an ultrawide the map
+     was using barely a third of the glass while the destinations table sat in
+     a thousand pixels it had no use for. */
+  .pagewide { display: grid; grid-template-columns: minmax(0, 1fr) clamp(380px, 30vw, 720px);
     gap: 14px; align-items: start; }
   .pagewide .mapside { min-width: 0; }
   .pagewide .dataside { min-width: 0; display: flex; flex-direction: column; gap: 14px;
@@ -476,5 +481,42 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
      true of the half that was measured. The card's own furniture -- title,
      filters, the folded notes -- is the difference between this and the
      figure above. */
-  .pagewide .mapside .mapsplit { height: clamp(380px, calc(100vh - 230px), 900px); }
+  /* And a tall screen should give the map the height, not cap it at what a
+     laptop has. */
+  .pagewide .mapside .mapsplit { height: clamp(380px, calc(100vh - 230px), 1200px); }
 }
+
+/* Every entry in the key is a switch for the thing it names. A key that only
+   labels the marks leaves a reader to pick one kind of line out of twelve
+   hundred by eye. Hiding is done with one class on the map rather than a walk
+   over every element. */
+.legend.onmap .lgi { pointer-events: auto; }
+.legend.onmap button.lgi { border: 0; background: none; padding: 1px 3px; margin: -1px -3px;
+  font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 4px; }
+.legend.onmap button.lgi:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.legend.onmap button.lgi.lgoff { opacity: .38; text-decoration: line-through; }
+
+.pathmap.off-shared .leg.shared,
+.pathmap.off-single .leg:not(.shared):not(.gapleg):not(.local):not(.sea),
+.pathmap.off-sea .leg.sea,
+.pathmap.off-gap .leg.gapleg,
+.pathmap.off-you .home, .pathmap.off-you .homering, .pathmap.off-you .leg.local,
+.pathmap.off-endpoint .endpoint, .pathmap.off-endpoint .hop.isend,
+.pathmap.off-hop .hop:not(.isend),
+.pathmap.off-ruledout .ruledout,
+.pathmap.off-doubtful .doubtful,
+.pathmap.off-corrected .corrected, .pathmap.off-corrected .ghost,
+.pathmap.off-cable .cablegroup { display: none; }
+/* Two of these are emphasis rather than a layer of their own: switching them
+   off removes the emphasis, since hiding the hop would be a different claim. */
+.pathmap.off-rich .hop.rich { stroke: var(--panel); stroke-width: .8; }
+.pathmap.off-onroute .leg.onroute { stroke-width: 1.2; }
+
+/* What each leg of the chosen route cost, written along it. Hidden until a
+   route is picked: twelve hundred legs each carrying a number is not a map.
+   Sized against the zoom like everything else that is annotation rather than
+   geography, and haloed so it reads over a coastline or a cable. */
+.pathmap .legms { display: none; fill: var(--ink); font-size: calc(5px / var(--z, 1));
+  text-anchor: middle; paint-order: stroke; stroke: var(--panel);
+  stroke-width: calc(2.4px / var(--z, 1)); stroke-linejoin: round; pointer-events: none; }
+.pathmap .legms.onpath { display: block; }

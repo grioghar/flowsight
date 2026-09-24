@@ -341,6 +341,9 @@ FS.panZoom = (svg, w, h, opts) => {
     const z = w / view.w;
     svg.style.setProperty('--z', z);
     if (onZoom) onZoom(z);
+    // Where the reader has got to, published so it can be put back after a
+    // refresh redraws the page underneath them.
+    if (opts.onView) opts.onView({ x: view.x, y: view.y, w: view.w, h: view.h });
   };
   // How far out you may zoom.
   //
@@ -473,6 +476,12 @@ FS.panZoom = (svg, w, h, opts) => {
 
   // Set while a move is in flight, so nothing else moves the view under it.
   let frame = null;
+  // The shape the view was last put in step with. Nought means never, which
+  // is what makes the observer's first fire reach for a full view -- so
+  // anything that deliberately sets the view has to claim this too, or that
+  // first fire undoes it. Restoring a reader's view after a refresh was
+  // being thrown away exactly this way.
+  let lastAspect = 0;
 
   // Where a full view sits when the box is not the shape of the world.
   //
@@ -484,6 +493,7 @@ FS.panZoom = (svg, w, h, opts) => {
   // The whole world, pole to pole, letterboxed rather than cropped.
   const home = () => {
     const a = aspect();
+    lastAspect = a;
     view.w = Math.max(w, h / a);
     view.h = view.w * a;
     view.x = (w - view.w) / 2;
@@ -501,7 +511,6 @@ FS.panZoom = (svg, w, h, opts) => {
   // one world. One of the two will always catch it, and reshape() does
   // nothing when nothing has changed.
   {
-    let last = 0;
     const reshape = () => {
       // Never while a move is in flight. The observer fires after layout,
       // which on a fresh page is a moment after the first click may already
@@ -511,9 +520,9 @@ FS.panZoom = (svg, w, h, opts) => {
       // the hop that was clicked.
       if (frame) return;
       const a = aspect();
-      if (a <= 0 || Math.abs(a - last) < 0.0005) return;
-      const first = last === 0;
-      last = a;
+      if (a <= 0 || Math.abs(a - lastAspect) < 0.0005) return;
+      const first = lastAspect === 0;
+      lastAspect = a;
       if (first || view.w > w + 0.5) {
         home(); // still showing everything; keep showing everything
       } else {
@@ -583,6 +592,15 @@ FS.panZoom = (svg, w, h, opts) => {
   return {
     reset: () => { stop(); home(); apply(); },
     centre, moveTo, nearest,
+    // Put the view back exactly, with no travel: this is restoring what the
+    // reader already had, not taking them somewhere.
+    restore: (v) => {
+      if (!v || !(v.w > 0)) return;
+      stop();
+      lastAspect = aspect(); // this view is deliberate; do not reach for a full one
+      view.x = v.x; view.y = v.y; view.w = v.w; view.h = v.h;
+      rewrap(); apply();
+    },
     // Frame a box, keeping its aspect honest and leaving room round the edge.
     fit: (x0, y0, x1, y1, pad, ms) => {
       pad = pad == null ? 1.35 : pad;

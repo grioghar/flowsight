@@ -420,7 +420,7 @@
         return out;
       };
 
-      let lines = '', dots = '';
+      let lines = '', dots = '', labels = '';
       if (origin && picked) {
         const first = routeHops.find(n => n.located);
         if (first) {
@@ -461,7 +461,18 @@
         const rc = picked ? (onRoute[l.from + '>' + l.to] ? ' onroute' : ' offroute') : '';
         // A leg standing in for hops that could not be placed is a weaker
         // claim than one router to the next, and is drawn as one.
-        const gap = l.gap ? ' gapleg' : '';
+        const gap = (l.gap ? ' gapleg' : '') + (l.via ? ' sea' : '');
+        // What this leg cost, written on it. The panel gives one hop's round
+        // trip; the question a reader actually has is where the time went,
+        // and that is the difference between one hop and the next.
+        const dms = (b.rtt_ms && a.rtt_ms) ? b.rtt_ms - a.rtt_ms : null;
+        if (dms !== null && dms > 0.05) {
+          const mid = (l.route || []).length > 2
+            ? (() => { const p = l.route[Math.floor(l.route.length / 2)];
+                       const [mx, my] = FS.project(p.lat, p.lon, MAPW, MAPH); return [near(mx, x1), my]; })()
+            : [(x1 + x2) / 2, (y1 + y2) / 2];
+          labels += `<text class="legms" data-dsts="${esc((l.destinations || []).join(' '))}" x="${mid[0].toFixed(1)}" y="${(mid[1] - 2).toFixed(1)}">${dms.toFixed(dms < 10 ? 1 : 0)} ms</text>`;
+        }
         lines += `<path class="leg ${l.shared ? 'shared' : ''}${rc}${gap}" data-dsts="${esc((l.destinations || []).join(' '))}" stroke="${legColour(l)}" d="${d}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${l.gap ? `\nthrough ${l.through} hop${l.through === 1 ? '' : 's'} with no known position` : ''}${l.via ? `\ndrawn along ${esc(l.via)} — ${num(l.via_km)} km, against ${num(l.straight_km)} km straight` : ''}${esc(cbl)}</title></path>`;
       });
       located.forEach(n => {
@@ -738,7 +749,7 @@
             <clipPath id="fs-world-clip"><rect x="0" y="0" width="${MAPW}" height="${MAPH}"/></clipPath>
             <g id="fs-world">
             ${FS.landPath ? `<path class="land" style="fill:color-mix(in srgb, var(--ink) 13%, transparent);stroke:var(--line);stroke-width:.4;vector-effect:non-scaling-stroke" d="${FS.landPath}"/>` : ''}
-            <g style="fill:none;stroke:var(--line);stroke-width:.6;opacity:.9;vector-effect:non-scaling-stroke">${cables}</g>
+            <g class="cablegroup" style="fill:none;stroke:var(--line);stroke-width:.6;opacity:.9;vector-effect:non-scaling-stroke">${cables}</g>
           </g></defs>
           <g class="stage">
           <use class="worldcopy" href="#fs-world" x="${-MAPW}"/><use href="#fs-world"/><use class="worldcopy" href="#fs-world" x="${MAPW}"/>
@@ -748,7 +759,7 @@
                 never there. Routes and markers are drawn for real too: a <use>
                 copy cannot be clicked, and a reader who pans past the edge
                 would find a map whose hops no longer answer. */''}
-          ${[-MAPW, 0, MAPW].map(dx => `<g class="${dx ? 'worldcopy' : ''}" transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${dots}${originArt}</g>`).join('')}
+          ${[-MAPW, 0, MAPW].map(dx => `<g class="${dx ? 'worldcopy' : ''}" transform="translate(${dx},0)">${FS.graticule(MAPW, MAPH, 30)}${lines}${labels}${dots}${originArt}</g>`).join('')}
           </g>
         </svg>
         ${(() => {
@@ -758,7 +769,12 @@
           // guessing at any of it.
           const sw = (cls, style) => `<svg class="lg" viewBox="0 0 22 10" aria-hidden="true"><line class="${cls}" style="${style || ''}" x1="1" y1="5" x2="21" y2="5"/></svg>`;
           const dot = (fill, cls) => `<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="${cls || ''}" cx="6" cy="6" r="3.4" fill="${fill || 'none'}"/></svg>`;
-          const it = (mark, text) => `<span class="lgi">${mark}${esc(text)}</span>`;
+          // Each entry is a switch for the thing it describes. A key that only
+          // names the marks leaves a reader to pick one kind of line out of
+          // twelve hundred by eye; a key that turns them off does the picking.
+          const it = (mark, text, layer) => layer
+            ? `<button type="button" class="lgi" data-layer="${layer}" aria-pressed="true">${mark}<span>${esc(text)}</span></button>`
+            : `<span class="lgi">${mark}${esc(text)}</span>`;
           // Always there, never in the way. It stays put through any zoom --
           // it is drawn beside the map rather than inside it, so the viewBox
           // cannot move it -- but at ten times in it was covering the thing
@@ -767,19 +783,19 @@
           return `<div class="legend onmap" id="maplegend">
             <button type="button" class="lgtoggle" id="lgtoggle" aria-expanded="true">Key</button>
             <div class="lgitems">
-            ${it(sw('leg shared', 'stroke:var(--muted)'), 'a leg several destinations share')}
-            ${it(sw('leg', 'stroke:' + FS.palette[0]), 'a leg used by one destination')}
-            ${(cab.cables || []).length ? it(sw('cable'), 'submarine cable') : ''}
-            ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="homering" cx="6" cy="6" r="4.5"/><circle class="home" cx="6" cy="6" r="2"/></svg>`, 'you')}
-            ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="endpoint" cx="6" cy="6" r="4.6"/><circle cx="6" cy="6" r="2.2" fill="${FS.palette[2]}"/></svg>`, 'an endpoint: traffic was going here')}
-            ${it(dot(FS.palette[2]), 'a hop it crossed on the way')}
-            ${it(dot(FS.palette[2], 'rich'), 'operator known')}
-            ${it(dot('', 'ruledout'), 'the latency rules this placement out')}
-            ${it(dot('', 'doubtful'), 'too fast for any built route')}
-            ${it(sw('leg gapleg', 'stroke:var(--muted)'), 'the route continues through hops with no known position')}
-            ${it(sw('leg', 'stroke:' + FS.palette[4]), 'a sea crossing, drawn along its likeliest cable')}
-            ${it(sw('corrected'), 'correction: database \u2192 the site in the router\u2019s name')}
-            ${picked ? it(sw('leg onroute', 'stroke:' + FS.palette[0]), 'the route you picked; the rest is dimmed') : ''}
+            ${it(sw('leg shared', 'stroke:var(--muted)'), 'a leg several destinations share', 'shared')}
+            ${it(sw('leg', 'stroke:' + FS.palette[0]), 'a leg used by one destination', 'single')}
+            ${(cab.cables || []).length ? it(sw('cable'), 'submarine cable', 'cable') : ''}
+            ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="homering" cx="6" cy="6" r="4.5"/><circle class="home" cx="6" cy="6" r="2"/></svg>`, 'you', 'you')}
+            ${it(`<svg class="lg" viewBox="0 0 12 12" aria-hidden="true"><circle class="endpoint" cx="6" cy="6" r="4.6"/><circle cx="6" cy="6" r="2.2" fill="${FS.palette[2]}"/></svg>`, 'an endpoint: traffic was going here', 'endpoint')}
+            ${it(dot(FS.palette[2]), 'a hop it crossed on the way', 'hop')}
+            ${it(dot(FS.palette[2], 'rich'), 'operator known', 'rich')}
+            ${it(dot('', 'ruledout'), 'the latency rules this placement out', 'ruledout')}
+            ${it(dot('', 'doubtful'), 'too fast for any built route', 'doubtful')}
+            ${it(sw('leg gapleg', 'stroke:var(--muted)'), 'the route continues through hops with no known position', 'gap')}
+            ${it(sw('leg sea', 'stroke:' + FS.palette[4]), 'a sea crossing, drawn along its likeliest cable', 'sea')}
+            ${it(sw('corrected'), 'correction: database \u2192 the site in the router\u2019s name', 'corrected')}
+            ${picked ? it(sw('leg onroute', 'stroke:' + FS.palette[0]), 'the route you picked; the rest is dimmed', 'onroute') : ''}
             </div>
           </div>`;
         })()}
@@ -890,6 +906,33 @@
         if (!r.error) FS.render();
       };
 
+      // Each key entry switches its own layer off and on, remembered per
+      // reader. The switches live on the svg as off-<layer> classes so the
+      // work is one class change rather than a walk over twelve hundred
+      // elements.
+      const svgEl = FS.$('#pathmap', el);
+      if (svgEl) {
+        let off = {};
+        try { off = JSON.parse(localStorage.getItem('fs.maplayers') || '{}') || {}; } catch (e) { }
+        const paint = () => {
+          el.querySelectorAll('.lgi[data-layer]').forEach(b => {
+            const k = b.getAttribute('data-layer'), hidden = !!off[k];
+            svgEl.classList.toggle('off-' + k, hidden);
+            b.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+            b.classList.toggle('lgoff', hidden);
+          });
+          try { localStorage.setItem('fs.maplayers', JSON.stringify(off)); } catch (e) { }
+        };
+        el.querySelectorAll('.lgi[data-layer]').forEach(b => {
+          b.onclick = () => {
+            const k = b.getAttribute('data-layer');
+            if (off[k]) delete off[k]; else off[k] = 1;
+            paint();
+          };
+        });
+        paint();
+      }
+
       // Folded or not is a per-reader preference, so it is remembered here and
       // nowhere else; losing it costs nothing.
       // Whether the notes are open is the same kind of preference as the key.
@@ -926,6 +969,7 @@
       // here", which is the question somebody clicking a router actually has.
       const legEls = el.querySelectorAll('.leg');
       const hopEls = el.querySelectorAll('.hop');
+      const msEls = el.querySelectorAll('.legms');
       const bar = FS.$('#mapfilter', el), barText = FS.$('#mapfilter-text', el);
 
       // Narrowing the map to the routes through one hop.
@@ -935,11 +979,15 @@
       // route you asked about is lost in it. So everything else is taken
       // away -- and because a map that is hiding most of itself must say so,
       // a chip appears that undoes it in one click.
-      const litRoute = (dsts, label) => {
+      let focusId = null;
+      const litRoute = (dsts, label, id) => {
+        focusId = id || null;
         legEls.forEach(p => p.classList.remove('onpath', 'offpath'));
         hopEls.forEach(x => x.classList.remove('onpath', 'offpath'));
+        msEls.forEach(t => t.classList.remove('onpath'));
         if (!dsts || !dsts.length) {
           if (bar) bar.hidden = true;
+          if (FS.pathsView) FS.pathsView.focus = null;
           return;
         }
         const want = {}; dsts.forEach(d => want[d] = 1);
@@ -953,10 +1001,15 @@
           p.classList.add(on ? 'onpath' : 'offpath');
         });
         hopEls.forEach(x => x.classList.add(ends[x.getAttribute('data-hop')] ? 'onpath' : 'offpath'));
+        msEls.forEach(t => {
+          const on = (t.getAttribute('data-dsts') || '').split(' ').some(d => want[d]);
+          t.classList.toggle('onpath', on);
+        });
         if (bar && barText) {
           barText.textContent = `${dsts.length} route${dsts.length === 1 ? '' : 's'} through ${label}`;
           bar.hidden = false;
         }
+        if (FS.pathsView) FS.pathsView.focus = { dsts: dsts, label: label, id: focusId };
       };
       const crumbEls = el.querySelectorAll('[data-crumb]');
 
@@ -1003,7 +1056,7 @@
             return;
           }
           select(id);
-          litRoute(routeOf(id), (n0 && n0.ips ? n0.ips[0] : id));
+          litRoute(routeOf(id), (n0 && n0.ips ? n0.ips[0] : id), id);
           const pz = FS.panZoomHandle;
           const n = byId[id];
           // Decide what can happen before recording that it did. Arming the
@@ -1090,11 +1143,28 @@
       // to them by hand. Everything else holds its size through CSS.
       const svg = FS.$('#pathmap', el);
       const sized = svg ? svg.querySelectorAll('[data-r]') : [];
+      // What the reader is looking at, so a refresh can put it back.
+      //
+      // The page redraws itself every couple of minutes. Zoomed in on a hop,
+      // that threw the view away and dropped them back at the whole world --
+      // which is the page deciding it knows better than the person using it.
+      // The view is kept against the filters that produced it, so changing
+      // route or device still starts fresh.
+      const viewKey = ['device', 'country', 'max_latency', 'max_hops']
+        .map(k => ctx.params[k] || '').concat(picked).join('|');
+      // Read before the map is built, because building it lays down a full
+      // view of its own and publishes that -- which overwrote the very thing
+      // being restored, a second before it was wanted.
+      const savedFor = FS.pathsView && FS.pathsView.key === viewKey ? FS.pathsView : null;
+      const savedBox = savedFor && savedFor.box;
+      const savedFocus = savedFor && savedFor.focus;
+
       FS.panZoomHandle = FS.panZoom(svg, MAPW, MAPH, {
         wrapX: true,
         onZoom: (z) => {
           sized.forEach(c => c.setAttribute('r', (parseFloat(c.getAttribute('data-r')) / z).toFixed(2)));
-        }
+        },
+        onView: (v) => { FS.pathsView = { key: viewKey, box: v, focus: FS.pathsView && FS.pathsView.focus }; }
       });
       // Moving the map by hand means you are no longer looking at whatever
       // was clicked, so the next click on it should take you there rather
@@ -1122,7 +1192,19 @@
       // Arriving with a route chosen: show the whole of it, narrowed to it,
       // with the endpoint's detail open -- which is what was asked for by
       // coming here.
-      if (picked && laid.length) {
+      if (savedBox) {
+        // A refresh, not an arrival: put the reader back where they were,
+        // with whatever they had narrowed to.
+        if (savedFocus) {
+          litRoute(savedFocus.dsts, savedFocus.label, savedFocus.id);
+          if (savedFocus.id) select(savedFocus.id);
+        }
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => FS.panZoomHandle && FS.panZoomHandle.restore(savedBox));
+        } else if (FS.panZoomHandle) {
+          FS.panZoomHandle.restore(savedBox);
+        }
+      } else if (picked && laid.length) {
         const end = routeHops.filter(n => n.located).slice(-1)[0];
         litRoute([picked], picked);
         if (end) select(end.id);
