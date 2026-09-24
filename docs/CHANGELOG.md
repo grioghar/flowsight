@@ -12,16 +12,26 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8r202609240728
+## 0.9.8r202609240733
 
-**Rules saved from the Enrollment page or the API now take effect straight
-away.** Saving rules read each rule's name, zone and explanation as if they
-were conditions to match. Since conditions FlowSight does not recognise now
-match nothing, every saved rule matched no device, and every device was
-classified as unidentified until the daemon restarted and read the file
-again. Saved rules are now read exactly as the file is at startup. Nothing
-to do: if you saved rules and then restarted to make them work, they were
-already correct on disk.
+**Device zones follow the classification rules until you choose one.** A
+zone used to be decided once, when a device was first seen, and then never
+revisited, so a rule edit changed nothing for devices already known, and
+zones handed out by the classification fault fixed in 0.9.8r202609232121
+stayed wrong: on one network 112 devices were still in infrastructure. In
+monitor mode every device now follows the rules on each reconcile, including
+devices that have not been heard from recently.
+
+What you have to do: check the Devices page after upgrading. Zones set by
+hand before this release were not recorded as such and are replaced by what
+the rules say; choose them again and they stay. Choosing a zone now pins the
+device there (shown as *pinned*); choosing the empty entry unpins it. A zone
+picked on the captive page pins the same way. Enforce mode is unchanged: a
+device that already has a zone keeps it, and only devices without one are
+placed.
+
+Saving a device's zone no longer counts as seeing it, so *last seen* is
+when the device was actually heard from.
 
 ## 0.9.8r202609240731
 
@@ -53,6 +63,17 @@ laptop answers to an IPv4 lease and a handful of rotating IPv6 privacy
 addresses. A picker keyed on addresses would have listed the same laptop
 eight times, and filtering on whichever one was handy would have shown a
 fraction of where it had actually been.
+
+## 0.9.8r202609240728
+
+**Rules saved from the Enrollment page or the API now take effect straight
+away.** Saving rules read each rule's name, zone and explanation as if they
+were conditions to match. Since conditions FlowSight does not recognise now
+match nothing, every saved rule matched no device, and every device was
+classified as unidentified until the daemon restarted and read the file
+again. Saved rules are now read exactly as the file is at startup. Nothing
+to do: if you saved rules and then restarted to make them work, they were
+already correct on disk.
 
 ## 0.9.8r202609240721
 
