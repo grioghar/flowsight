@@ -155,59 +155,71 @@ func floorMS(km float64) float64 { return 2 * km / fibreKMS * 1000 }
 
 // checkPlausible marks the placements the measured latency rules out. It never
 // moves a point or invents one; it says which ones cannot be where they claim.
-// tightMargin is how close to the theoretical floor still counts as
-// suspicious. A round trip only a few per cent above it describes a path that
-// does not exist. Settings are optional here so the check can be exercised on
-// its own; the arithmetic is the interesting part, not where the number came
-// from.
-func (m *Module) tightMargin() float64 {
-	pct := 15
-	if m.ctx != nil {
-		pct = core.Int(m.ctx.Settings(), "tight_margin_pct", 15)
-	}
-	if pct < 0 {
-		pct = 0
-	}
-	return float64(pct) / 100
-}
 
 func (m *Module) checkPlausible(nodes []Node, h Home) {
 	if !h.OK {
 		return
 	}
-	margin := m.tightMargin()
+	hop := m.hopDelayMS()
 	for i := range nodes {
 		n := &nodes[i]
 		if !n.Located || n.RTT <= 0 {
 			continue
 		}
-		// The distance a packet would actually have to cover, which between
-		// continents is along a cable and not across the map.
+		// Two numbers, answering two different questions.
+		//
+		// The floor is what light forbids, measured along the cables where a
+		// crossing has to follow one. It is a proof, and it is rigorous
+		// because it assumes a perfect path: dead straight, nothing attached.
+		//
+		// The expectation is what a route that exists could manage: fibre on
+		// land runs about a third longer than the crow flies, a sea crossing
+		// is as long as its cable, and every router on the way holds the
+		// packet for a moment before passing it on. A hop under this is not
+		// disproved -- it is beating anything anyone has built, which is a
+		// different and softer claim, and the two must not be run together.
 		km, via := m.pathKM(h.Lat, h.Lon, n.Lat, n.Lon)
 		floor := floorMS(km)
 		n.DistanceKM = math.Round(km)
 		n.FloorMS = math.Round(floor*10) / 10
 		n.Via = via
+
+		ekm, evia := m.expectedKM(h.Lat, h.Lon, n.Lat, n.Lon)
+		if ekm < km {
+			ekm = km // an expectation below the bound is not an expectation
+		}
+		expected := floorMS(ekm) + hop*float64(n.Index)
+		n.ExpectedKM = math.Round(ekm)
+		n.ExpectedMS = math.Round(expected*10) / 10
+		n.ExpectedVia = evia
+
 		switch {
 		case n.RTT < floor:
 			n.Impossible = true
 			n.Why = fmt.Sprintf("answers in %.1f ms, but %.0f km away%s cannot answer in less than %.0f ms",
 				n.RTT, km, viaPhrase(via), floor)
-		case floor > 0 && n.RTT <= floor*(1+margin):
-			// Possible, and still almost certainly wrong.
-			//
-			// The floor assumes a perfectly straight fibre with nothing
-			// attached to it. Real routes wander -- cables follow coasts and
-			// rights of way, and a packet is queued and switched at every hop
-			// -- so a measured round trip is normally well above it. A
-			// placement that only just clears the floor is claiming a journey
-			// with no detour and no equipment in it, which is not a claim
-			// physics forbids but is one nothing in the real world satisfies.
+		case expected > floor && n.RTT < expected:
 			n.Tight = true
-			n.Why = fmt.Sprintf("answers in %.1f ms against a floor of %.0f ms for %.0f km%s: possible only with a perfect path and no equipment delay, which is %.0f%% above the minimum",
-				n.RTT, floor, km, viaPhrase(via), (n.RTT/floor-1)*100)
+			n.Why = fmt.Sprintf("answers in %.1f ms, which light allows over %.0f km%s but no built route does: %s comes to %.0f ms, and %d hop%s add %.1f ms more",
+				n.RTT, km, viaPhrase(via), expectedPhrase(ekm, evia), floorMS(ekm), n.Index, plural(n.Index), hop*float64(n.Index))
 		}
 	}
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+// expectedPhrase says where the realistic distance came from, because a
+// number a reader cannot trace is one they have to take on trust.
+func expectedPhrase(km float64, via string) string {
+	if via != "" {
+		return fmt.Sprintf("%.0f km along %s", km, via)
+	}
+	return fmt.Sprintf("%.0f km once fibre's detours are allowed for", km)
 }
 
 // viaPhrase names the cable a distance was measured along, when one was.

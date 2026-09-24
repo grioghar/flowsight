@@ -41,15 +41,18 @@ type Module struct {
 	rdns     lookup
 	identity core.Identity
 
-	mu       sync.Mutex
-	lastRun  time.Time
-	traced   int
-	lastErr  string
-	cables   []Cable
-	nets     []cableNet // the same cables stitched back into connected systems
-	cableErr string
-	pending  map[string]bool // addresses still needing the slow registry lookup
-	floors   *floorMemo      // cable-route distances, worked out once per place
+	mu         sync.Mutex
+	lastRun    time.Time
+	traced     int
+	lastErr    string
+	cables     []Cable
+	nets       []cableNet // the same cables stitched back into connected systems
+	landNets   []cableNet // mapped terrestrial routes, where anyone publishes them
+	landRoutes int
+	landErr    string
+	cableErr   string
+	pending    map[string]bool // addresses still needing the slow registry lookup
+	floors     *floorMemo      // cable-route distances, worked out once per place
 }
 
 // lookup is the part of the enrich module this needs.
@@ -76,7 +79,10 @@ func (m *Module) Info() core.ModuleInfo {
 			"cables_url":       "",
 			"cable_near_km":    400,
 			"registry":         true,
-			"tight_margin_pct": 15,
+			"land_detour_pct":  35,
+			"hop_delay_us":     200,
+			"terrestrial":      false,
+			"terrestrial_urls": "",
 			"facilities":       true,
 		},
 		Schema: []core.SettingField{
@@ -93,8 +99,14 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "Downloads TeleGeography's public cable map (about a megabyte, refreshed monthly) and draws it behind the routes. A traceroute never names a cable, so no leg is claimed to follow one; what this gives is the cables that could have carried a leg, minus the ones too long to have produced the latency measured."},
 			{Key: "cable_near_km", Label: "A cable serves a place within (km)", Type: "int",
 				Help: "How close a cable has to pass to count. Landfalls are rarely where a router is, and a router is rarely exactly where the database says, so this is deliberately loose."},
-			{Key: "tight_margin_pct", Label: "Call a placement doubtful within (%) of the floor", Type: "int",
-				Help: "The speed of light gives a hard floor for a round trip, and anything under it is impossible. Just above it is a different matter: the floor assumes a dead straight fibre with no equipment on it, so a hop that only just clears it is claiming a path nothing real provides. Within this margin a placement is flagged as doubtful rather than accepted. Zero turns the category off."},
+			{Key: "land_detour_pct", Label: "Fibre on land runs longer than the crow flies by (%)", Type: "int",
+				Help: "Cable does not go straight overland: it follows roads, railways and rights of way, and detours around whatever could not be dug through. This is how much longer, and it decides the second of the two numbers each hop is judged against -- not what light forbids, which is a separate and harder bound, but what a route that actually exists could manage. A hop faster than that is doing better than anything anyone has built. Zero turns the category off."},
+			{Key: "hop_delay_us", Label: "Each hop adds (microseconds)", Type: "int",
+				Help: "A router has to finish receiving a packet before it can start sending it on, and that time is spent at every hop. Small individually; over twenty hops it is worth counting."},
+			{Key: "terrestrial", Label: "Use published land-route maps", Type: "bool",
+				Help: "Downloads open maps of long-haul fibre on land and measures along them where they reach, instead of estimating the detour. These never raise the impossible threshold: over water a cable is the only way across, so its length is a real bound, but on land a straight line is merely something nobody built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons licence and is the one substantial open set; the comprehensive maps of North America, Europe and Asia are sold commercially. Refreshed monthly."},
+			{Key: "terrestrial_urls", Label: "Land-route sources", Type: "text",
+				Help: "One GeoJSON URL per line, replacing the defaults. Lines starting with # or // are ignored, so a source can be kept and turned off."},
 			{Key: "registry", Label: "Look up who runs each hop", Type: "bool",
 				Help: "Asks the public routing table which network announces a hop's address, and the regional registry who that block is allocated to. The registry's postal address is a head office, not the room the router is in, and is labelled that way. Results are kept for a month, because none of it changes quickly."},
 			{Key: "facilities", Label: "List buildings the operator occupies", Type: "bool",
@@ -121,6 +133,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("cables", 12*time.Hour, m.refreshCables)
 	// Detail is gathered away from anyone waiting for a page. See warm().
 	ctx.Every("detail", 45*time.Second, m.warm)
+	// Long-haul routes change over years and these datasets are revised
+	// rarely, so the job wakes often and downloads almost never.
+	ctx.Every("terrestrial", 12*time.Hour, m.refreshTerrestrial)
 	ctx.Route("GET", "/api/paths/status", m.apiStatus, core.Needs("paths.map"),
 		core.Doc("Whether tracing is on, how many destinations have a route, and when"))
 	ctx.Route("GET", "/api/paths/destinations", m.apiDestinations, core.Needs("paths.map"),

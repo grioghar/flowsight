@@ -42,7 +42,8 @@ var GRAPH = { nodes: [
     impossible:true, distance_km:15320, floor_ms:153.2, via:'Southern Cross NEXT', why:'answers in 18.9 ms, but 14071 km away cannot answer in less than 141 ms' },
   // Clears the floor by 4%: physics allows it, a real route does not.
   { id:'h7', index:7, ips:['62.115.143.52'], located:true, lat:51.5072, lon:-0.1276, country:'GB', city:'London', rtt_ms:73.2,
-    tight:true, distance_km:7000, floor_ms:70.0, why:'answers in 73.2 ms against a floor of 70 ms for 7000 km: possible only with a perfectly straight path and no equipment delay, which is 4% above the theoretical minimum' },
+    tight:true, distance_km:7000, floor_ms:70.0, expected_km:9450, expected_ms:95.9,
+    why:'answers in 73.2 ms, which light allows over 7000 km but no built route does: 9450 km once fibre\u2019s detours are allowed for comes to 94.5 ms, and 7 hops add 1.4 ms more' },
   { id:'s5', index:5, ips:[], located:false, silent:true } ],
   legs: [
     { from:'h2', to:'h3', destinations:['1.1.1.1','8.8.8.8'], shared:true },
@@ -210,9 +211,14 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
     throw new Error('a bridging leg should say how much it is standing in for');
   if (h.indexOf('the route continues through hops with no known position') < 0)
     throw new Error('the legend should explain the bridging leg');
-  if (h.indexOf('Placements the latency makes doubtful') < 0) throw new Error('doubtful placements need their own table');
+  if (h.indexOf('Placements too fast for any built route') < 0) throw new Error('doubtful placements need their own table');
   if (h.indexOf('just not provably') < 0) throw new Error('the doubtful table must say what it is not claiming');
-  if (h.indexOf('possible, but only just') < 0) throw new Error('the legend should explain the doubtful mark');
+  if (h.indexOf('Being slow is never suspicious') < 0)
+    throw new Error('the table must say that slowness is not what is being flagged');
+  // Both numbers, kept apart: one is a proof, the other an expectation.
+  if (h.indexOf('nothing can beat this') < 0) throw new Error('the physical floor should be labelled as a bound');
+  if (h.indexOf('A built route needs') < 0) throw new Error('the realistic minimum should be shown beside it');
+  if (h.indexOf('too fast for any built route') < 0) throw new Error('the legend should explain the doubtful mark');
   // Between continents the distance is along a cable, not across the map, and
   // the page has to say which measure it used or the arithmetic cannot be
   // checked.
@@ -236,7 +242,7 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   }
   if (h.indexOf('straight line') < 0)
     throw new Error('a distance not measured along a cable should say so');
-  if (h.indexOf('DOUBTFUL: ') < 0) throw new Error('hover text should distinguish doubtful from ruled out');
+  if (h.indexOf('TOO FAST: ') < 0) throw new Error('hover text should distinguish doubtful from ruled out');
   // The counts must not be conflated.
   if ((h.match(/class="ruledout"/g) || []).length === (h.match(/class="doubtful"/g) || []).length &&
       h.indexOf('class="ruledout"') < 0) throw new Error('the two categories collapsed into one');

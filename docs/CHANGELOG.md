@@ -12,6 +12,53 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609241608
+
+**Two numbers per hop, answering two different questions.**
+
+The floor is what light forbids: nothing answers sooner than twice the
+distance divided by the speed of light in glass, measured along the cables
+where a crossing has to follow one. That is a proof, and it is rigorous
+precisely because it assumes a perfect path -- dead straight, nothing attached
+to it.
+
+Which is also why it is a long way below anything real. So there is now a
+second number: what a route that actually exists could manage. Fibre on land
+runs about a third longer than the crow flies, because it follows roads,
+railways and rights of way; a sea crossing is as long as its cable, which is
+measured rather than estimated; and every router holds the packet for a moment
+before passing it on, which over twenty hops is worth counting.
+
+This replaces the flat 15% margin, which was a crude stand-in for the same
+idea. The band is now derived rather than guessed, and it scales with the kind
+of distance and the number of hops instead of being the same everywhere.
+
+**The middle verdict is about being too fast, not too slow.** A hop above the
+floor is not disproved, but it can still answer sooner than any built route
+could manage -- and the only thing that makes a reply quicker is the place
+being nearer. That is evidence in the same direction as impossible, and
+weaker. Being slow is never evidence of anything: congestion, queuing and
+indirect routing all make a reply late and all are ordinary. The wording said
+"doubtful" and left that ambiguous; it now says what it means.
+
+**Land-route maps, fetched monthly.** With *Use published land-route maps* on,
+FlowSight downloads open maps of long-haul fibre and measures along them where
+they reach, instead of estimating the detour. A new job refreshes them monthly
+-- long-haul routes take years to build and the datasets are revised rarely.
+
+These never raise the impossible threshold, and the distinction is the point.
+Over water a cable is the only way across, so its length is a real bound. On
+land a straight line is merely something nobody built, and treating unbuilt as
+impossible would convict a placement of a crime it has not committed. So a
+land route sharpens the expectation and leaves the proof alone.
+
+Coverage is thin and the setting says so. AfTerFibre covers Africa under a
+Creative Commons licence and is the one substantial openly licensed set; the
+comprehensive maps of North America, Europe and Asia are sold commercially,
+and OpenStreetMap's telecoms tagging is dense in a few countries and absent
+elsewhere. Sources are a list of URLs, so adding one later is configuration
+rather than a change of design.
+
 ## 0.9.8r202609241600
 
 **Pacific crossings resolve.** They never could, and the reason was not the

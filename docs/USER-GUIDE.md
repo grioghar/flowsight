@@ -360,13 +360,32 @@ dual-stack line that is always the IPv4 address: the two families geolocate to
 different places, and an origin that changed between restarts would quietly
 move the line between a placement being ruled out and one standing.
 
-**Placements the latency makes doubtful.** Clearing the floor is not the same
-as being plausible. The floor assumes a dead straight fibre with nothing
-attached to it, and no real route is either, so a hop that beats the minimum
-by only a few per cent is claiming a journey that does not exist. Those are
-listed separately and marked on the map with a dashed amber ring rather than a
-solid red one: doubted, not disproved. The band is *Settings › paths › Call a
-placement doubtful within (%) of the floor*, 15% by default; zero turns it off.
+**Placements too fast for any built route.** Every hop is judged against two
+numbers. The floor is what light forbids, and it is a proof. Above it a reply
+is not disproved -- but it can still be quicker than any route anyone has
+built, and the only thing that makes a reply quicker is the place being
+nearer. Those are listed separately and marked with a dashed amber ring rather
+than a solid red one: doubted, not disproved.
+
+Note the direction. Being *slow* is never suspicious -- congestion, queuing
+and indirect routing all make a reply late and all are ordinary. It is being
+too fast for where the hop is said to be that means something.
+
+The second number allows for fibre not going straight overland (*Settings ›
+paths › Fibre on land runs longer than the crow flies by (%)*, 35% by
+default), for a sea crossing being as long as its cable, and for the moment
+each router spends receiving a packet before passing it on. Zero turns the
+category off.
+
+**Land-route maps.** With *Use published land-route maps* on, FlowSight
+downloads open maps of long-haul fibre and measures along them where they
+reach rather than estimating the detour, refreshing monthly. These never raise
+the impossible threshold: over water a cable is the only way across, so its
+length is a real bound, but on land a straight line is merely something nobody
+built. Coverage is thin -- AfTerFibre covers Africa under a Creative Commons
+licence and is the one substantial open set; the comprehensive maps of North
+America, Europe and Asia are sold commercially. Sources are a list of URLs, so
+adding one later is a line of configuration.
 
 **Placements the physics rules out.** Light in fibre covers about 200,000 km
 per second, so a round trip cannot beat twice the distance divided by that,

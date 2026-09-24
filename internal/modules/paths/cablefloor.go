@@ -30,6 +30,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/grioghar/flowsight/internal/core"
 )
 
 // cableFloorMinKM is the distance below which the cables are not consulted.
@@ -51,7 +53,14 @@ type cableRoute struct {
 	KM    float64
 	Name  string
 	Route []LatLon
-	OK    bool
+	// AlongKM is the part on the cable itself and AshoreKM the part overland
+	// at either end. They are kept apart because they are different kinds of
+	// distance: the cable's length is measured from its published route and
+	// is what it is, while the run ashore is a straight line standing in for
+	// a road nobody has given us.
+	AlongKM  float64
+	AshoreKM float64
+	OK       bool
 }
 
 type floorMemo struct {
@@ -134,7 +143,8 @@ func cableRouteKM(nets []cableNet, aLat, aLon, bLat, bLon, ashoreKM float64) cab
 				pts = append(pts, n.Pts[ix])
 			}
 			pts = append(pts, LatLon{Lat: bLat, Lon: bLon})
-			best = cableRoute{KM: total, Name: n.Name, Route: pts, OK: true}
+			best = cableRoute{KM: total, Name: n.Name, Route: pts,
+				AlongKM: along, AshoreKM: da + db, OK: true}
 		}
 	}
 	if !best.OK {
@@ -187,11 +197,103 @@ func (m *Module) pathKM(aLat, aLon, bLat, bLon float64) (km float64, via string)
 // map can follow the cable instead of ruling a straight line through water no
 // cable goes near.
 func (m *Module) drawRoute(aLat, aLon, bLat, bLon float64) cableRoute {
+	return m.crossing(aLat, aLon, bLat, bLon)
+}
+
+// A floor and an expectation are different questions.
+//
+// The floor asks what light forbids: nothing answers sooner than twice the
+// distance divided by the speed of light in glass, and a hop that does is not
+// where it is said to be. That is a proof, and it is rigorous precisely
+// because it assumes a perfect path -- dead straight, no equipment on it.
+//
+// The trouble is that no path is like that, so the floor is a long way below
+// what anything real achieves, and a placement can be comfortably above it
+// and still be nonsense. What was needed was a second number: not what
+// physics forbids, but what a route that actually exists could manage.
+//
+// Overland that means accepting fibre does not go straight. It follows roads,
+// railways and rights of way, it detours around whatever could not be dug
+// through, and it comes out around a third longer than the crow flies. Over
+// water it means the cable's own published length, which is already the real
+// distance and needs no such allowance. And every hop on the way adds a
+// little for the time a router spends receiving a packet before it can start
+// sending it on.
+//
+// A hop below that second number is not disproved. It is doing better than
+// any route anyone has built, which is worth saying out loud and is not the
+// same claim as impossible.
+
+// expectedKM is the distance a route that exists would have to cover.
+func (m *Module) expectedKM(aLat, aLon, bLat, bLon float64) (km float64, via string) {
+	straight := greatCircleKM(aLat, aLon, bLat, bLon)
+	detour := m.landDetour()
+
+	// A sea crossing is measured, not estimated: the cable's published length
+	// is the distance, and only the runs ashore need the allowance.
+	if r := m.crossing(aLat, aLon, bLat, bLon); r.OK {
+		return r.AlongKM + r.AshoreKM*detour, r.Name
+	}
+	// Overland, a mapped route beats an estimate where we have one.
+	if r := m.overland(aLat, aLon, bLat, bLon); r.OK {
+		return r.AlongKM + r.AshoreKM*detour, r.Name
+	}
+	return straight * detour, ""
+}
+
+func (m *Module) landDetour() float64 {
+	pct := 35
+	if m.ctx != nil {
+		pct = core.Int(m.ctx.Settings(), "land_detour_pct", 35)
+	}
+	if pct < 0 {
+		pct = 0
+	}
+	return 1 + float64(pct)/100
+}
+
+func (m *Module) hopDelayMS() float64 {
+	if m.ctx == nil {
+		return 0.2
+	}
+	v := core.Int(m.ctx.Settings(), "hop_delay_us", 200)
+	if v < 0 {
+		v = 0
+	}
+	return float64(v) / 1000
+}
+
+// crossing is the submarine route between two places, if one applies.
+func (m *Module) crossing(aLat, aLon, bLat, bLon float64) cableRoute {
 	if greatCircleKM(aLat, aLon, bLat, bLon) < cableFloorMinKM {
 		return cableRoute{}
 	}
 	m.mu.Lock()
 	nets := m.nets
+	m.mu.Unlock()
+	if len(nets) == 0 {
+		return cableRoute{}
+	}
+	r := cableRouteKM(nets, aLat, aLon, bLat, bLon, maxAshoreKM)
+	straight := greatCircleKM(aLat, aLon, bLat, bLon)
+	if !r.OK || r.KM <= straight || r.KM > straight*cableFloorMaxRatio {
+		return cableRoute{}
+	}
+	return r
+}
+
+// overland is the mapped terrestrial route between two places, if one exists.
+//
+// This never touches the floor. Over water there is no straight line to be
+// had, so a cable's length is a genuine bound; on land a straight line is
+// merely something nobody built, and treating "unbuilt" as "impossible" would
+// convict a placement of a crime it has not committed.
+func (m *Module) overland(aLat, aLon, bLat, bLon float64) cableRoute {
+	if greatCircleKM(aLat, aLon, bLat, bLon) < cableFloorMinKM {
+		return cableRoute{}
+	}
+	m.mu.Lock()
+	nets := m.landNets
 	m.mu.Unlock()
 	if len(nets) == 0 {
 		return cableRoute{}

@@ -451,7 +451,7 @@
           dots += `<path class="corrected" d="M${px.toFixed(1)},${py.toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)}"/><circle class="ghost" data-r="2.5" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5"/>`;
         }
         const hr = (2 + Math.min(3, n.ips.length)).toFixed(1);
-        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'DOUBTFUL: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
+        dots += `<circle class="hop ${n.detail && n.detail.asn ? 'rich' : ''}${picked ? (inRoute[n.id] ? ' onroute' : ' offroute') : ''}" data-hop="${esc(n.id)}" data-r="${hr}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${hr}" fill="${FS.palette[n.index % FS.palette.length]}"><title>hop ${n.index}\n${esc(n.ips.join(', '))}${label ? '\n' + esc(label) : ''}${n.rtt_ms ? '\n' + n.rtt_ms + ' ms' : ''}${n.why ? '\n' + (n.impossible ? 'RULED OUT: ' : 'TOO FAST: ') + esc(n.why) : ''}\nclick for detail</title></circle>`;
       });
 
       // What a hop is, told in the order the evidence deserves: what was
@@ -487,8 +487,9 @@
         h += grp('Placement') + r('Shown at', [n.city, n.region, n.country].filter(Boolean).join(', '))
            + r('Source', n.location_source === 'name' ? 'the router\u2019s own name' : 'address database');
         if (n.distance_km) h += r('Distance used', `${num(n.distance_km)} km${n.via ? ' along ' + n.via : ' (straight line)'}`);
-        if (n.floor_ms) h += r('Fastest possible', `${n.floor_ms} ms`);
-        if (n.why) h += r(n.impossible ? 'Impossible' : 'Doubtful', n.why, 'warn');
+        if (n.floor_ms) h += r('Light alone allows', `${n.floor_ms} ms — nothing can beat this`);
+        if (n.expected_ms) h += r('A built route needs', `${n.expected_ms} ms${n.expected_via ? ' along ' + n.expected_via : ` over ${num(n.expected_km)} km once fibre's detours are allowed for`}`);
+        if (n.why) h += r(n.impossible ? 'Impossible' : 'Too fast for the distance', n.why, 'warn');
         return h;
       };
       // Every card is rendered into the page rather than built on click, so
@@ -561,8 +562,8 @@
           where: [n.city, n.region, n.country].filter(Boolean).join(', '),
           rtt: n.rtt_ms, floor: n.floor_ms, km: n.distance_km, via: n.via || '' });
       const doubtful = nodes.filter(n => n.tight);
-      const doubtOut = doubtful.length ? `<div style="margin-top:14px">${card('Placements the latency makes doubtful', table(doubtful.map(plRow), plCols),
-          'these clear the floor, but only just. The floor assumes a dead straight fibre with nothing attached to it, and no real route is either: a packet follows coasts and rights of way and is switched at every hop. A placement a few per cent above the minimum is claiming a journey that does not exist, so it is probably wrong in the same way as the table above — just not provably')}</div>` : '';
+      const doubtOut = doubtful.length ? `<div style="margin-top:14px">${card('Placements too fast for any built route', table(doubtful.map(plRow), plCols),
+          'these answer sooner than any route anyone has built could manage, while still slower than light alone would forbid. Being slow is never suspicious — congestion and indirect routing explain themselves. Being too fast is, because the only thing that makes a reply quicker is the place being nearer. So these are wrong in the same direction as the table above, and for the same reason: the coordinates, not the measurement — just not provably')}</div>` : '';
 
       const rulesOut = impossible.length ? `<div style="margin-top:14px">${card('Placements the physics rules out', table(impossible.map(n => ({
           index: n.index, ips: n.ips.join(', '),
@@ -678,7 +679,7 @@
             ${it(dot(FS.palette[2]), 'a hop, sized by how many addresses answered')}
             ${it(dot(FS.palette[2], 'rich'), 'operator known')}
             ${it(dot('', 'ruledout'), 'the latency rules this placement out')}
-            ${it(dot('', 'doubtful'), 'possible, but only just: doubtful')}
+            ${it(dot('', 'doubtful'), 'too fast for any built route')}
             ${it(sw('leg gapleg', 'stroke:var(--muted)'), 'the route continues through hops with no known position')}
             ${it(sw('leg', 'stroke:' + FS.palette[4]), 'a sea crossing, drawn along its likeliest cable')}
             ${it(sw('corrected'), 'correction: database \u2192 the site in the router\u2019s name')}

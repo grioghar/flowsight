@@ -43,12 +43,19 @@ type Node struct {
 	// is too far away to have answered as quickly as it did. The location is
 	// wrong, not the measurement.
 	Impossible bool `json:"impossible,omitempty"`
-	// Tight marks a placement the latency does not forbid but comes close
-	// enough to that it would need a perfect path. Kept apart from Impossible
-	// because "provably wrong" and "probably wrong" are different claims and
-	// collapsing them would either overstate the one or hide the other.
-	Tight      bool    `json:"tight,omitempty"`
-	DistanceKM float64 `json:"distance_km,omitempty"`
+	// Tight marks a placement no built route could achieve, though light does
+	// not forbid it. Kept apart from Impossible because "disproved" and
+	// "beating anything anyone has built" are different claims, and running
+	// them together would either overstate the one or hide the other.
+	Tight bool `json:"tight,omitempty"`
+	// What a route that exists would need: the distance once fibre's detours
+	// are allowed for, the time that implies, and where the distance came
+	// from. Kept beside the floor rather than replacing it, because one is a
+	// proof and the other an expectation.
+	ExpectedKM  float64 `json:"expected_km,omitempty"`
+	ExpectedMS  float64 `json:"expected_ms,omitempty"`
+	ExpectedVia string  `json:"expected_via,omitempty"`
+	DistanceKM  float64 `json:"distance_km,omitempty"`
 	// Via names the cable the distance was measured along, when the straight
 	// line was not the honest measure. Empty means the great circle was used.
 	Via     string  `json:"via,omitempty"`

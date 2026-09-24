@@ -111,6 +111,13 @@ func (m *Module) downloadCables(path string) error {
 	if url == "" {
 		url = defaultCableURL
 	}
+	return m.downloadTo(url, path)
+}
+
+// downloadTo fetches one published map to a local file, replacing it only
+// once the whole thing has arrived: a half-written copy is worse than a
+// month-old one.
+func (m *Module) downloadTo(url, path string) error {
 	// Generous overall, tight on the parts that hang: the same shape the
 	// updater uses, after a thirty-second overall limit once failed a
 	// fourteen-megabyte download on an ordinary connection.
