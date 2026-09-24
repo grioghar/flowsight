@@ -62,8 +62,12 @@ func TestSuggestiveLandRoutesCountAtHalfWeight(t *testing.T) {
 	if diff := km - want; diff > 1 || diff < -1 {
 		t.Fatalf("expected %.0f km, want the half-way blend %.0f (along %.0f, detour %.0f)", km, want, along, detour)
 	}
-	if km >= along {
-		t.Fatal("a suggestive route must not be swallowed whole")
+	lo, hi := along, detour
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	if km <= lo || km >= hi {
+		t.Fatalf("a suggestive route is blended, not taken whole: %.0f should lie between %.0f and %.0f", km, lo, hi)
 	}
 	// The same line at full weight is taken as measured.
 	m.osmNets = nil
