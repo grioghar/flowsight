@@ -8,6 +8,7 @@ package paths
 // probe went out.
 
 import (
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,9 +105,52 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	m.locate(g.Nodes)
 	h := m.home()
 	m.checkPlausible(g.Nodes, h)
+	m.annotateCables(g)
 	g = filterGraph(g, r.Q("country", ""), float64(r.QInt("max_latency", 0, 0, 100000)), r.QInt("max_hops", 0, 0, 64))
 	g.Home = &h
 	return g, nil
+}
+
+// apiCables hands the map over for drawing, thinned to the number of points
+// asked for. The full file carries far more detail than a line a few hundred
+// pixels long can show.
+func (m *Module) apiCables(r *core.Req) (any, error) {
+	m.mu.Lock()
+	cables, cerr := m.cables, m.cableErr
+	m.mu.Unlock()
+	detail := r.QInt("detail", 40, 4, 400)
+	type outCable struct {
+		Name string         `json:"name"`
+		KM   float64        `json:"km"`
+		Runs [][][2]float64 `json:"runs"` // lon,lat, as GeoJSON has it
+	}
+	out := make([]outCable, 0, len(cables))
+	for _, c := range cables {
+		oc := outCable{Name: c.Name, KM: math.Round(c.KM)}
+		for _, run := range c.Legs {
+			step := len(run) / detail
+			if step < 1 {
+				step = 1
+			}
+			pts := make([][2]float64, 0, len(run)/step+2)
+			for i := 0; i < len(run); i += step {
+				pts = append(pts, [2]float64{run[i].Lon, run[i].Lat})
+			}
+			last := run[len(run)-1]
+			if len(pts) == 0 || pts[len(pts)-1] != [2]float64{last.Lon, last.Lat} {
+				pts = append(pts, [2]float64{last.Lon, last.Lat})
+			}
+			if len(pts) >= 2 {
+				oc.Runs = append(oc.Runs, pts)
+			}
+		}
+		if len(oc.Runs) > 0 {
+			out = append(out, oc)
+		}
+	}
+	return map[string]any{"cables": out, "error": cerr,
+		"attribution": "Submarine cable routes from TeleGeography's public cable map.",
+		"note":        "Drawn for context. A traceroute never names a cable, so no leg is claimed to follow one."}, nil
 }
 
 func (m *Module) apiGetHome(r *core.Req) (any, error) {

@@ -12,6 +12,30 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609240747
+
+**Submarine cables, fetched at runtime and used to rule things out.** With
+*Show submarine cables* on, FlowSight downloads TeleGeography's published
+cable map and draws it behind the routes. Hovering a leg long enough to have
+left the continent lists the cables that could have carried it.
+
+Could, not did. A traceroute gives router addresses and round trips and never
+names a cable, so if two places are joined by eight cables then all eight fit
+the observation equally. Ruling members out is the part that is not
+guesswork: a cable cannot carry a round trip faster than twice its length
+divided by the speed of light in fibre, and cables are long and rarely
+direct, so a great many candidates are discarded outright. What survives is a
+list, shortest first, never an answer.
+
+The map is fetched by each installation rather than shipped, and refreshed
+monthly. TeleGeography publish it as a free public resource but it is not
+openly licensed, which is why it is not bundled.
+
+**Also: the Map entry was in the menu and invisible.** OPNsense parses every
+menu file once and caches the result for an hour, and restarting the web
+interface does not clear it. The cache on this gateway predated the change by
+half an hour. Deleted; it rebuilds on the next page load.
+
 ## 0.9.8r202609240743
 
 **The last phantom devices are removed, including those Windows made.** The

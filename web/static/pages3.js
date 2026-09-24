@@ -313,12 +313,13 @@
       if (ctx.params.country) q.push('country=' + encodeURIComponent(ctx.params.country));
       if (ctx.params.max_latency) q.push('max_latency=' + encodeURIComponent(ctx.params.max_latency));
       if (ctx.params.max_hops) q.push('max_hops=' + encodeURIComponent(ctx.params.max_hops));
-      const [st, g, dests, devs, home] = await Promise.all([
+      const [st, g, dests, devs, home, cab] = await Promise.all([
         get('/api/paths/status'),
         get('/api/paths/graph' + (q.length ? '?' + q.join('&') : '')),
         get('/api/paths/destinations?limit=400'),
         get('/api/paths/devices'),
-        get('/api/paths/home')]);
+        get('/api/paths/home'),
+        get('/api/paths/cables?detail=36')]);
       if (st.error && !g.nodes) { el.innerHTML = FS.err(st.error); return; }
 
       const nodes = g.nodes || [], legs = g.legs || [];
@@ -339,13 +340,30 @@
       const legColour = (l) => l.shared ? 'var(--muted)' : (dstColour[(l.destinations || [])[0]] || FS.palette[0]);
 
       const xy = (n) => FS.project(n.lat, n.lon, MAPW, MAPH);
+      // Cables first, so they sit behind the routes. A run is broken wherever
+      // it wraps the antimeridian rather than drawn straight across the map.
+      let cables = '';
+      (cab.cables || []).forEach(c => {
+        (c.runs || []).forEach(run => {
+          let d = '', prev = null;
+          run.forEach(p => {
+            const [x, y] = FS.project(p[1], p[0], MAPW, MAPH);
+            d += (prev === null || Math.abs(x - prev) > MAPW * 0.5 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+            prev = x;
+          });
+          cables += `<path class="cable" d="${d.trim()}"/>`;
+        });
+      });
       let lines = '', dots = '';
       legs.forEach(l => {
         const a = byId[l.from], b = byId[l.to];
         if (!a || !b || !a.located || !b.located) return;
         const [x1, y1] = xy(a), [x2, y2] = xy(b);
         const n = (l.destinations || []).length;
-        lines += `<path class="leg ${l.shared ? 'shared' : ''}" stroke="${legColour(l)}" d="M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}</title></path>`;
+        const cbl = (l.cables || []).length
+          ? `\ncould have crossed: ${l.cables.map(c => `${c.name} (${num(c.km)} km)`).join(', ')}`
+          : (l.straight_km ? `\nno cable serves both ends` : '');
+        lines += `<path class="leg ${l.shared ? 'shared' : ''}" stroke="${legColour(l)}" d="M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}"><title>${esc(a.ips.join(', '))} &rarr; ${esc(b.ips.join(', '))}\n${n} destination${n === 1 ? '' : 's'}${esc(cbl)}</title></path>`;
       });
       located.forEach(n => {
         const [x, y] = xy(n);
@@ -409,9 +427,9 @@
           <button class="btn small" id="f-reset">Reset zoom</button>
         </div>
         <svg class="pathmap" id="pathmap" viewBox="0 0 ${MAPW} ${MAPH}" preserveAspectRatio="xMidYMid meet">
-          ${FS.graticule(MAPW, MAPH, 30)}${lines}${dots}
+          ${FS.graticule(MAPW, MAPH, 30)}${cables}${lines}${dots}
         </svg>
-        <div class="help" style="margin-top:8px">Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. The grid is longitude and latitude, not a map of land: these coordinates come from an address database and are dependable for end-user addresses and rough for carrier equipment.</div>`)}</div>
+        <div class="help" style="margin-top:8px">${(cab.cables || []).length ? `${num(cab.cables.length)} submarine cables drawn behind the routes. ${esc(cab.attribution || '')} A traceroute never names a cable, so hovering a long leg shows which ones <em>could</em> have carried it, after discarding any too long to have produced the latency measured. ` : ''}Wheel to zoom, drag to pan. A thick grey line is a leg several destinations share. Coloured lines belong to one destination each. The grid is longitude and latitude, not a map of land: these coordinates come from an address database and are dependable for end-user addresses and rough for carrier equipment.</div>`)}</div>
 
       ${rulesOut}
 

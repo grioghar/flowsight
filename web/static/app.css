@@ -181,3 +181,5 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .unlocated { margin-top: 10px; }
 /* A placement the measured latency rules out. */
 .pathmap .ruledout { fill: none; stroke: var(--bad); stroke-width: 1.4; opacity: .95; }
+/* Submarine cables, drawn for context behind the measured routes. */
+.pathmap .cable { fill: none; stroke: var(--line); stroke-width: .6; opacity: .9; }

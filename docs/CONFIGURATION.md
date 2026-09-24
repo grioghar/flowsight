@@ -164,6 +164,9 @@ Traces the route to destinations this network already contacts, and keeps what i
 | `retrace_hours` | Trace a destination again after (hours) | int | `24` | How stale a route may get before it is measured again. |
 | `max_destinations` | Destinations kept | int | `300` | Busiest first; the long tail is left alone. |
 | `trace_ipv6` | Trace IPv6 destinations too | bool | `true` |  |
+| `cables` | Show submarine cables | bool | `false` | Fetches TeleGeography's public cable map (about a megabyte, refreshed monthly) and draws it behind the routes. Not bundled: their data is a free public resource but is not openly licensed. |
+| `cable_near_km` | A cable serves a place within (km) | int | `400` | How close a cable must pass to count as a candidate. Deliberately loose. |
+| `cables_url` | Cable map URL | string | `""` | Empty: TeleGeography's published map. |
 | `home` | Your location | string | `""` | Latitude and longitude, comma separated. The origin the map is drawn from, and the reference for checking a hop could really be where the database says. Empty: worked out from the gateway's public address. The Map page can fill it in from your browser. |
 
 Needs `enrich` with `geoip_detail` set to `city`, since the country database carries no coordinates.

@@ -41,10 +41,12 @@ type Module struct {
 	rdns     lookup
 	identity core.Identity
 
-	mu      sync.Mutex
-	lastRun time.Time
-	traced  int
-	lastErr string
+	mu       sync.Mutex
+	lastRun  time.Time
+	traced   int
+	lastErr  string
+	cables   []Cable
+	cableErr string
 }
 
 // lookup is the part of the enrich module this needs.
@@ -67,6 +69,9 @@ func (m *Module) Info() core.ModuleInfo {
 			"max_destinations": 300,
 			"trace_ipv6":       true,
 			"home":             "",
+			"cables":           false,
+			"cables_url":       "",
+			"cable_near_km":    400,
 		},
 		Schema: []core.SettingField{
 			{Key: "active", Label: "Trace paths", Type: "bool",
@@ -78,6 +83,12 @@ func (m *Module) Info() core.ModuleInfo {
 			{Key: "max_destinations", Label: "Destinations kept", Type: "int",
 				Help: "The busiest destinations are traced first; beyond this the long tail is left alone."},
 			{Key: "trace_ipv6", Label: "Trace IPv6 destinations too", Type: "bool"},
+			{Key: "cables", Label: "Show submarine cables", Type: "bool",
+				Help: "Downloads TeleGeography's public cable map (about a megabyte, refreshed monthly) and draws it behind the routes. A traceroute never names a cable, so no leg is claimed to follow one; what this gives is the cables that could have carried a leg, minus the ones too long to have produced the latency measured."},
+			{Key: "cable_near_km", Label: "A cable serves a place within (km)", Type: "int",
+				Help: "How close a cable has to pass to count. Landfalls are rarely where a router is, and a router is rarely exactly where the database says, so this is deliberately loose."},
+			{Key: "cables_url", Label: "Cable map URL", Type: "string",
+				Help: "Empty: TeleGeography's published map. Their data is a free public resource but is not openly licensed, so it is fetched by each installation rather than shipped with FlowSight."},
 			{Key: "home", Label: "Your location", Type: "string", Placeholder: "39.1836,-96.5717",
 				Help: "Latitude and longitude, comma separated. The map is drawn from here, and it is the reference for checking whether a hop could really be where the database says: nothing can answer faster than light in fibre takes to get there and back. Empty: worked out from this gateway's public address, which is usually the right town and sometimes the wrong state. The Map page can fill it in from your browser, which knows precisely."},
 		},
@@ -95,6 +106,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		return err
 	}
 	ctx.Every("trace", 5*time.Minute, m.sweep)
+	ctx.Every("cables", 12*time.Hour, m.refreshCables)
 	ctx.Route("GET", "/api/paths/status", m.apiStatus, core.Needs("paths.map"),
 		core.Doc("Whether tracing is on, how many destinations have a route, and when"))
 	ctx.Route("GET", "/api/paths/destinations", m.apiDestinations, core.Needs("paths.map"),
@@ -106,6 +118,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/paths/graph", m.apiGraph, core.Needs("paths.map"),
 		core.Doc("The whole picture as nodes and legs, with shared legs collapsed"),
 		core.Params("device", "source address", "country", "filter", "max_latency", "ms"))
+	ctx.Route("GET", "/api/paths/cables", m.apiCables, core.Needs("paths.map"),
+		core.Doc("The submarine cable map, simplified for drawing"), core.Params("detail", "points per cable"))
 	ctx.Route("GET", "/api/paths/home", m.apiGetHome, core.Needs("paths.map"),
 		core.Doc("The origin the map is drawn from, and what could be detected for it"))
 	ctx.Route("POST", "/api/paths/home", m.apiSetHome, core.Write(), core.Needs("paths.map"),

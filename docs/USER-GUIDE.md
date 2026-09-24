@@ -282,6 +282,23 @@ map circles it and lists it with the numbers. On a typical network several
 hops fail this: anycast addresses are the usual cause, because the block is
 registered in one place and answered from wherever is nearest you.
 
+**Submarine cables.** With *Settings › paths › Show submarine cables* on,
+FlowSight fetches TeleGeography's published cable map and draws it behind the
+routes. Hovering a leg long enough to have left the continent lists the cables
+that could have carried it.
+
+Could, not did. A traceroute gives router addresses and round trips and never
+names a cable, so if two places are joined by eight cables then all eight fit
+the observation. What can be done is ruling members out, and that part is not
+guesswork: light in fibre covers about 200,000 km per second, so a cable
+cannot carry a round trip faster than twice its length divided by that. Cables
+are long and rarely direct, so this discards a great many candidates outright.
+What is left is offered as a list, shortest first, and never as an answer.
+
+The data is fetched by your installation rather than shipped with FlowSight,
+and refreshed monthly. TeleGeography publish it as a free public resource but
+it is not openly licensed, which is why it is not bundled.
+
 This needs the city-level database, since the country one carries no
 coordinates. See *Settings › enrich › How much detail*.
 

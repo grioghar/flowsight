@@ -54,6 +54,11 @@ type Leg struct {
 	To           string   `json:"to"`
 	Destinations []string `json:"destinations"`
 	Shared       bool     `json:"shared"` // used by more than one destination
+	// Cables a leg could have crossed, once the ones too long to have
+	// produced the measured latency are discarded. Never one answer: a
+	// traceroute cannot say which cable carried a packet.
+	Cables     []Candidate `json:"cables,omitempty"`
+	StraightKM float64     `json:"straight_km,omitempty"`
 }
 
 // Graph is what the map draws.

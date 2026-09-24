@@ -32,7 +32,8 @@ var GRAPH = { nodes: [
   { id:'s5', index:5, ips:[], located:false, silent:true } ],
   legs: [
     { from:'h2', to:'h3', destinations:['1.1.1.1','8.8.8.8'], shared:true },
-    { from:'h3', to:'h4', destinations:['1.1.1.1'], shared:false } ] };
+    { from:'h3', to:'h4', destinations:['1.1.1.1'], shared:false, straight_km:13500,
+      cables:[{ name:'Southern Cross NEXT', km:13700, floor_ms:137 }] } ] };
 var DESTS = { destinations: [ { dst:'1.1.1.1', name:'one.one.one.one', country:'AU', city:'Sydney', hops:6, answered:5, complete:1, ts:1790200000 } ] };
 var DEVS = { devices: [
   { key:'192.168.1.119', name:'MacBookPro', addresses:['192.168.1.119','2600:1700:3ab0:f43f:4825:7e4e:55d:b2b6'], destinations:9 },
@@ -41,6 +42,11 @@ var HOME = { ok:true, lat:39.1836, lon:-96.5717, source:'public address', config
   public_address:'162.202.41.52',
   detected:{ lat:39.1836, lon:-96.5717, city:'Manhattan', region:'Kansas', country:'US' },
   note:'Declaring this matters more than it looks.' };
+var CAB = { cables: [
+  { name:'Grace Hopper', km:6900, runs:[[[-70.0,40.7],[-30.0,45.0],[-5.0,50.1]]] },
+  // A run that wraps the antimeridian; it must break, not stripe the map.
+  { name:'Pacific Light', km:12800, runs:[[[170.0,20.0],[179.0,21.0],[-179.0,21.5],[-150.0,22.0]]] } ],
+  attribution:"Submarine cable routes from TeleGeography's public cable map." };
 var STATUS = { active:true, last_run:1790200000, destinations:2, hops:11, error:'' };
 
 FS.get = function(p){
@@ -49,6 +55,7 @@ FS.get = function(p){
   if (p.indexOf('/api/paths/destinations') === 0) return Promise.resolve(DESTS);
   if (p.indexOf('/api/paths/devices') === 0) return Promise.resolve(DEVS);
   if (p.indexOf('/api/paths/home') === 0) return Promise.resolve(HOME);
+  if (p.indexOf('/api/paths/cables') === 0) return Promise.resolve(CAB);
   return Promise.resolve({});
 };
 load('web/static/pages3.js');
@@ -85,7 +92,16 @@ FS.pages.paths.render(el, { params:{} }).then(function(){
   if (h.indexOf('class="ruledout"') < 0) throw new Error('an impossible placement must be marked on the map');
   if (h.indexOf('RULED OUT') < 0) throw new Error('the reason should be in the hover text');
   if (h.indexOf('Ruled out by latency') < 0) throw new Error('impossible placements need a count');
-  print('Map page renders the map, shared legs, unplaced hops, devices, the origin with both detectors, and placements the physics rules out');
+  // Cables are drawn behind the routes, and a run crossing the antimeridian
+  // must break rather than stripe straight across the map.
+  if (h.indexOf('class="cable"') < 0) throw new Error('cables are not drawn');
+  if ((h.match(/class="cable"/g) || []).length !== 2) throw new Error('want one path per cable run');
+  var pac = h.slice(h.indexOf('class="cable"', h.indexOf('class="cable"') + 1));
+  if ((pac.slice(0, 200).match(/M/g) || []).length < 2) throw new Error('a run wrapping the antimeridian must break into two subpaths');
+  if (h.indexOf('TeleGeography') < 0) throw new Error('the source should be credited on the page');
+  if (h.indexOf('could have crossed') < 0) throw new Error('candidate cables should appear in the hover text');
+  if (h.indexOf('Southern Cross NEXT') < 0) throw new Error('the candidate name is missing');
+  print('Map page renders routes, cables, shared legs, unplaced hops, devices, the origin with both detectors, and placements the physics rules out');
 }).catch(fail);
 if (typeof drainMicrotasks === 'function') drainMicrotasks();
 if (FAILURE) throw FAILURE;
