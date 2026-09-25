@@ -157,6 +157,47 @@ needs (telemetry export, directory identity, multiple administrators,
 commercial use). A license is a signed document, activated online or
 installed as a file; expiry is soft. See [Licensing](LICENSING.md).
 
+## What FlowSight can and cannot see
+
+Every flow is assigned a **visibility** reason: why it is readable, or why
+it is not. Policy and reports use this to understand the limits of what
+can be controlled and where encryption is closing off policy enforcement.
+
+| Traffic type | Visibility | Readable? | Policy control |
+|---|---|---|---|
+| DNS (port 53, DoT, DoH) | `dns` | Always; query and answer are visible | Full: names are known |
+| Plain HTTP (port 80) | `http` | Yes; method, path, Host header | Full: blocking works inline |
+| HTTPS/TLS with SNI | `sni` | Partial; server name known, content not | Partial: destination blocks; inspection opt-in |
+| TLS without SNI | `opaque` | No; name and content unknown | None; nothing known to match |
+| QUIC (port 443) | `quic` | No; encrypted at layer 4, name opaque | Very limited; port only |
+| Encrypted Client Hello (ECH) | `ech` | No; the name is encrypted by design | None; address visible, nothing else |
+| WireGuard/Tailscale tunnels | `opaque` | No; everything inside is encrypted | None; only tunnel endpoints visible |
+| Inspected by FlowSight (bumped) | `inspected` | Yes; all content and names visible | Full: all inspection capabilities available |
+
+The flow record shows which: the `visibility` field holds the reason. The
+Sessions page filters by visibility, and the host summary shows how much of
+each device's traffic falls into each visibility category. This is the place
+to spot where encryption devices are using is going dark — a device whose
+traffic is entirely `opaque` or `ech` is traffic your policy cannot steer.
+
+When a policy sets `tls.inspect` on a device or application, squid bumps
+(re-encrypts with the FlowSight CA) every HTTPS session the device opens,
+and the flow visibility becomes `inspected`: the server name and all content
+are visible to the inspection modules and to policy, and (if one is running)
+the deep inspection engine sees headers and payloads.
+
+QUIC and ECH are by design: QUIC's ciphers are negotiated inside the
+encrypted Initial packet, and ECH encrypts the Client Name Indication so
+the server at an anycast address is not revealed before the connection is
+pinned to one of them. Neither can be fixed by FlowSight: they are not
+bugs. Tunnels (WireGuard, Tailscale) can be identified only by endpoint
+addresses, and only if the tunnel's source address is known on the LAN.
+
+DNS-over-HTTPS (DoH) and DNS-over-TLS (DoT) are encrypted, but FlowSight
+watches for them — they carry `dns` visibility if the client's DNS answers
+arrive first and disclose the query — and can still block queries at the
+proxy if deep inspection is on.
+
 ## Safety principles
 
 - Nothing is enforced before you turn enforcement on, and every policy can

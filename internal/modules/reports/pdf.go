@@ -68,6 +68,169 @@ func wrapText(s string, width int) []string {
 	return out
 }
 
+// BarChart is data for a bar chart: label -> value pairs
+type BarChart struct {
+	Title string
+	Items []struct {
+		Label string
+		Value float64
+	}
+	MaxValue float64 // if zero, computed from items
+}
+
+// AddBarChart adds a horizontal bar chart to the PDF.
+// Shows the top items with labels and scaled bars.
+func (p *SimplePDF) AddBarChart(chart BarChart) {
+	if len(chart.Items) == 0 {
+		return
+	}
+	p.newPageIfNeeded()
+	p.currentPage.WriteString("BT /F1 14 Tf 72 ")
+	p.currentPage.WriteString(fmt.Sprintf("%.0f Td (%s) Tj ET\n", p.curY, escapeForPDF(chart.Title)))
+	p.curY -= 20
+
+	// Determine max value
+	maxVal := chart.MaxValue
+	if maxVal == 0 {
+		for _, item := range chart.Items {
+			if item.Value > maxVal {
+				maxVal = item.Value
+			}
+		}
+	}
+	if maxVal == 0 {
+		return
+	}
+
+	// Draw bars
+	barHeight := 12.0
+	spacing := 4.0
+	chartLeft := 100.0
+	chartWidth := 400.0
+	maxItems := 10
+
+	for i, item := range chart.Items {
+		if i >= maxItems {
+			break
+		}
+		p.newPageIfNeeded()
+		if p.curY < 50 {
+			// Start a new page
+			p.currentPage.WriteString(fmt.Sprintf("BT /F1 10 Tf 72 %.0f Td (Page %d) Tj ET\n", p.margin-10, p.pageNum))
+			p.pages = append(p.pages, p.currentPage.Bytes())
+			p.currentPage = &bytes.Buffer{}
+			p.pageNum++
+			p.curY = p.pageHeight - p.margin
+		}
+
+		// Draw label
+		p.currentPage.WriteString(fmt.Sprintf("BT /F1 10 Tf 72 %.0f Td (%s) Tj ET\n", p.curY, escapeForPDF(item.Label)))
+
+		// Draw bar using PDF rectangle
+		barLen := (item.Value / maxVal) * chartWidth
+		p.currentPage.WriteString(fmt.Sprintf("q\n"))
+		p.currentPage.WriteString(fmt.Sprintf("%.0f %.0f %.0f %.0f re\n", chartLeft, p.curY-barHeight, barLen, barHeight))
+		p.currentPage.WriteString("0.7 0.7 0.7 rg\n") // gray fill
+		p.currentPage.WriteString("f\n")
+		p.currentPage.WriteString("Q\n")
+
+		p.curY -= (barHeight + spacing)
+	}
+	p.curY -= 10
+}
+
+// LineChart is data for a line chart: time series points
+type LineChart struct {
+	Title  string
+	Points []struct {
+		Label string
+		Value float64
+	}
+	MaxValue float64
+}
+
+// AddLineChart adds a simple line chart using PDF path operators.
+func (p *SimplePDF) AddLineChart(chart LineChart) {
+	if len(chart.Points) < 2 {
+		return
+	}
+	p.newPageIfNeeded()
+	p.currentPage.WriteString("BT /F1 14 Tf 72 ")
+	p.currentPage.WriteString(fmt.Sprintf("%.0f Td (%s) Tj ET\n", p.curY, escapeForPDF(chart.Title)))
+	p.curY -= 20
+
+	// Determine max value
+	maxVal := chart.MaxValue
+	if maxVal == 0 {
+		for _, pt := range chart.Points {
+			if pt.Value > maxVal {
+				maxVal = pt.Value
+			}
+		}
+	}
+	if maxVal == 0 {
+		return
+	}
+
+	// Chart dimensions
+	chartLeft := 100.0
+	chartTop := p.curY - 10
+	chartWidth := 350.0
+	chartHeight := 80.0
+	maxPoints := 20
+
+	// Draw axes
+	p.currentPage.WriteString("q\n")
+	p.currentPage.WriteString("0.5 w\n")                                                     // line width
+	p.currentPage.WriteString(fmt.Sprintf("%.0f %.0f m\n", chartLeft, chartTop-chartHeight)) // bottom left
+	p.currentPage.WriteString(fmt.Sprintf("%.0f %.0f l\n", chartLeft, chartTop))             // top left
+	p.currentPage.WriteString(fmt.Sprintf("%.0f %.0f l\n", chartLeft+chartWidth, chartTop))  // top right
+	p.currentPage.WriteString("S\n")
+
+	// Draw points and lines
+	numPts := len(chart.Points)
+	if numPts > maxPoints {
+		numPts = maxPoints
+	}
+	xStep := chartWidth / float64(numPts-1)
+
+	if numPts > 1 {
+		// Draw line connecting points
+		p.currentPage.WriteString(fmt.Sprintf("%.2f w\n", 1.5)) // line width for graph
+		for i := 0; i < numPts; i++ {
+			x := chartLeft + float64(i)*xStep
+			y := chartTop - (chart.Points[i].Value/maxVal)*chartHeight
+			if i == 0 {
+				p.currentPage.WriteString(fmt.Sprintf("%.0f %.0f m\n", x, y))
+			} else {
+				p.currentPage.WriteString(fmt.Sprintf("%.0f %.0f l\n", x, y))
+			}
+		}
+		p.currentPage.WriteString("S\n")
+
+		// Draw points
+		for i := 0; i < numPts; i++ {
+			x := chartLeft + float64(i)*xStep
+			y := chartTop - (chart.Points[i].Value/maxVal)*chartHeight
+			p.currentPage.WriteString(fmt.Sprintf("%.0f %.0f 2 0 360 arc f\n", x, y))
+		}
+	}
+	p.currentPage.WriteString("Q\n")
+
+	// Draw labels for first, middle, and last points
+	if numPts > 0 {
+		p.currentPage.WriteString("BT /F1 8 Tf\n")
+		// First point
+		p.currentPage.WriteString(fmt.Sprintf("%.0f %.0f Td (%s) Tj\n", chartLeft-20, chartTop-chartHeight-15, escapeForPDF(chart.Points[0].Label)))
+		// Last point
+		lastIdx := numPts - 1
+		p.currentPage.WriteString(fmt.Sprintf("%.0f %.0f Td (%s) Tj\n", chartLeft+chartWidth-20, chartTop-chartHeight-15, escapeForPDF(chart.Points[lastIdx].Label)))
+		p.currentPage.WriteString("ET\n")
+	}
+
+	p.curY -= (chartHeight + 40)
+}
+
 // AddTable adds a simple table.
 func (p *SimplePDF) AddTable(headers []string, rows [][]string) {
 	if len(rows) == 0 {

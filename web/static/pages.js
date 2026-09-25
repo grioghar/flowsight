@@ -200,6 +200,10 @@
           { t: 'Duration', f: r => dur(r.duration), num: true, sort: 'duration' },
           { t: 'Verdict', f: r => FS.verdictPill(r.verdict) + (r.policy ? ` <span class="muted small">${esc(r.policy)}</span>` : ''), sort: 'verdict' },
           { t: 'Source', k: 'source' },
+          { t: 'Readable', f: r => {
+            const v = r.visibility || ''; const titles = { inspected: 'Inspected by FlowSight', sni: 'TLS with server name visible', http: 'Plain HTTP', quic: 'QUIC encrypted', ech: 'Encrypted Client Hello', opaque: 'Encrypted, name unknown', dns: 'DNS transaction', plain: 'Unencrypted' };
+            return v ? `<span class="muted small" title="${esc(titles[v] || v)}">${esc(v)}</span>` : '';
+          }, sort: 'visibility' },
           // The path this session takes: the map narrowed to this client and
           // this destination, one traceroute, nothing else. Local-to-local
           // sessions have no path across the internet to show.

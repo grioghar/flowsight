@@ -12,6 +12,24 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252329
+
+**Encrypted traffic: visibility shows what FlowSight can and cannot see.**
+Each flow now carries a `visibility` field showing why it is or is not readable:
+`inspected` (squid decrypted it), `sni` (TLS with server name from ClientHello),
+`http` (plain HTTP), `quic` (QUIC encrypted, name opaque by design), `opaque`
+(encrypted with no visible name), `dns` (DNS transaction, always readable), or
+`plain` (unencrypted). The Sessions page adds a "Readable" column with a badge
+showing the visibility reason; a filter chip narrows to visibility=opaque|ech|quic|inspected.
+The host summary shows traffic counts and names by visibility over the window, so
+operators learn which devices use encryption that closes off policy control.
+
+**PDF reports add charts.** The PDF writer now draws bar charts and line charts
+using PDF path operators (rectangles for bars, line segments for trends) without
+external dependencies. Charts appear in report sections where they help: top
+traffic by device or app as horizontal bars, executive summary throughput as a
+line over time, DNS allowed vs. blocked as bars.
+
 ## 0.9.8r202609252307
 
 **No more "example.com" on every Cloudflare session.** With no SNI or Host

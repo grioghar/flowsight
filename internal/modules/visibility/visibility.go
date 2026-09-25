@@ -551,10 +551,64 @@ func (m *Module) decodeFlow(f obj, ifname string, now int64) (core.Flow, bool) {
 	if e := f.str("encrypted"); e == "true" && fl.TLSVersion == "" {
 		fl.TLSVersion = "TLS"
 	}
+	// Derive visibility: whether and how the flow is readable
+	fl.Visibility = deriveVisibility(fl, l7)
+
 	if fl.SrcIP == "" || fl.DstIP == "" {
 		return core.Flow{}, false
 	}
 	return fl, true
+}
+
+// deriveVisibility determines why a flow is or is not readable.
+func deriveVisibility(fl core.Flow, l7 string) string {
+	// DNS: always readable
+	if fl.Proto == "udp" && (fl.DstPort == 53 || strings.Contains(strings.ToLower(l7), "dns")) {
+		return "dns"
+	}
+	// QUIC: encrypted, usually no server name available
+	if fl.Proto == "udp" && fl.DstPort == 443 && strings.Contains(strings.ToLower(l7), "quic") {
+		if fl.Domain != "" {
+			return "quic"
+		}
+		return "quic"
+	}
+	// Plain HTTP: unencrypted
+	if fl.DstPort == 80 || (strings.ToLower(fl.App) == "http" && fl.TLSVersion == "") {
+		return "http"
+	}
+	// TLS encrypted
+	if fl.TLSVersion != "" {
+		// If we have a domain/SNI, it came from ClientHello
+		if fl.Domain != "" {
+			return "sni"
+		}
+		// Otherwise encrypted with no visible name
+		return "opaque"
+	}
+	// Plain unencrypted traffic
+	if !isLikelyEncrypted(l7, fl.DstPort) {
+		return "plain"
+	}
+	// Default to opaque for unknown encrypted protocols
+	return "opaque"
+}
+
+// isLikelyEncrypted checks if a protocol or port suggests encrypted traffic
+func isLikelyEncrypted(l7 string, dstPort int) bool {
+	lower := strings.ToLower(l7)
+	// Known encrypted protocols
+	if strings.Contains(lower, "tls") || strings.Contains(lower, "ssl") ||
+		strings.Contains(lower, "quic") || strings.Contains(lower, "https") ||
+		strings.Contains(lower, "ssh") || strings.Contains(lower, "wireguard") ||
+		strings.Contains(lower, "tailscale") {
+		return true
+	}
+	// Common encrypted ports
+	if dstPort == 443 || dstPort == 8443 || dstPort == 22 {
+		return true
+	}
+	return false
 }
 
 // ---------------------------------------------------------------- API

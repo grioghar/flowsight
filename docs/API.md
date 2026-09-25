@@ -309,7 +309,7 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/visibility/apps` | Application breakdown over a window | hours (window), ip (one host) |
 | GET | `/api/visibility/catalog` | Known applications and categories |  |
 | GET | `/api/visibility/abroad` | Devices with sessions outside the home country: per device the countries, top destinations, and `anycast_sessions`/`anycast_destinations` counted apart (anycast far ends never count as abroad) |  |
-| GET | `/api/visibility/flows` (filters `country=CC`, `abroad=1`, `anycast=1`; each row carries `country` and `anycast`) | Recent flows | app (filter), ip (filter by either end), limit (rows), minutes (window) |
+| GET | `/api/visibility/flows` (filters `country=CC`, `abroad=1`, `anycast=1`, `visibility=opaque\|ech\|quic\|inspected`; each row carries `country`, `anycast`, and `visibility`) | Recent flows | app (filter), ip (filter by either end), limit (rows), minutes (window) |
 | GET | `/api/visibility/host` | Everything about one host | hours (window), ip (address) |
 | GET | `/api/visibility/summary` | Throughput, active flows and hosts right now |  |
 | GET | `/api/visibility/timeseries` | Metric series for charts | hours (window), metric (name), step (seconds) |

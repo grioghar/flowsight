@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS flows (
     anycast INTEGER DEFAULT 0,
     source TEXT, iface TEXT,
     tls_version TEXT, tls_sni TEXT, tls_ja3 TEXT, tls_cert TEXT,
-    country TEXT, asn TEXT, attrs TEXT
+    country TEXT, asn TEXT, attrs TEXT,
+    visibility TEXT
 );
 CREATE INDEX IF NOT EXISTS flows_ts ON flows(ts);
 CREATE INDEX IF NOT EXISTS flows_src ON flows(src_ip, ts);
@@ -215,6 +216,9 @@ func (s *Store) migrate() error {
 	_ = s.db.QueryRow(`SELECT CAST(value AS INTEGER) FROM meta WHERE key='schema_version'`).Scan(&have)
 	// Additive migrations only. A downgrade must never lose data.
 	if err := s.ensureColumn("flows", "anycast", "INTEGER DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("flows", "visibility", "TEXT"); err != nil {
 		return err
 	}
 	_, err := s.db.Exec(`INSERT OR REPLACE INTO meta VALUES('schema_version', ?)`, fmt.Sprint(schemaVersion))
@@ -385,7 +389,14 @@ type Flow struct {
 	// Anycast: the far end is in a range announced from many sites at once,
 	// so Country is where the range is registered, not where it answered.
 	Anycast bool
-	Attrs   map[string]any
+	// Visibility: why this flow is or is not readable. One of: inspected
+	// (squid bumped it), sni (name from ClientHello only), http (plain HTTP),
+	// quic (QUIC: name from Initial if available, else opaque), ech (TLS with
+	// encrypted_client_hello extension seen, name unknown by design),
+	// opaque (encrypted, no name), dns (a DNS transaction), plain (unencrypted),
+	// local (communication inside the LAN).
+	Visibility string
+	Attrs      map[string]any
 }
 
 func jsonOrNil(m map[string]any) any {
@@ -448,8 +459,8 @@ func (s *Store) AddFlows(flows []Flow) error {
 		defer upd.Close()
 		ins, err := tx.Prepare(`INSERT INTO flows(ts,end_ts,key,src_ip,src_port,dst_ip,dst_port,proto,
 			app,category,domain,bytes_in,bytes_out,packets,duration,verdict,policy,source,iface,
-			tls_version,tls_sni,tls_ja3,tls_cert,country,asn,attrs,anycast)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+			tls_version,tls_sni,tls_ja3,tls_cert,country,asn,attrs,anycast,visibility)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 		if err != nil {
 			return err
 		}
@@ -501,7 +512,7 @@ func (s *Store) AddFlows(flows []Flow) error {
 				f.DstPort, nz(f.Proto), nz(f.App), nz(f.Category), nz(f.Domain), f.BytesIn, f.BytesOut,
 				f.Packets, f.Duration, f.Verdict, nz(f.Policy), nz(f.Source), nz(f.Iface),
 				nz(f.TLSVersion), nz(f.TLSSNI), nz(f.TLSJA3), nz(f.TLSCert), nz(f.Country), nz(f.ASN),
-				jsonOrNil(f.Attrs), b2i(f.Anycast)); err != nil {
+				jsonOrNil(f.Attrs), b2i(f.Anycast), nz(f.Visibility)); err != nil {
 				return err
 			}
 		}

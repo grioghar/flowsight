@@ -505,7 +505,8 @@ func (m *Module) pollLog() error {
 		fl := core.Flow{TS: ts, EndTS: ts, Key: fmt.Sprintf("squid/%s/%s/%s/%d", client, server, domain, ts),
 			SrcIP: client, DstIP: nzs(server), DstPort: sport, Proto: proto, Domain: domain,
 			BytesIn: bytesOut, BytesOut: bytesIn, Duration: dur / 1000, Verdict: verdict,
-			Source: "squid", TLSVersion: tlsver, TLSSNI: sni, App: "", Category: ""}
+			Source: "squid", TLSVersion: tlsver, TLSSNI: sni, App: "", Category: "",
+			Visibility: "inspected"}
 		if m.cats != nil && domain != "" {
 			if cs := m.cats.Classify(domain); len(cs) > 0 {
 				fl.Category = cs[0]
