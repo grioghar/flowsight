@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251547
+
+**A private Overpass fills the map in hours and never pretends.** With your
+own Overpass configured (a private address and *osm_overpass_local* on),
+the telecom-line job now asks it up to twelve regions per run instead of
+one every twenty minutes, since it is yours to load. A region the private
+server returns nothing for is asked of the public service, because a
+server holding only the extracts you loaded (North America and Europe here)
+says nothing about the rest of the world. The public service keeps its
+one-region-per-run pace.
+
 ## 0.9.8r202609250020
 
 **Space: your rooms, your devices, in 3D.** A new *Space* page under

@@ -240,7 +240,18 @@ func (m *Module) refreshOSM() error {
 	if time.Now().Before(until) {
 		return m.loadOSM()
 	}
-	if b, ok := m.nextOSMBox(); ok {
+	// The public service gets one region per run, which is the polite pace.
+	// An operator's own server on this network can be asked a dozen: it is
+	// theirs to load, and the map fills in hours rather than days.
+	perRun := 1
+	if m.osmIsLocal() {
+		perRun = 12
+	}
+	for i := 0; i < perRun; i++ {
+		b, ok := m.nextOSMBox()
+		if !ok {
+			break
+		}
 		if err := m.fetchOSMBox(b); err != nil {
 			// A refusal (429) means asked too often: wait six hours. A
 			// timeout or a server error means the tile or the server was
@@ -253,63 +264,87 @@ func (m *Module) refreshOSM() error {
 			m.osm.Error = b.Name + ": " + err.Error()
 			m.osmUntil = time.Now().Add(wait)
 			m.mu.Unlock()
-		} else {
-			m.mu.Lock()
-			m.osm.Error = ""
-			m.mu.Unlock()
+			break
 		}
+		m.mu.Lock()
+		m.osm.Error = ""
+		m.mu.Unlock()
 	}
 	return m.loadOSM()
 }
 
+// osmIsLocal reports whether the configured Overpass is the operator's own
+// private server.
+func (m *Module) osmIsLocal() bool {
+	u := strings.TrimSpace(core.Str(m.ctx.Settings(), "osm_overpass_url", defaultOverpassURL))
+	return u != "" && u != defaultOverpassURL && core.Bool(m.ctx.Settings(), "osm_overpass_local", false) && isPrivateURL(u)
+}
+
+// fetchOSMBox fetches one region from the configured Overpass. A private
+// server holds only the extracts its operator loaded (this network's is
+// North America and Europe), so a region it returns nothing for is asked of
+// the public service instead: an empty answer from a partial server is not
+// evidence that the region has no telecom lines.
 func (m *Module) fetchOSMBox(b osmBox) error {
 	u := strings.TrimSpace(core.Str(m.ctx.Settings(), "osm_overpass_url", defaultOverpassURL))
 	if u == "" {
 		u = defaultOverpassURL
 	}
+	n, err := m.fetchOSMBoxFrom(u, b)
+	if err == nil && n == 0 && m.osmIsLocal() {
+		if _, err2 := m.fetchOSMBoxFrom(defaultOverpassURL, b); err2 != nil {
+			// The local answer (empty) already stands on disk; the public
+			// service's refusal only delays the next region.
+			return err2
+		}
+	}
+	return err
+}
+
+func (m *Module) fetchOSMBoxFrom(u string, b osmBox) (int, error) {
 	client := safeClient(4 * time.Minute)
 	if err := checkFetchURL(u); err != nil {
 		// A private Overpass is the one case where a private host is the
 		// point: the operator runs their own on this network and says so.
 		if !core.Bool(m.ctx.Settings(), "osm_overpass_local", false) || !isPrivateURL(u) {
-			return err
+			return 0, err
 		}
 		client = &http.Client{Timeout: 4 * time.Minute}
 	}
 	req, err := http.NewRequest("POST", u, strings.NewReader("data="+overpassQuery(b)))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "FlowSight/"+m.version()+" (+https://github.com/grioghar/flowsight; telecom lines, one region per run)")
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("overpass: %s", resp.Status)
+		return 0, fmt.Errorf("overpass: %s", resp.Status)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	gj, n, err := overpassToGeoJSON(raw)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	path := filepath.Join(m.terrestrialDir(), osmFile(b))
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, gj, 0o644); err != nil {
-		return err
+		return 0, err
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		return err
+		return 0, err
 	}
 	if m.ctx.Log != nil {
 		m.ctx.Log.Info("osm telecom lines fetched", "region", b.Name, "ways", n)
 	}
-	return nil
+	return n, nil
 }
 
 func (m *Module) version() string {
