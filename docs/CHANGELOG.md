@@ -12,6 +12,16 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252138
+
+**Country tables are remembered across a restart.** The tables live on in
+pf when the daemon restarts, but the record of what filled them did not, so
+the Policies card and `geo_tables` were empty for up to an hour and the next
+check refilled a full table for nothing. The fill record is now kept in
+`pf/geo-tables.json`; half a minute after start the tables are checked
+against the kernel and the database build and refilled only when either
+moved (an emptied kernel table is refilled).
+
 ## 0.9.8r202609252128
 
 **The kernel address count read zero.** `pfctl -v -sT` prints flags and

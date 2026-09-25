@@ -257,12 +257,15 @@ func (m *Module) populateGeoTables(specs []geoSpec, force bool) error {
 			return a
 		}
 	}
+	kernel := m.tableSizes("policy")
 	var firstErr error
 	for _, g := range specs {
 		m.mu.Lock()
 		cur := m.geoTables[g.Table]
 		m.mu.Unlock()
-		if !force && cur != nil && cur.Epoch == epoch {
+		// Filled from this database build, and the kernel still holds it:
+		// nothing to do. An empty kernel table (pf was reset) is refilled.
+		if !force && cur != nil && cur.Epoch == epoch && kernel[g.Table] > 0 {
 			continue
 		}
 		ccs := g.Countries
@@ -282,6 +285,7 @@ func (m *Module) populateGeoTables(specs []geoSpec, force bool) error {
 		m.mu.Lock()
 		m.geoTables[g.Table] = &TableInfo{Name: g.Table, Countries: ccs, Invert: g.Invert, Prefixes: len(prefixes), SkippedAnycast: skipped, Epoch: epoch, Updated: time.Now().Unix()}
 		m.mu.Unlock()
+		m.saveGeoTableInfo()
 	}
 	return firstErr
 }

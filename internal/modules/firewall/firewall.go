@@ -9,6 +9,7 @@
 package firewall
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -113,6 +114,12 @@ func (m *Module) Setup(ctx *core.Context) error {
 		ctx.Every("local-table", 60*time.Second, m.refreshLocal)
 		ctx.Every("anchor-check", 60*time.Second, m.checkAnchor)
 		ctx.Every("geo-tables", time.Hour, m.refreshGeoTables, core.Delayed())
+		// What was filled before this process started: the tables persist
+		// in pf across a daemon restart, so the record of them should too.
+		// Half a minute in, the tables are checked against the kernel and
+		// the database build, and refilled only when one of them moved.
+		m.loadGeoTableInfo()
+		time.AfterFunc(30*time.Second, func() { _ = m.refreshGeoTables() })
 	}
 	ctx.Route("GET", "/api/firewall/status", m.apiStatus, core.Doc("Anchor state, tables and rule counters"))
 	ctx.Route("GET", "/api/firewall/table", m.apiTable, core.Params("name", "table in the policy anchor (fs_geo_<cc>, fs_geox_<policy>, fs_app_<policy>)", "ip", "optional address to test for membership"),
@@ -430,4 +437,36 @@ func (m *Module) apiTable(r *core.Req) (any, error) {
 		out["detail"] = strings.TrimSpace(res)
 	}
 	return out, nil
+}
+
+func (m *Module) geoInfoPath() string { return filepath.Join(m.dir, "geo-tables.json") }
+
+func (m *Module) loadGeoTableInfo() {
+	b, err := os.ReadFile(m.geoInfoPath())
+	if err != nil {
+		return
+	}
+	var list []*TableInfo
+	if json.Unmarshal(b, &list) != nil {
+		return
+	}
+	m.mu.Lock()
+	for _, t := range list {
+		if t != nil && t.Name != "" {
+			m.geoTables[t.Name] = t
+		}
+	}
+	m.mu.Unlock()
+}
+
+func (m *Module) saveGeoTableInfo() {
+	m.mu.Lock()
+	list := make([]*TableInfo, 0, len(m.geoTables))
+	for _, t := range m.geoTables {
+		list = append(list, t)
+	}
+	m.mu.Unlock()
+	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+	b, _ := json.MarshalIndent(list, "", " ")
+	_ = os.WriteFile(m.geoInfoPath(), b, 0o644)
 }
