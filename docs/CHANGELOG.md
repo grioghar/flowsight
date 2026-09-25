@@ -12,6 +12,19 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609250530
+
+**Space: scan loading and device placement now work end-to-end.** Upload a scan
+(GLB, OBJ, PLY, RoomPlan JSON) via the **⬆ Scan** button; the viewer loads it,
+applies any stored transform (scale, rotation, offset, Y-up/Z-up conversion),
+and shows a progress bar during parsing. Drag devices from the Palette pane onto
+the 3D canvas to place them; the viewer ray-casts the click to find the surface
+hit point, auto-detects the room from polygon containment, and saves the placement.
+The Plan pane's polygon editor now works: draw rooms (click vertices, double-click
+to close), pan and zoom with mouse, set scale by two points, import OSM footprints.
+Rooms are saved live. Undo/redo work for draw mode. All tests pass. See docs/USER-GUIDE.md
+for what's implemented and what still needs to be done.
+
 ## 0.9.8r202609250005
 
 **Space: WebGL2 3D viewer and interactive device placement.** The 3D pane now

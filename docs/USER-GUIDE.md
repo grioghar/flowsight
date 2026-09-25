@@ -910,38 +910,59 @@ on the LAN explains to an unplaced device what happens next.
 
 ### Space
 
-Draw your living space and place each device at its real location in 3D.
-**Plan pane** (2D): draw rooms as polygons (click points, double-click to
-close), set scale by two points and a real distance, import the building
-footprint from OpenStreetMap. **3D pane** (WebGL): load the scan from your
-phone, position it in space, place devices by clicking a floor or wall
-surface. **Palette pane**: search and filter devices by name, address or
-vendor; drag to the 3D view to place. Scans: upload from your phone camera
-scan app — iPhone (Polycam, Scaniverse, Apple RoomPlan apps), Android
-(Polycam, Scaniverse, ARCore-based apps) — export as **GLB** (recommended,
-supports mesh and textures), **OBJ** (mesh only), **RoomPlan JSON** (auto-
-parsed into room outlines), or **PLY** (point cloud). Decimate scans to
-under 50 MB in your app before upload.
+Map your physical space in 3D, place devices at their real locations, and
+track their network locations.
 
-**3D controls:** orbit with mouse drag (or single-finger touch), pan with
-right-click drag or shift-drag, zoom with mouse wheel (or two-finger pinch).
-The viewer draws the floor grid and XYZ axes, computes smooth normals for
-scans without them, and handles large meshes efficiently with spatial
-indexing.
+**What works:**
 
-**Device placement:** drag a device from the palette onto the 3D surface to
-place it; the viewer ray-casts from screen coordinates to find the hit point.
-Click a placed marker to see its details (vendor, addresses, room assignment
-from polygon containment, live traffic sparkline), or drag it to move it.
-Right-click to level the scan: pick three points on the floor to define the
-z=0 plane and up-axis.
+**3D Scan viewer:** Upload scans from your phone or camera app in GLB (recommended),
+OBJ, PLY, or RoomPlan JSON format via the **⬆ Scan** button. The viewer applies
+any stored transform (scale, rotation, offset, Y-up/Z-up conversion) and displays
+the geometry with spatial indexing for fast ray-casting. A progress bar shows
+during parsing. Max 50 MB; decimate large scans in your app before upload. Scenes
+with no scan show the floor grid and axes.
 
-Address records: geocoding from the US Census Geocoder (no API key); elevation
-from USGS; building footprints from OpenStreetMap when available; broadband
-provider lookup when FCC credentials are set in the Paths module. Placements
-are saved in the layout and linked to device identity; when you move a device
-physically, update its location here and it will update links on the Devices
-page.
+**Device placement:** Drag a device from the Palette pane onto the 3D canvas.
+The viewer ray-casts the click to find a hit point on the scan mesh, or falls
+back to the floor plane at z=0. The placement is saved with its MAC, 3D coordinates,
+floor, and room (auto-detected from polygon containment if a room contains the point).
+Placed devices are shown as small red markers in the 3D view.
+
+**3D controls:** Left-click and drag to orbit (single-finger touch also orbits).
+Right-click and drag, or shift+drag, to pan. Mouse wheel or two-finger pinch to zoom.
+The viewer automatically fits the camera to all loaded geometry on load.
+
+**Plan pane (2D room editor):** Click **✏ Draw** to enter draw mode, then click
+to place vertices and double-click or click the first point to close a room.
+A dialog prompts for the room name and ceiling height. Rooms appear as filled
+polygons with vertices. Pan with right-click or shift+drag; zoom with the mouse
+wheel. Grid snap is 0.1 m on a 1 m grid. **↶ Undo** removes the last drawn point.
+**📏 Scale** lets you calibrate: click two points, then enter the real distance
+between them (in metres) to rescale all coordinates on the current floor.
+**🗺 Import OSM** imports the building footprint from OpenStreetMap, if available,
+as a new room. Rooms are saved with **PUT /api/space/layout** (debounced 800 ms).
+
+**Floors:** The floor select dropdown shows each floor with its elevation. More floors
+can be added via the backend API; rename, delete, and elevation changes use the reducer.
+
+**Keyboard shortcuts:** Ctrl+Z (or Cmd+Z on Mac) undoes; Ctrl+Y (Cmd+Y) redoes.
+
+**Not yet implemented:**
+
+- Device marker popovers (click a placed marker to see details, traffic sparkline,
+  room name, "Unplace" button)
+- Marker dragging to move placements
+- Level the scan: three-click tool to fit the floor plane and up-axis
+- Align-to-plan: pick two points in 3D, then two on the plan, to compute transform
+- Room vertex dragging on the plan
+- Full undo/redo for room operations (currently only draw-mode undo)
+- Rooms on multiple floors as 3D boxes with opacity per floor
+- Phone-width responsive layout (panes currently stack at 768px)
+- Network error toasts (blank panes on API failures)
+
+**Address records:** Geocoding from the US Census Geocoder (no API key); elevation
+from USGS; building footprints from OpenStreetMap when available. Placements
+update device location links on the Devices page.
 
 ## Administration
 
