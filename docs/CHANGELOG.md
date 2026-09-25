@@ -12,6 +12,33 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252251
+
+**Loopback is never named after a blocked domain.** A blocklist that answers
+127.0.0.1 for a domain had the resolver-name path calling the gateway's
+loopback address by that domain (it showed as "myworkdayjobs.com" in the DNS
+log and the address list). Loopback, unspecified, link-local and multicast
+addresses now take no resolver name; loopback reads *this gateway
+(loopback)*; the stored rows were cleared.
+
+**Alerting page loads again.** The deliveries route returned a map by
+channel where the page expected a list; it now returns a flat list newest
+first with the map beside it, and the page accepts either. A malformed rule
+record with no id or name (left by a save that used the wrong verb) is
+dropped, rule updates require a name, and the page uses PUT and DELETE for
+update and delete as the API defines them.
+
+**Report PDFs contain the report.** The PDF had been a title page. It is now
+the Markdown rendering set on pages (headings, paragraphs, tables) and is
+written with the other formats when a run completes.
+
+**Audit log: who, via what, and what.** Writes made through the OPNsense
+plugin now record the GUI user with the token in brackets instead of the
+bare word "token". `api_tokens` in the configuration adds named tokens
+(`token:<name>` in the log). Each entry carries `via` (gui, token, session,
+local) and, where the body says, the module, name or id it touched; the
+Audit page shows Who, Via, From and the operation with those details.
+
 ## 0.9.8r202609252242
 
 **Withdraws 0.9.8r202609252231**, which never reached a gateway: its

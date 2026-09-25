@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1104,4 +1105,14 @@ func FillCountries(flows []Flow, look CountryLookup, anyc AnycastLookup, isLocal
 			flows[i].Anycast = true
 		}
 	}
+}
+
+// IsSpecialIP is true for addresses no name or country should ever attach
+// to: loopback, unspecified, link-local, multicast.
+func IsSpecialIP(ip string) bool {
+	a := net.ParseIP(strings.TrimSpace(ip))
+	if a == nil {
+		return false
+	}
+	return a.IsLoopback() || a.IsUnspecified() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() || a.IsMulticast()
 }

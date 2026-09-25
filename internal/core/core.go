@@ -241,9 +241,29 @@ func (c *Core) audit(user, method, p string, body map[string]any, client string)
 	if len(keys) > 12 {
 		keys = keys[:12]
 	}
+	attrs := map[string]any{"keys": strings.Join(keys, ",")}
+	// What was touched, when the body says: the module of a settings save,
+	// the name of a policy, rule, channel or definition.
+	for _, k := range []string{"module", "name", "id", "definition", "policy"} {
+		if v, ok := body[k].(string); ok && v != "" && len(v) <= 80 {
+			attrs[k] = v
+		}
+	}
+	via := "token"
+	switch {
+	case strings.Contains(user, "(gui"):
+		via = "gui"
+	case strings.HasPrefix(user, "session"):
+		via = "session"
+	case user == "local":
+		via = "local"
+	case strings.HasPrefix(user, "token:"):
+		via = user
+	}
+	attrs["via"] = via
 	_ = c.Store.AddEvents([]Event{{TS: time.Now().Unix(), Kind: "audit", Source: "api",
 		Severity: "info", Verdict: "observed", ActorName: user, ActorIP: client,
-		Message: method + " " + p, Attrs: map[string]any{"keys": strings.Join(keys, ",")}}})
+		Message: method + " " + p, Attrs: attrs}})
 }
 
 // Run starts jobs and the API and blocks until stop is closed.

@@ -278,6 +278,9 @@ func (m *Module) apiRunReport(r *core.Req) (any, error) {
 	if md, _ := m.engine.RenderMarkdown(def, run); md != "" {
 		_ = m.storeRunFormat(run, def, "markdown", []byte(md))
 	}
+	if pdf, err := m.engine.RenderPDF(def, run); err == nil {
+		_ = m.storeRunFormat(run, def, "pdf", pdf)
+	}
 	if json, _ := m.engine.RenderJSON(def, run); len(json) > 0 {
 		_ = m.storeRunFormat(run, def, "json", json)
 	}
@@ -375,10 +378,8 @@ func (m *Module) apiDownloadRun(r *core.Req) (any, error) {
 		md, _ := m.engine.RenderMarkdown(def, run)
 		return core.Raw{ContentType: "text/markdown", Filename: def.ID + ".md", Body: []byte(md)}, nil
 	case "pdf":
-		pdf := NewSimplePDF()
-		pdf.AddHeading(def.Name)
-		pdf.AddText(fmt.Sprintf("Generated %s", time.Now().Format("2006-01-02 15:04 MST")))
-		return core.Raw{ContentType: "application/pdf", Filename: def.ID + ".pdf", Body: pdf.Bytes()}, nil
+		pdf, _ := m.engine.RenderPDF(def, run)
+		return core.Raw{ContentType: "application/pdf", Filename: def.ID + ".pdf", Body: pdf}, nil
 	case "csv":
 		csvs, _ := m.engine.RenderCSV(def, run)
 		if len(csvs) > 0 {

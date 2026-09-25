@@ -41,7 +41,7 @@
       const channelTypes = chTypes.channel_types || {};
       const channels = chList.channels || [];
       const rules = rulesList.rules || {};
-      const logs = deliveries.deliveries || [];
+      const logs = Array.isArray(deliveries.deliveries) ? deliveries.deliveries : Object.values(deliveries.deliveries || {}).flat();
       const maintenance = maint || {};
 
       // Build HTML
@@ -181,7 +181,7 @@
           const rule = rules[id];
           if (!rule) return;
           rule.enabled = cb.checked;
-          const r = await post(`/api/alerting/rules/${id}`, rule);
+          const r = await FS.api(`/api/alerting/rules/${id}`, { method: 'PUT', body: rule });
           if (r.error) { FS.toast(r.error, true); cb.checked = !cb.checked; }
         };
       });
@@ -201,7 +201,7 @@
         b.onclick = async () => {
           if (!await FS.confirm(`Delete rule?`)) return;
           const id = b.dataset.ruleDel;
-          const r = await post(`/api/alerting/rules/${id}`, {});
+          const r = await FS.api(`/api/alerting/rules/${id}`, { method: 'DELETE', body: {} });
           if (r.error) FS.toast(r.error, true);
           else { FS.toast('Rule deleted'); FS.render(); }
         };

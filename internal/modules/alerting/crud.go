@@ -224,6 +224,18 @@ func (m *Module) apiTestChannel(r *core.Req) (any, error) {
 func (m *Module) apiGetRules(r *core.Req) (any, error) {
 	rules := make(map[string]RuleConfig)
 	m.ctx.Store.KVGet("alerting.rules", &rules)
+	// A record with no id or name is a leftover of a malformed save; it is
+	// not a rule and is not shown (or kept).
+	dirty := false
+	for id, rule := range rules {
+		if id == "" || rule.ID == "" || rule.Name == "" {
+			delete(rules, id)
+			dirty = true
+		}
+	}
+	if dirty {
+		_ = m.ctx.Store.KVSet("alerting.rules", rules)
+	}
 	return map[string]any{"rules": rules}, nil
 }
 
@@ -280,6 +292,9 @@ func (m *Module) apiUpdateRule(r *core.Req) (any, error) {
 	var rule RuleConfig
 	if err := r.Decode(&rule); err != nil {
 		return nil, err
+	}
+	if rule.Name == "" {
+		return nil, core.BadRequest("a rule needs a name")
 	}
 
 	rules := make(map[string]RuleConfig)

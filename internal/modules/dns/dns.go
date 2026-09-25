@@ -339,6 +339,9 @@ func (m *Module) snapshotCache() error {
 		}
 		defer st.Close()
 		for ip, name := range best {
+			if core.IsSpecialIP(ip) {
+				continue // a blocklist answering 127.0.0.1 names nothing
+			}
 			if _, err := st.Exec(ip, name, now); err != nil {
 				return err
 			}

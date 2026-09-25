@@ -32,9 +32,12 @@ type CoreSettings struct {
 	Bind     string `json:"bind"`
 	Port     int    `json:"port"`
 	APIToken string `json:"api_token"`
-	LogLevel string `json:"log_level"`
-	DataDir  string `json:"data_dir"`
-	Workers  int    `json:"workers"`
+	// APITokens are named tokens beside APIToken: the audit log records
+	// which one acted. Each is {"name": "...", "token": "..."}.
+	APITokens []NamedToken `json:"api_tokens"`
+	LogLevel  string       `json:"log_level"`
+	DataDir   string       `json:"data_dir"`
+	Workers   int          `json:"workers"`
 	// MemoryLimitMB is the Go soft memory limit (default 256).
 	MemoryLimitMB int       `json:"memory_limit_mb"`
 	Retention     Retention `json:"retention"`
@@ -296,4 +299,10 @@ func StripComments(lines []string) []string {
 
 func commented(t string) bool {
 	return strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//")
+}
+
+// NamedToken is one API token with the name the audit log shows for it.
+type NamedToken struct {
+	Name  string `json:"name"`
+	Token string `json:"token"`
 }

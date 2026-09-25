@@ -333,6 +333,29 @@ func (a *API) OpenAPI() map[string]any {
 
 func (a *API) token() string { return a.core.Config.Core().APIToken }
 
+// tokenName says which configured token was presented: "token" for the
+// unnamed api_token, "token:<name>" for a named one, "" for none.
+func (a *API) tokenName(presented string) string {
+	if presented == "" {
+		return ""
+	}
+	cs := a.core.Config.Core()
+	if cs.APIToken != "" && hmac.Equal([]byte(presented), []byte(cs.APIToken)) {
+		return "token"
+	}
+	for _, t := range cs.APITokens {
+		if t.Token != "" && hmac.Equal([]byte(presented), []byte(t.Token)) {
+			return "token:" + t.Name
+		}
+	}
+	return ""
+}
+
+func (a *API) anyToken() bool {
+	cs := a.core.Config.Core()
+	return cs.APIToken != "" || len(cs.APITokens) > 0
+}
+
 // authenticate returns (ok, user). Loopback with no token configured is
 // trusted: that is the OPNsense case, where the GUI has already authenticated
 // and proxies over 127.0.0.1. Anywhere else a token or session is required.
@@ -342,6 +365,7 @@ func (a *API) authenticate(r *http.Request, client string) (bool, string) {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(h), "bearer ") {
 		presented = strings.TrimSpace(h[7:])
 	}
+	loopback := client == "127.0.0.1" || client == "::1"
 	if c, err := r.Cookie("fs_session"); err == nil {
 		a.sessMu.Lock()
 		s, ok := a.sessions[c.Value]
@@ -350,21 +374,28 @@ func (a *API) authenticate(r *http.Request, client string) (bool, string) {
 			return true, s.user
 		}
 	}
-	if tok != "" && presented != "" && hmac.Equal([]byte(presented), []byte(tok)) {
-		return true, "token"
+	if name := a.tokenName(presented); name != "" {
+		// The OPNsense plugin proxies over loopback with the token and
+		// says which GUI user is acting; the audit log names the person and
+		// keeps the token beside them.
+		if u := r.Header.Get("X-Flowsight-User"); u != "" && loopback {
+			return true, u + " (gui, " + name + ")"
+		}
+		return true, name
 	}
-	if tok == "" && (client == "127.0.0.1" || client == "::1") {
+	if !a.anyToken() && loopback {
 		if u := r.Header.Get("X-Flowsight-User"); u != "" {
-			return true, u
+			return true, u + " (gui)"
 		}
 		return true, "local"
 	}
+	_ = tok
 	return false, ""
 }
 
 func (a *API) login(token string) (string, bool) {
-	tok := a.token()
-	if tok == "" || !hmac.Equal([]byte(token), []byte(tok)) {
+	name := a.tokenName(token)
+	if name == "" {
 		return "", false
 	}
 	b := make([]byte, 32)
@@ -390,7 +421,7 @@ func (a *API) login(token string) (string, bool) {
 		}
 		delete(a.sessions, oldest)
 	}
-	a.sessions[sid] = session{user: "token", expires: now.Add(12 * time.Hour)}
+	a.sessions[sid] = session{user: "session (" + name + ")", expires: now.Add(12 * time.Hour)}
 	a.sessMu.Unlock()
 	return sid, true
 }

@@ -103,6 +103,9 @@ func (m *Module) Name(ip string) string {
 	if n := m.overr[ip]; n != "" {
 		return n
 	}
+	if ip == "127.0.0.1" || ip == "::1" {
+		return "this gateway (loopback)"
+	}
 	if n := m.names[ip]; n != "" {
 		return n
 	}
@@ -583,7 +586,10 @@ func (m *Module) refresh() error {
 	for _, r := range rows {
 		ip, _ := r["ip"].(string)
 		n, _ := r["name"].(string)
-		if _, ok := names[ip]; !ok && ip != "" && n != "" && !isLocal(ip) {
+		// A blocklist that answers 127.0.0.1 for a domain must not name the
+		// loopback address after that domain; nor do link-local, multicast
+		// or the unspecified address ever carry a resolver's name.
+		if _, ok := names[ip]; !ok && ip != "" && n != "" && !isLocal(ip) && !core.IsSpecialIP(ip) {
 			names[ip] = n
 		}
 	}
@@ -649,6 +655,9 @@ func (m *Module) refresh() error {
 			}
 		}
 	}
+	// Loopback and other special addresses never carry a name from anywhere.
+	_ = m.ctx.Store.Exec(`UPDATE hosts SET name=NULL WHERE ip IN ('127.0.0.1','::1','0.0.0.0','::') AND name IS NOT NULL`)
+	_ = m.ctx.Store.Exec(`DELETE FROM dns_names WHERE ip IN ('127.0.0.1','::1','0.0.0.0','::') OR ip LIKE 'fe80:%' OR ip LIKE '169.254.%'`)
 	// Repair what an earlier release did: local addresses named after a
 	// resolver answer. Where the row's name is exactly what the resolver
 	// said for that address and nothing live names it, the name goes.

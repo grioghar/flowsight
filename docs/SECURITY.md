@@ -4,6 +4,15 @@ What FlowSight exposes, who can change what, how keys are handled, and
 what data it keeps. Written for the person who has to sign off on running
 it on a gateway.
 
+## Named API tokens
+
+Beside the single `api_token`, `api_tokens` in the configuration file holds
+named tokens (`[{"name": "grafana", "token": "..."}]`). Each is as powerful
+as the main one; the difference is the audit log, which records
+`token:<name>` for writes made with it, and `user (gui, token)` when the
+OPNsense plugin acts for a logged-in GUI user. Rotate a token by replacing
+its value in the file; the daemon reads the file at start.
+
 ## Attack surface
 
 - **The daemon listens on loopback only** (`127.0.0.1:8080`) unless `bind`

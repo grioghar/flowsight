@@ -2,6 +2,7 @@ package alerting
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/grioghar/flowsight/internal/core"
@@ -193,12 +194,21 @@ func (m *Module) apiGetDeliveries(r *core.Req) (any, error) {
 
 	if channel != "" {
 		if deliveries, ok := log[channel]; ok {
-			return map[string]any{"deliveries": deliveries}, nil
+			return map[string]any{"deliveries": deliveries, "by_channel": map[string]any{channel: deliveries}}, nil
 		}
-		return map[string]any{"deliveries": []*DeliveryAttempt{}}, nil
+		return map[string]any{"deliveries": []*DeliveryAttempt{}, "by_channel": map[string]any{}}, nil
 	}
-
-	return map[string]any{"deliveries": log}, nil
+	// One flat list newest first, which is what a page shows; the per
+	// channel map beside it for callers that want it.
+	flat := make([]*DeliveryAttempt, 0)
+	for _, list := range log {
+		flat = append(flat, list...)
+	}
+	sort.Slice(flat, func(i, j int) bool { return flat[i].Timestamp > flat[j].Timestamp })
+	if len(flat) > limit {
+		flat = flat[:limit]
+	}
+	return map[string]any{"deliveries": flat, "by_channel": log}, nil
 }
 
 // apiAckAlert acknowledges an alert

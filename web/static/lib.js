@@ -52,6 +52,8 @@ FS.isPrivateIP = (ip) => {
 };
 FS.get = (p) => FS.api(p);
 FS.post = (p, body) => FS.api(p, { body: body || {} });
+FS.put = (p, body) => FS.api(p, { method: 'PUT', body: body || {} });
+FS.del = (p) => FS.api(p, { method: 'DELETE', body: {} });
 
 // --------------------------------------------------------------- formatting
 FS.esc = (s) => String(s == null ? '' : s).replace(/[&<>"'`]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' }[c]));
