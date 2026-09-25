@@ -162,6 +162,15 @@ func (p *provider) Apply(a core.Artifact) (string, error) {
 	if err := p.m.LoadAnchor("policy", rules); err != nil {
 		return "", err
 	}
+
+	// Populate geo tables if the service is available.
+	geo, _ := p.m.ctx.Service("geo").(core.GeoService)
+	if geo != nil {
+		if err := p.populateGeoTables(); err != nil {
+			p.m.ctx.Event("firewall", "failed to populate geo tables", map[string]any{"error": err.Error()})
+		}
+	}
+
 	n := 0
 	for _, l := range strings.Split(rules, "\n") {
 		if strings.HasPrefix(l, "block") || strings.HasPrefix(l, "match") {
@@ -169,4 +178,35 @@ func (p *provider) Apply(a core.Artifact) (string, error) {
 		}
 	}
 	return fmt.Sprintf("anchor flowsight/policy loaded with %d rule(s)", n), nil
+}
+
+// populateGeoTables loads country prefixes into pf tables.
+func (p *provider) populateGeoTables() error {
+	geo, ok := p.m.ctx.Service("geo").(core.GeoService)
+	if !ok || geo == nil {
+		return nil
+	}
+
+	countries, err := geo.Countries()
+	if err != nil {
+		return err
+	}
+
+	epoch := geo.DatabaseEpoch()
+	for _, ci := range countries {
+		prefixes, err := geo.Networks(ci.Code)
+		if err != nil {
+			continue // Skip countries with errors
+		}
+
+		// Write to a temporary file and reload the table.
+		tbl := GeoTableFor(ci.Code)
+		if err := p.m.ReplaceTable("policy", tbl, prefixes); err != nil {
+			continue // Non-fatal; other tables may still load
+		}
+
+		// Record the table info for status reporting.
+		p.m.UpdateGeoTableInfo(ci.Code, len(prefixes), epoch)
+	}
+	return nil
 }

@@ -35,6 +35,14 @@ type Module struct {
 	lastErr            string
 	identity           core.Identity
 	loaded             map[string]string // anchor -> hash of rules loaded
+	geoTables          map[string]*TableInfo // geo table info
+}
+
+// TableInfo holds information about a pf table.
+type TableInfo struct {
+	Name     string `json:"name"`
+	Prefixes int    `json:"prefixes"`
+	Epoch    int64  `json:"epoch"` // database build epoch when last updated
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -86,6 +94,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.identity, _ = ctx.Service("identity").(core.Identity)
 	m.dir = filepath.Join(ctx.Platform.EtcDir, "pf")
 	m.loaded = map[string]string{}
+	m.geoTables = make(map[string]*TableInfo)
 	if err := os.MkdirAll(m.dir, 0o755); err != nil {
 		return err
 	}
@@ -116,6 +125,17 @@ func (m *Module) Health() core.Health {
 }
 
 func (m *Module) LocalTable() string { return "flowsight_local" }
+
+// UpdateGeoTableInfo records information about a geo table for status reporting.
+func (m *Module) UpdateGeoTableInfo(cc string, prefixes int, epoch int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.geoTables[cc] = &TableInfo{
+		Name:     "fs_geo_" + strings.ToLower(cc),
+		Prefixes: prefixes,
+		Epoch:    epoch,
+	}
+}
 
 func (m *Module) pfctl(args ...string) (string, error) {
 	return core.Run(30*time.Second, m.ctx.Platform.Pfctl, args...)
@@ -340,7 +360,13 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 			counters[name] = c
 		}
 	}
+	m.mu.Lock()
+	geoTables := make([]any, 0, len(m.geoTables))
+	for _, ti := range m.geoTables {
+		geoTables = append(geoTables, ti)
+	}
+	m.mu.Unlock()
 	main, _ := m.pfctl("-sr")
 	return map[string]any{"available": true, "anchors": list, "counters": counters,
-		"referenced": strings.Contains(main, "flowsight")}, nil
+		"referenced": strings.Contains(main, "flowsight"), "geo_tables": geoTables}, nil
 }
