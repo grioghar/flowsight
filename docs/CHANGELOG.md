@@ -12,6 +12,14 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252231
+
+**Country codes show their name on hover.** Everywhere the interface prints
+a two-letter country (Sessions, the DLP card, Policy matches, the firewall
+tables card, the policy list, the Map's filter and tables, the address
+flags) the code stays short on the page and the full name is the tooltip.
+The name table is the ISO 3166 list the policy editor already uses.
+
 ## 0.9.8r202609252214
 
 **Duplicates removed after a from-the-start read too**, not only at start:

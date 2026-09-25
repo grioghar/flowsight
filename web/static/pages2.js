@@ -26,6 +26,8 @@
         if (dd.ports && dd.ports.length) bits.push(`ports: ${dd.ports.join(', ')}`);
         if (dd.countries && dd.countries.length) bits.push(`countries: ${dd.countries.join(', ')}`);
         if (dd.countries_except && dd.countries_except.length) bits.push(`every country except ${dd.countries_except.join(', ')}`);
+        const named = (dd.countries || []).concat(dd.countries_except || []).map(c => `${c} = ${FS.countryName(c)}`).join(', ');
+        if (named) return `<span title="${esc(named)}">${esc(bits.join(' · '))}</span>`;
         if (dd.internet) bits.push('no internet');
         if (p.safe_search) bits.push('safe search');
         if (p.youtube) bits.push('YouTube ' + p.youtube);
@@ -55,7 +57,7 @@
         box.innerHTML = card(`Firewall tables and rules${fw.geo_filling ? ' · <span class="pill info">filling…</span>' : ''}`,
           (gt.length ? table(gt, [
             { t: 'Table', f: t => `<span class="mono">${esc(t.name)}</span>` },
-            { t: 'Holds', f: t => t.invert ? `every country except ${esc((t.countries || []).join(', '))}` : esc((t.countries || []).join(', ')) },
+            { t: 'Holds', f: t => (t.invert ? 'every country except ' : '') + (t.countries || []).map(c => FS.cc(c, { cls: 'pill' })).join(' ') },
             { t: 'Prefixes', f: t => num(t.prefixes), num: true },
             { t: 'In kernel', f: t => `<span class="${t.kernel_addresses === t.prefixes ? '' : 'sev-medium'}">${num(t.kernel_addresses)}</span>`, num: true },
             { t: 'Anycast left out', f: t => num(t.skipped_anycast), num: true },
@@ -223,11 +225,12 @@
       const devices = d.devices || [];
       const logged = d.logged || {};
       const ldevs = logged.devices || [];
-      const rule = d.countries_except && d.countries_except.length ? `every country except ${esc(d.countries_except.join(', '))}${d.home_country && !d.countries_except.includes(d.home_country) ? ` (and ${esc(d.home_country)}, home)` : ''}` : (d.countries || []).length ? `countries ${esc(d.countries.join(', '))}` : 'no country rule';
+      const ccs = (list) => (list || []).map(c => FS.cc(c, { cls: 'pill' })).join(' ');
+      const rule = d.countries_except && d.countries_except.length ? `every country except ${ccs(d.countries_except)}${d.home_country && !d.countries_except.includes(d.home_country) ? ` (and ${FS.cc(d.home_country, { cls: 'pill', title: 'home' })})` : ''}` : (d.countries || []).length ? `countries ${ccs(d.countries)}` : 'no country rule';
       const total = devices.reduce((a, x) => a + x.sessions, 0);
       const destRows = (x) => table(x.destinations || [], [
         { t: 'Destination', f: r => `<b>${esc(r.domain || r.name || r.ip)}</b>${(r.domain || r.name) ? `<div class="muted small mono">${esc(r.ip)}</div>` : ''}` },
-        { t: 'Country', f: r => `<a class="pill warn" href="#flows?ip=${encodeURIComponent(x.ip)}&country=${esc(r.country)}">${esc(r.country)}</a>`, sort: 'country' },
+        { t: 'Country', f: r => FS.cc(r.country, { cls: 'pill warn', href: `#flows?ip=${encodeURIComponent(x.ip)}&country=${esc(r.country)}` }), sort: 'country' },
         { t: 'Port / app', f: r => `${r.port || ''}${r.app ? ' · ' + esc(r.app) : ''}` },
         { t: 'Sessions', f: r => num(r.sessions), num: true, sort: 'sessions' },
         { t: 'Sent', f: r => bytes(r.bytes_out), num: true, sort: 'bytes_out' },
@@ -240,11 +243,11 @@
           ${kpi('Sessions', num(total), d.action === 'monitor' ? 'would be blocked' : 'blocked or attempted')}
           ${kpi('Packets logged by the rule', num(logged.packets || 0), (logged.log && logged.log.error) ? 'log not readable: ' + esc(logged.log.error) : `from ${esc((logged.log || {}).path || 'the filter log')}`, (logged.log && logged.log.error) ? 'warn' : '')}
         </div>
-        <div style="margin-top:14px">${card('By device: where the traffic went', devices.length ? devices.map(x => `<details ${devices.length <= 3 ? 'open' : ''} style="margin-bottom:8px"><summary style="cursor:pointer">${FS.hostLink(x.ip, x.name)} ${x.mac ? `<span class="muted small mono">${esc(x.mac)}</span>` : ''} · <b>${num(x.sessions)}</b> sessions · ${bytes(x.bytes_out)} sent · ${x.countries.map(c => `<span class="pill warn">${esc(c)}</span>`).join(' ')}</summary><div style="margin-top:8px">${destRows(x)}</div></details>`).join('') : `<div class="empty">No session from this policy's members reached a denied country in the last ${FS.state.hours}h${d.country_rule ? '' : ' (the policy has no country rule)'}. Anycast far ends are left out on purpose.</div>`,
+        <div style="margin-top:14px">${card('By device: where the traffic went', devices.length ? devices.map(x => `<details ${devices.length <= 3 ? 'open' : ''} style="margin-bottom:8px"><summary style="cursor:pointer">${FS.hostLink(x.ip, x.name)} ${x.mac ? `<span class="muted small mono">${esc(x.mac)}</span>` : ''} · <b>${num(x.sessions)}</b> sessions · ${bytes(x.bytes_out)} sent · ${x.countries.map(c => FS.cc(c, { cls: 'pill warn' })).join(' ')}</summary><div style="margin-top:8px">${destRows(x)}</div></details>`).join('') : `<div class="empty">No session from this policy's members reached a denied country in the last ${FS.state.hours}h${d.country_rule ? '' : ' (the policy has no country rule)'}. Anycast far ends are left out on purpose.</div>`,
           'from the session table; anycast far ends left out, as in the rule')}</div>
         <div style="margin-top:14px">${card('Logged by the firewall rule', ldevs.length ? ldevs.map(x => `<details style="margin-bottom:8px"><summary style="cursor:pointer">${FS.hostLink(x.ip, x.name)} · <b>${num(x.packets)}</b> packets</summary><div style="margin-top:8px">${table(x.destinations || [], [
             { t: 'Destination', f: r => `<b>${esc(r.domain || r.name || r.ip)}</b>${(r.domain || r.name) ? `<div class="muted small mono">${esc(r.ip)}</div>` : ''}` },
-            { t: 'Country', f: r => r.country ? `<span class="pill warn">${esc(r.country)}</span>` : '' },
+            { t: 'Country', f: r => FS.cc(r.country, { cls: 'pill warn' }) },
             { t: 'Port', f: r => `${r.port || ''}${r.proto ? '/' + esc(r.proto) : ''}` },
             { t: 'Packets', f: r => num(r.packets), num: true, sort: 'packets' },
             { t: 'Last', f: r => ago(r.last), sort: 'last' },

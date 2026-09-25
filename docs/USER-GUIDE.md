@@ -74,6 +74,9 @@ links to its detail page.
 
 ### Sessions
 
+Countries appear as two-letter codes throughout; hover one for the full
+name.
+
 The flow table: time, client, server, application (nDPI), server name (from
 DNS or from the proxy once interception is on), protocol and port, bytes
 each way, duration, verdict (observed or blocked and by which policy), TLS

@@ -619,14 +619,14 @@
       // no extra database; "home" is the country this gateway sits in.
       const homeCC = (abroad && abroad.home_country) || '';
       const adev = (abroad && abroad.devices) || [];
-      el.innerHTML += `<div style="margin-top:14px">${card(`Leaving the country${homeCC ? ` (outside ${esc(homeCC)})` : ''}`, adev.length ? table(adev, [
+      el.innerHTML += `<div style="margin-top:14px">${card(`Leaving the country${homeCC ? ` (outside ${esc(FS.countryName(homeCC))})` : ''}`, adev.length ? table(adev, [
         { t: 'Device', f: x => FS.hostLink(x.ip, x.name) + (x.mac ? `<div class="muted small mono">${esc(x.mac)}</div>` : ''), sort: 'name' },
         { t: 'Sessions abroad', f: x => `<a href="#flows?ip=${encodeURIComponent(x.ip)}&abroad=1">${num(x.sessions)}</a>`, num: true, sort: 'sessions' },
         { t: 'Via anycast', f: x => x.anycast_sessions ? `<a href="#flows?ip=${encodeURIComponent(x.ip)}&anycast=1" title="Reached at a nearby site of a globally announced service (${esc((x.anycast_destinations || []).map(d => d.domain || d.name || d.ip).slice(0, 3).join(', '))}); not counted as abroad">${num(x.anycast_sessions)}</a>` : '<span class="muted">0</span>', num: true, sort: 'anycast_sessions' },
-        { t: 'Countries', f: x => (x.countries || []).map(c => `<span class="pill warn" title="${num(c.sessions)} sessions, ${bytes(c.bytes_in + c.bytes_out)}">${esc(c.country)} ${num(c.sessions)}</span>`).join(' ') },
-        { t: 'Talking to', f: x => (x.countries || []).slice(0, 3).map(c => `<div class="small"><b>${esc(c.country)}</b>: ${(c.destinations || []).slice(0, 3).map(d => `<a href="#flows?ip=${encodeURIComponent(x.ip)}&country=${esc(c.country)}" title="${esc(d.ip)}">${esc(d.domain || d.name || d.ip)}</a>`).join(', ')}</div>`).join('') },
+        { t: 'Countries', f: x => (x.countries || []).map(c => FS.cc(c.country, { cls: 'pill warn', title: `${num(c.sessions)} sessions, ${bytes(c.bytes_in + c.bytes_out)}`, suffix: num(c.sessions) })).join(' ') },
+        { t: 'Talking to', f: x => (x.countries || []).slice(0, 3).map(c => `<div class="small"><b title="${esc(FS.countryName(c.country))}">${esc(c.country)}</b>: ${(c.destinations || []).slice(0, 3).map(d => `<a href="#flows?ip=${encodeURIComponent(x.ip)}&country=${esc(c.country)}" title="${esc(d.ip)}">${esc(d.domain || d.name || d.ip)}</a>`).join(', ')}</div>`).join('') },
         { t: '', f: x => `<button class="btn small" data-block-abroad="${esc(x.mac ? 'mac:' + x.mac : x.ip)}" data-cc="${esc((x.countries || []).map(c => c.country).join(','))}" title="Open a policy denying these countries for this device">Block…</button>` }]) : `<div class="empty">${homeCC ? 'No device reached another country in this window.' : 'The country of this gateway is not known yet: turn on Country lookup under Settings › enrich so sessions carry a country and "home" can be told.'}</div>`,
-        `<span class="muted small">${num(adev.length)} devices · window ${FS.state.hours}h · <a href="#flows?abroad=1">all sessions outside the country</a> · <a href="#flows?anycast=1">anycast sessions</a>. Anycast far ends (Cloudflare, public resolvers, root servers and the like) answer from a nearby site whatever country their range is registered in, so they are shown apart and never count as abroad.</span>`)}</div>`;
+        `<span class="muted small">${num(adev.length)} devices · window ${FS.state.hours}h · home ${homeCC ? FS.cc(homeCC, { cls: 'pill' }) : ''} · <a href="#flows?abroad=1">all sessions outside the country</a> · <a href="#flows?anycast=1">anycast sessions</a>. Anycast far ends (Cloudflare, public resolvers, root servers and the like) answer from a nearby site whatever country their range is registered in, so they are shown apart and never count as abroad.</span>`)}</div>`;
       FS.$$('[data-block-abroad]', el).forEach(b => b.onclick = () => FS.quickPolicy({ countries: b.dataset.cc.split(',').filter(Boolean), members: [b.dataset.blockAbroad] }));
 
       FS.$$('[data-stop]', el).forEach(b => b.onclick = async () => {
@@ -1271,7 +1271,7 @@
       <div style="margin-top:14px">${card('Where the traffic goes', `
         <div class="actions" style="margin-bottom:8px">
           <label class="small">Country
-            <select id="f-country"><option value="">any</option>${Object.keys(countries).sort().map(c => `<option value="${esc(c)}" ${ctx.params.country === c ? 'selected' : ''}>${esc(c)} (${countries[c]})</option>`).join('')}</select></label>
+            <select id="f-country"><option value="">any</option>${Object.keys(countries).sort().map(c => `<option value="${esc(c)}" ${ctx.params.country === c ? 'selected' : ''}>${esc(c)} · ${esc(FS.countryName(c))} (${countries[c]})</option>`).join('')}</select></label>
           <label class="small">Slower than (ms) <input id="f-lat" type="number" min="0" style="width:80px" value="${esc(ctx.params.max_latency || '')}" placeholder="any"></label>
           <label class="small">Within hops <input id="f-hops" type="number" min="1" max="64" style="width:70px" value="${esc(ctx.params.max_hops || '')}" placeholder="any"></label>
           <label class="small">Device
@@ -1474,14 +1474,14 @@
           { t: 'Hop', f: r => num(r.index), num: true, sort: 'index' },
           { t: 'Address', f: r => `<span class="mono small">${esc(r.ips)}</span>`, sort: 'ips' },
           { t: 'Name', f: r => esc(r.names) || '<span class="muted">none</span>', sort: 'names' },
-          { t: 'Country', f: r => esc(r.country) || '<span class="muted">unknown</span>', sort: 'country' },
+          { t: 'Country', f: r => r.country ? FS.cc(r.country, { cls: '' }) : '<span class="muted">unknown</span>', sort: 'country' },
           { t: 'Why', f: r => `<span class="small ${r.why.indexOf('not believed') === 0 ? 'sev-med' : 'muted'}">${esc(r.why)}</span>`, sort: 'why' }],
           { empty: 'Every hop has coordinates.' }),
           `${num(silent)} hop${silent === 1 ? '' : 's'} never answered and are not shown at all`)}</div>` : ''}
 
       <div style="margin-top:14px">${card('Destinations', table(dests.destinations || [], [
         { t: 'Destination', f: r => `<a href="#paths?${esc(routeQ(r.dst))}"><b>${esc(r.name || r.dst)}</b></a>${r.name ? `<div class="muted small mono">${esc(r.dst)}</div>` : ''}`, sort: 'dst' },
-        { t: 'Where', f: r => esc([r.city, r.country].filter(Boolean).join(', ')) || '<span class="muted">unknown</span>', sort: 'country' },
+        { t: 'Where', f: r => (r.city || r.country) ? `${esc(r.city || '')}${r.city && r.country ? ', ' : ''}${r.country ? FS.cc(r.country, { cls: '' }) : ''}` : '<span class="muted">unknown</span>', sort: 'country' },
         { t: 'Hops', f: r => num(r.hops), num: true, sort: 'hops' },
         { t: 'In / out (24h)', f: r => (r.bytes_in || r.bytes_out) ? `${bytes(r.bytes_in || 0)} / ${bytes(r.bytes_out || 0)}` : '<span class="muted">—</span>', num: true, sort: 'bytes_in' },
         { t: 'Answered', f: r => num(r.answered), num: true, sort: 'answered' },
