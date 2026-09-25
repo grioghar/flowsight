@@ -183,13 +183,14 @@
       const p = ctx.params; const qs = new URLSearchParams({ minutes: p.minutes || 30, limit: 500 });
       if (p.ip) qs.set('ip', p.ip); if (p.app) qs.set('app', p.app); if (p.blocked) qs.set('blocked', '1');
       if (p.country) qs.set('country', p.country); if (p.abroad) qs.set('abroad', '1'); if (p.anycast) qs.set('anycast', '1');
+      if (p.source) qs.set('source', p.source);
       const d = await get('/api/visibility/flows?' + qs);
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
       let rows = d.flows || [];
       if (p.domain) rows = rows.filter(f => (f.domain || '').includes(p.domain));
       const filt = (k, v) => v ? `<span class="chip"${k === 'country' ? ` title="${esc(FS.countryName(v))}"` : ''}>${esc(k)}: ${esc(v)} <button data-k="${esc(k)}">×</button></span>` : '';
       const home = d.home_country || '';
-      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${filt('country', p.country)}${p.abroad ? filt('only', 'outside ' + (home || 'home')) : ''}${p.anycast ? filt('only', 'anycast') : ''}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?abroad=1${p.ip ? '&ip=' + p.ip : ''}" title="${home ? 'Sessions whose far end is outside ' + esc(home) : 'Sessions whose far end is outside this country (needs the country database under Settings › enrich)'}">Outside ${esc(home || 'the country')}${home ? ` <span class="muted small">(${esc(FS.countryName(home))})</span>` : ''}</a><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
+      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${filt('country', p.country)}${filt('source', p.source)}${p.abroad ? filt('only', 'outside ' + (home || 'home')) : ''}${p.anycast ? filt('only', 'anycast') : ''}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?abroad=1${p.ip ? '&ip=' + p.ip : ''}" title="${home ? 'Sessions whose far end is outside ' + esc(home) : 'Sessions whose far end is outside this country (needs the country database under Settings › enrich)'}">Outside ${esc(home || 'the country')}${home ? ` <span class="muted small">(${esc(FS.countryName(home))})</span>` : ''}</a><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
         card(`${rows.length} sessions`, table(rows, [
           { t: 'When', f: r => when(r.end_ts || r.ts), sort: 'ts' },
           { t: 'Client', f: r => hostLink(r.src_ip, r.src_name), sort: 'src_ip' },
@@ -420,6 +421,28 @@
         { t: '', f: r => `<button class="btn small" data-ack="${r.id}">Ack</button>` }
       ]) : FS.empty('No open anomalies'));
       FS.$$('[data-ack]', el).forEach(b => b.onclick = async () => { await post('/api/baseline/ack', { id: Number(b.dataset.ack) }); FS.render(); });
+    }
+  });
+
+  // Flow sources - NetFlow, IPFIX, sFlow exporters
+  FS.registerPage('flowsources', {
+    title: 'Flow sources', refresh: 10,
+    async render(el) {
+      const st = await get('/api/netflow/status');
+      if (st.error) { el.innerHTML = FS.err('Flow sources unavailable: ' + st.error); return; }
+      const exporters = st.exporters || [];
+      const cols = [
+        { t: 'Address', k: 'address' },
+        { t: 'Protocol', k: 'protocol' },
+        { t: 'Records', f: r => num(r.records_total), num: true },
+        { t: 'Flows', f: r => num(r.flows_total), num: true },
+        { t: 'Dropped', f: r => num(r.drops_total), num: true },
+        { t: 'Templates', f: r => num(r.templates) },
+        { t: 'Last seen', f: r => ago(r.last_seen) }
+      ];
+      el.innerHTML = exporters.length
+        ? card('Connected exporters', table(exporters, cols))
+        : card('Connected exporters', '<div class="empty">No exporters connected</div>');
     }
   });
 })();

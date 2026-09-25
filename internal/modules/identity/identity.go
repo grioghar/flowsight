@@ -30,9 +30,9 @@ type Module struct {
 	ctx *core.Context
 
 	mu      sync.RWMutex
-	names   map[string]string       // ip -> best name
-	sources map[string]nameSource   // ip -> name source and confidence
-	macs    map[string]string       // ip -> mac
+	names   map[string]string     // ip -> best name
+	sources map[string]nameSource // ip -> name source and confidence
+	macs    map[string]string     // ip -> mac
 	ips     map[string][]string
 	seenAt  map[string]map[string]int64 // mac -> address -> last seen
 	vendors map[string]string           // oui -> vendor

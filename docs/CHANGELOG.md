@@ -12,6 +12,26 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252331
+
+**Extend visibility beyond the gateway with NetFlow, IPFIX, and sFlow.** A new
+netflow module collects flows from switches, routers, and other devices via
+UDP: NetFlow v5 (fixed format, legacy), NetFlow v9 (template-based), IPFIX
+(RFC 5101 with 64-bit counters), and sFlow v5 (packet sampling). Flows are
+enriched, stored, and searchable the same way as gateway-observed flows, so
+east-west traffic (PC to NAS, server to workstation) and switch-mediated paths
+become visible. The Sessions page filters by source; the new "Flow sources"
+card shows connected exporters, record counts and last-seen times. Configure
+ports, bind address, exporter CIDRs, sampling and max exporters in Settings.
+Start with the how-to: [Add a switch or another router as a flow source](howto/flow-sources.md).
+
+Also in this release: a session's recorded domain source is no longer
+overwritten with "none" when a later poll of the same flow carries no name;
+proxy sessions record `sni` or `http_host`; baseline findings name the
+device (identity name with the MAC in brackets) and say "only" when the
+baseline list is complete; the how-to index links the new guides; conflict
+markers left in the docs index by a merge were removed.
+
 ## 0.9.8r202609252329
 
 **Every name and domain carries where it came from.** Names now show their

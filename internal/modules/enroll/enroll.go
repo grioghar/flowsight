@@ -87,28 +87,28 @@ type ProxmoxRef struct {
 }
 
 type Device struct {
-	MAC         string `json:"mac"`
-	IP          string `json:"ip"`
-	IP6         string `json:"ip6,omitempty"`
-	Hostname    string `json:"hostname,omitempty"`
-	Vendor      string `json:"vendor,omitempty"`
-	VendorClass string `json:"vendor_class,omitempty"`
-	Fingerprint string `json:"fingerprint,omitempty"`
-	Zone        string `json:"zone,omitempty"`
-	Class       string `json:"class,omitempty"`
-	Confidence  string `json:"confidence,omitempty"`
-	Rule        string `json:"rule,omitempty"`
-	Why         string `json:"why,omitempty"`
-	Pinned      int    `json:"pinned"`
-	Randomized  int    `json:"randomized"`
-	GuestName   string `json:"guest_name,omitempty"`
-	GuestKind   string `json:"guest_kind,omitempty"`
-	User        string `json:"user,omitempty"`
-	Iface       string `json:"iface,omitempty"`
-	FirstSeen   int64  `json:"first_seen"`
-	LastSeen    int64  `json:"last_seen"`
-	NameSource  string `json:"name_source,omitempty"`  // where the hostname came from
-	NameConfidence int `json:"name_confidence,omitempty"` // 0-100 confidence score
+	MAC            string `json:"mac"`
+	IP             string `json:"ip"`
+	IP6            string `json:"ip6,omitempty"`
+	Hostname       string `json:"hostname,omitempty"`
+	Vendor         string `json:"vendor,omitempty"`
+	VendorClass    string `json:"vendor_class,omitempty"`
+	Fingerprint    string `json:"fingerprint,omitempty"`
+	Zone           string `json:"zone,omitempty"`
+	Class          string `json:"class,omitempty"`
+	Confidence     string `json:"confidence,omitempty"`
+	Rule           string `json:"rule,omitempty"`
+	Why            string `json:"why,omitempty"`
+	Pinned         int    `json:"pinned"`
+	Randomized     int    `json:"randomized"`
+	GuestName      string `json:"guest_name,omitempty"`
+	GuestKind      string `json:"guest_kind,omitempty"`
+	User           string `json:"user,omitempty"`
+	Iface          string `json:"iface,omitempty"`
+	FirstSeen      int64  `json:"first_seen"`
+	LastSeen       int64  `json:"last_seen"`
+	NameSource     string `json:"name_source,omitempty"`     // where the hostname came from
+	NameConfidence int    `json:"name_confidence,omitempty"` // 0-100 confidence score
 
 	// Set on the way out of the API, never stored: whether the policy's
 	// exclusion list keeps this device out of interception and inspection,

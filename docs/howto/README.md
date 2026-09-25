@@ -50,3 +50,5 @@ Proactive monitoring and proof.
 Read data and automate through the API.
 
 - [Automate through the API](api-automation.md) — use the API explorer, create tokens, examine the audit log, run curl examples
+- [Add a switch or another router as a flow source](flow-sources.md)
+- [Know when a device does something new](anomalies.md)

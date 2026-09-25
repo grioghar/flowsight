@@ -186,6 +186,12 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/mitm/status` | Stateful Packet Inspection: whether it is listening and what it has seen |  |
 | GET | `/api/mitm/requests` | The most recent decrypted requests with their headers | limit (rows), q (substring) |
 
+### netflow
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/netflow/status` | Per-exporter flow collector status: protocol, record and flow counts, drops, templates known, last seen | none |
+
 ### paths
 
 | Method | Path | What | Parameters |

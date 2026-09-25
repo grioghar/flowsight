@@ -241,6 +241,22 @@ Stateful Packet Inspection: the proxy hands each decrypted request and response 
 | `preview_bytes` | Body preview (bytes) | int | `4096` | How much of each body the proxy sends for decoding. Nothing is stored. |
 | `keep_requests` | Recent requests kept in memory | int | `500` |  |
 
+### netflow
+
+UDP flow collectors for NetFlow v5/v9, IPFIX, and sFlow v5. Extends visibility to traffic observed by switches, routers and other devices beyond the gateway.
+
+| Key | Setting | Type | Default | Notes |
+|---|---|---|---|---|
+| `enabled` | Enable netflow collectors | bool | `false` | Listeners open and accept flows only when enabled. |
+| `bind_address` | Bind address | string | `(LAN bind address)` | Interface to listen on; empty uses the platform default LAN address. |
+| `netflow5_port` | NetFlow v5 port | int | `2055` | UDP port for NetFlow v5 (fixed-format legacy flows). |
+| `netflow9_port` | NetFlow v9 port | int | `2055` | UDP port for NetFlow v9 (template-based flows). |
+| `ipfix_port` | IPFIX port | int | `2055` | UDP port for IPFIX (RFC 5101, 64-bit counters, millisecond timestamps). |
+| `sflow5_port` | sFlow v5 port | int | `6343` | UDP port for sFlow v5 (packet sampling with raw headers). |
+| `allowed_cidrs` | Allowed exporter CIDRs | text | `(RFC1918 + link-local)` | Newline-separated CIDR ranges. Empty defaults to 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, fe80::/10. |
+| `sampling_override` | Sampling multiplier | int | `0` | Multiply bytes and packets by this value (0 = use flow-provided rate). Set this if your exporter applies a fixed sampling ratio but does not export it per-flow. |
+| `max_exporters` | Maximum concurrent exporters | int | `100` | Drops records from exporters beyond this limit to protect memory. Increase if you have more than 100 devices exporting. |
+
 ### paths (Pro tier)
 
 Traces the route to destinations this network already contacts, and keeps what it finds.
