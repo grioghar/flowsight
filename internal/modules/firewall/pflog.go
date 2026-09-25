@@ -194,10 +194,15 @@ func (m *Module) readLog() error {
 	}
 	defer fh.Close()
 	m.mu.Lock()
-	off := m.logOff
-	if m.logSize > st.Size() || !m.logStarted {
-		off = 0 // rotated, or first read: from the start
+	if !m.logStarted {
+		// Where the previous process stopped, so a restart neither replays
+		// the file (every hit twice) nor skips what arrived meanwhile.
+		m.logOff, m.logSize = m.loadLogPos()
 		m.logStarted = true
+	}
+	off := m.logOff
+	if m.logSize > st.Size() || off > st.Size() {
+		off = 0 // rotated: from the start
 	}
 	m.logErr = ""
 	m.mu.Unlock()
@@ -248,7 +253,26 @@ func (m *Module) readLog() error {
 	m.logHits += int64(len(hits))
 	m.logUnknown += int64(unknown)
 	m.mu.Unlock()
+	if lines > 0 {
+		_ = m.ctx.Store.Exec(`INSERT OR REPLACE INTO meta VALUES('filterlog_pos', ?)`, fmt.Sprintf("%d %d", off, st.Size()))
+	}
 	return nil
+}
+
+func (m *Module) loadLogPos() (off, size int64) {
+	rows, err := m.ctx.Store.Rows(`SELECT value FROM meta WHERE key='filterlog_pos'`)
+	if err != nil || len(rows) == 0 {
+		return 0, 0
+	}
+	v, _ := rows[0]["value"].(string)
+	fmt.Sscanf(v, "%d %d", &off, &size)
+	return off, size
+}
+
+// dedupeHits removes the copies an earlier build inserted by replaying the
+// log after a restart; a packet is one row.
+func (m *Module) dedupeHits() error {
+	return m.ctx.Store.Exec(`DELETE FROM policy_hits WHERE id NOT IN (SELECT MIN(id) FROM policy_hits GROUP BY ts,label,src_ip,src_port,dst_ip,dst_port,proto)`)
 }
 
 func (m *Module) storeHits(hits []Hit) error {

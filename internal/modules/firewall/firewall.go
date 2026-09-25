@@ -134,6 +134,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		if err := ctx.Store.Exec(hitsSchema); err != nil {
 			return err
 		}
+		_ = m.dedupeHits()
 		ctx.Every("filter-log", 10*time.Second, m.readLog)
 		ctx.Every("hits-prune", time.Hour, m.pruneHits, core.Delayed())
 	}

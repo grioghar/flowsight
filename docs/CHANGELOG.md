@@ -12,6 +12,13 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252213
+
+**The filter-log reader keeps its place across restarts.** It re-read the
+file from the start after a restart and recorded every match twice. The
+position is now saved with the database, a rotated file is read from its
+start, and the copies already recorded are removed once at start.
+
 ## 0.9.8r202609252212
 
 **Logged matches always carry a country.** A destination the session table
