@@ -12,6 +12,12 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252004
+
+**The setup wizard is actually linked in.** The module registered itself
+but was never imported into the binary, so its page and routes were absent
+from the previous release. Fixed.
+
 ## 0.9.8r202609252003
 
 **Setup wizard.** A new 12-step guided wizard under **Administration › Setup
