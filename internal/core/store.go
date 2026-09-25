@@ -181,6 +181,19 @@ CREATE TABLE IF NOT EXISTS notifications (
     ts INTEGER NOT NULL, channel TEXT, rule TEXT, subject TEXT, ok INTEGER, error TEXT
 );
 
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id INTEGER PRIMARY KEY,
+    user TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'radius',
+    ipv4 TEXT, ipv6 TEXT, mac TEXT,
+    nas_ip TEXT, nas_id TEXT, acct_session_id TEXT,
+    start_ts INTEGER NOT NULL, last_seen INTEGER NOT NULL, stop_ts INTEGER,
+    bytes_in INTEGER DEFAULT 0, bytes_out INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS user_sessions_user ON user_sessions(user, stop_ts DESC);
+CREATE INDEX IF NOT EXISTS user_sessions_ipv4 ON user_sessions(ipv4, stop_ts DESC);
+CREATE INDEX IF NOT EXISTS user_sessions_ipv6 ON user_sessions(ipv6, stop_ts DESC);
+CREATE INDEX IF NOT EXISTS user_sessions_last_seen ON user_sessions(last_seen DESC);
+
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT, ts INTEGER);
 `
 

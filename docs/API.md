@@ -287,6 +287,16 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/tls/sessions` | Recent TLS sessions | ip (client), limit (rows), sni (substring) |
 | GET | `/api/tls/summary` | TLS versions, bump modes, issuers, problems | hours (window) |
 
+### users
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/users` | Active users and current sessions | user (filter by username) |
+| GET | `/api/users/{name}` | User details and session history | none |
+| GET | `/api/users/status` | Module status and configuration | detail (include LDAP cache info) |
+| POST | `/api/users/session` | Record a user login (for captive portals, scripts) | user (required), ipv4, ipv6, mac, nas_ip, nas_id |
+| POST | `/api/users/ldap/test` | Test LDAP connection and user lookup (non-persistent) | user (username to test) |
+
 ### ui
 
 | Method | Path | What | Parameters |

@@ -12,6 +12,20 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252315
+
+**Target policies to people, not machines.** A new Users module tracks user
+sessions from RADIUS accounting (FreeRADIUS, OPNsense captive portals,
+compatible systems) and optionally LDAP/AD group membership. Policies now
+accept `user:<name>` and `usergroup:<group>` member types, so all of a
+person's devices (laptop, phone, tablet) share one set of rules without
+having to list every device. Session details are visible in a new Users panel
+under Inventory, with source (RADIUS, manual, LDAP), addresses, and group
+membership when LDAP is enabled. Manual API endpoint and captive portal
+scripts can post logins via `POST /api/users/session`. Requires no new
+dependencies: RADIUS listener is built-in (net/crypto/md5), LDAP support is
+present as a framework for future expansion.
+
 ## 0.9.8r202609252307
 
 **No more "example.com" on every Cloudflare session.** With no SNI or Host

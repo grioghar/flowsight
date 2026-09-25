@@ -951,6 +951,35 @@ button each (the same probe as on the Devices page), and the per-zone table
 has the button too, so a bare hardware address can be probed and named
 where you meet it before you choose its zone.
 
+### Users
+
+Active user sessions tracked from RADIUS accounting (FreeRADIUS, OPNsense
+captive portals, compatible systems) or manual login APIs. Every logged-in
+user appears with their current addresses (IPv4 and IPv6), the device they
+logged in from (MAC and name from identity), the NAS that sent the accounting
+(network access server: router, VPN, portal), when they logged in and when
+they were last active.
+
+**User targeting in policies:** Policies can match individual users
+(`user:alice`, matching all of Alice's devices) or groups when LDAP/AD is
+configured (`usergroup:admins`, matching every device of an admin). This
+lets you apply rules by person rather than machine, so a developer's laptop,
+phone and tablet all follow the same policy.
+
+**Configuration:**
+- Set up RADIUS accounting from your auth system and point it at FlowSight
+  (Settings › Users › RADIUS accounting, UDP 1813 by default, shared secret
+  required).
+- Captive portals and scripts can manually post user logins via `POST
+  /api/users/session` without RADIUS.
+- LDAP/AD group lookup is supported as a framework; implement as needed for
+  group-based policy targeting.
+
+**Session details:** Click a user name to see all their sessions (current and
+recent), addresses used, MAC and device, group membership (when LDAP is on),
+and when they came and went. The Who tab in the policy editor lists all
+known users and suggests them for targeting.
+
 ### Scan
 
 **Identify** on a Devices row or a host page runs the fast profile and then
