@@ -650,6 +650,16 @@ func (c *Core) apiModuleSave(r *Req) (any, error) {
 	if Bool(before, "enabled", true) != Bool(after, "enabled", true) {
 		note = "restart flowsightd to apply the enable/disable change"
 	}
+	// The answer must not carry the secret just written: mask it exactly as
+	// the listing does, so a caller with write access learns nothing it did
+	// not already know.
+	for _, f := range info.Schema {
+		if f.Type == "secret" {
+			if v, ok := after[f.Key].(string); ok && v != "" {
+				after[f.Key] = "********"
+			}
+		}
+	}
 	return map[string]any{"ok": true, "settings": after, "note": note}, nil
 }
 

@@ -371,14 +371,26 @@ func (a *API) login(token string) (string, bool) {
 	_, _ = rand.Read(b)
 	sid := base64.RawURLEncoding.EncodeToString(b)
 	a.sessMu.Lock()
-	a.sessions[sid] = session{user: "token", expires: time.Now().Add(12 * time.Hour)}
-	if len(a.sessions) > 500 {
-		for k, s := range a.sessions {
-			if s.expires.Before(time.Now()) {
-				delete(a.sessions, k)
-			}
+	// Expired sessions go every time one is made, and the table has a
+	// ceiling: past it the soonest-to-expire are dropped, so a flood of
+	// logins cannot grow memory without bound.
+	now := time.Now()
+	for k, s := range a.sessions {
+		if s.expires.Before(now) {
+			delete(a.sessions, k)
 		}
 	}
+	for len(a.sessions) >= 1000 {
+		var oldest string
+		var oldestAt time.Time
+		for k, s := range a.sessions {
+			if oldest == "" || s.expires.Before(oldestAt) {
+				oldest, oldestAt = k, s.expires
+			}
+		}
+		delete(a.sessions, oldest)
+	}
+	a.sessions[sid] = session{user: "token", expires: now.Add(12 * time.Hour)}
 	a.sessMu.Unlock()
 	return sid, true
 }

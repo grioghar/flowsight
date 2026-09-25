@@ -398,3 +398,16 @@ Proxmox nodes and guests live on private networks:
 - Traffic analysis only covers routed inter-subnet traffic (source: "observed")
 - Agent socket queries (source: "sockets") provide visibility into guest-local connections
 - Declared dependencies (source: "declared") capture startup order, storage, and network config relationships
+
+**Settings replies never carry secrets.** `POST /api/system/modules/save`
+masks secret fields in its reply; a masked value sent back on a later save
+means "keep what is stored".
+
+**Update channel.** The updater accepts a manifest URL over https anywhere,
+or over plain http only to a private or loopback host; every asset is still
+verified by sha256 and an ed25519 signature against the key compiled into the
+binary before it replaces the running daemon.
+
+**Proxmox Notes.** Every value taken from a device (its name, hostname,
+addresses, banners) is escaped before it is written into a guest's Notes: no
+pipes, newlines, HTML, backticks or marker text can come from a device.

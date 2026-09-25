@@ -1216,6 +1216,17 @@ func toInt64(v any) int64 {
 	return 0
 }
 
+// mdCell makes a string safe inside a Markdown table cell in Proxmox Notes:
+// no pipes, no newlines, no HTML, no backticks, and never the marker text.
+func mdCell(v string) string {
+	r := strings.NewReplacer("|", "\\|", "\n", " ", "\r", " ", "<", "&lt;", ">", "&gt;", "`", "'", "flowsight:begin", "flowsight begin", "flowsight:end", "flowsight end")
+	v = r.Replace(v)
+	if len(v) > 300 {
+		v = v[:300] + "\u2026"
+	}
+	return v
+}
+
 func humanBytes(b int64) string {
 	const k = 1024
 	switch {
@@ -1238,9 +1249,13 @@ func renderNotesBlock(f notesFacts) string {
 	if name == "" {
 		name = g.Name
 	}
-	b.WriteString(fmt.Sprintf("### FlowSight: %s\n\n", name))
+	b.WriteString(fmt.Sprintf("### FlowSight: %s\n\n", mdCell(name)))
 	b.WriteString("| | |\n|---|---|\n")
+	// Names, hostnames and banners came from devices and their DHCP
+	// requests; they must not be able to close the table, inject HTML or
+	// break out of the block.
 	row := func(k, v string) {
+		v = mdCell(v)
 		if strings.TrimSpace(v) != "" {
 			b.WriteString(fmt.Sprintf("| %s | %s |\n", k, v))
 		}

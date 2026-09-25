@@ -12,6 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251958
+
+**Security review, first fixes.** A code review of FlowSight found that
+saving a module's settings echoed newly written secrets back in the reply;
+the reply now masks secret fields exactly as the listing does. Login
+sessions are pruned on every login and the table is capped, so a flood of
+logins cannot grow memory. The updater refuses a manifest URL over plain
+http unless the host is private or loopback (an operator's own relay), so a
+network attacker cannot choose which signed build the daemon sees; the
+signature check on every asset stands as before. Text that came from
+devices is escaped before it enters a guest's Proxmox Notes, so a hostname
+cannot break the table, inject HTML or forge the block markers. The
+review's report and the remaining items (inline script handlers in the
+web pages, to allow a stricter Content-Security-Policy) are being worked.
+
 ## 0.9.8r202609251946
 
 **Four pages renamed.** *Data out* is now **DLP**; *Deep inspection* is now

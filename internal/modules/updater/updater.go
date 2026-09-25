@@ -2,6 +2,7 @@
 package updater
 
 import (
+	"net/url"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -188,7 +189,35 @@ func (m *Module) url() string {
 	return m.manifestURL
 }
 
+// manifestURLAllowed says whether a manifest URL may be used at all. The
+// signature on every asset is what protects the binary; this guards the
+// channel: https anywhere, or plain http only to a private or loopback
+// host (an operator's own relay on the LAN). A plain-http public URL is
+// refused, since a network attacker could then choose which signed build
+// (an old one, say) the daemon sees.
+func manifestURLAllowed(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("manifest_url is not a valid URL")
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		host := u.Hostname()
+		ip := net.ParseIP(host)
+		if host == "localhost" || (ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())) {
+			return nil
+		}
+		return fmt.Errorf("manifest_url over plain http is allowed only to a private or loopback host")
+	}
+	return fmt.Errorf("manifest_url must be https (or http to a private host)")
+}
+
 func (m *Module) fetchManifest() (*Manifest, error) {
+	if err := manifestURLAllowed(m.url()); err != nil {
+		return nil, err
+	}
 	req, _ := http.NewRequest("GET", m.url(), nil)
 	resp, err := m.client.Do(req)
 	if err != nil {
