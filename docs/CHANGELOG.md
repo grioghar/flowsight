@@ -12,6 +12,13 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252144
+
+**Kernel address count, second attempt.** For a table inside an anchor,
+`pfctl -vvsT` prints the anchor path as a third column, and the parser had
+taken the last column as the table name. `GET /api/firewall/table` also
+accepts `debug=1` to return the raw pfctl listing.
+
 ## 0.9.8r202609252138
 
 **Country tables are remembered across a restart.** The tables live on in

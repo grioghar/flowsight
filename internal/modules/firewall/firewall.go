@@ -404,8 +404,13 @@ func (m *Module) tableSizes(anchor string) map[string]int {
 			continue
 		}
 		if !strings.HasPrefix(l, " ") && !strings.HasPrefix(l, "\t") {
+			// "<flags>\t<name>[\t<anchor>]": a table in an anchor carries the
+			// anchor path as a third column, so the name is the second field.
 			f := strings.Fields(t)
-			cur = f[len(f)-1]
+			cur = ""
+			if len(f) >= 2 && tableRe.MatchString(f[1]) {
+				cur = f[1]
+			}
 			continue
 		}
 		if cur != "" && strings.HasPrefix(t, "Addresses:") {
@@ -425,6 +430,13 @@ func (m *Module) apiTable(r *core.Req) (any, error) {
 		return map[string]any{"available": false}, nil
 	}
 	out := map[string]any{"name": name, "kernel_addresses": m.tableSizes("policy")[name]}
+	if r.Q("debug", "") != "" {
+		raw, _ := m.pfctl("-a", rootAnchor+"/policy", "-vvsT")
+		if len(raw) > 4000 {
+			raw = raw[:4000]
+		}
+		out["raw"] = raw
+	}
 	if ip := strings.TrimSpace(r.Q("ip", "")); ip != "" {
 		if net.ParseIP(ip) == nil {
 			return nil, fmt.Errorf("ip must be an address")
