@@ -192,7 +192,7 @@
         card(`${rows.length} sessions`, table(rows, [
           { t: 'When', f: r => when(r.end_ts || r.ts), sort: 'ts' },
           { t: 'Client', f: r => hostLink(r.src_ip, r.src_name), sort: 'src_ip' },
-          { t: 'Server', f: r => `${FS.ipTag(r.dst_ip, r.dst_name)}:${r.dst_port}${r.country ? ` <a class="pill ${home && r.country.toUpperCase() !== home ? 'warn' : ''}" href="#flows?country=${esc(r.country)}${p.ip ? '&ip=' + p.ip : ''}" title="Sessions to ${esc(r.country)}">${esc(r.country)}</a>` : ''}`, sort: 'dst_ip' },
+          { t: 'Server', f: r => `${FS.ipTag(r.dst_ip, r.dst_name)}:${r.dst_port}${r.country && r.country !== '-' ? ` <a class="pill ${home && r.country.toUpperCase() !== home ? 'warn' : ''}" href="#flows?country=${esc(r.country)}${p.ip ? '&ip=' + p.ip : ''}" title="Sessions to ${esc(r.country)}">${esc(r.country)}</a>` : ''}`, sort: 'dst_ip' },
           { t: 'App', f: r => `<a href="#flows?app=${encodeURIComponent(r.app || '')}">${esc(r.app || '')}</a> <span class="muted small">${esc(r.category || '')}</span>`, sort: 'app' },
           { t: 'Site', f: r => domainLink(r.domain), sort: 'domain' },
           { t: 'Proto', f: r => `${esc(r.proto || '')}${r.tls_version ? ' <span class="muted small">' + esc(r.tls_version) + '</span>' : ''}`, sort: 'proto' },

@@ -127,6 +127,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("catalog", time.Hour, m.loadCatalog)
 
 	ctx.Route("GET", "/api/visibility/summary", m.apiSummary, core.Doc("Throughput, active flows and hosts right now"))
+	// Flows recorded before country lookup was on, or before this release,
+	// have no country; fill them in behind the scenes, a few hundred a minute,
+	// so the "abroad" views cover the whole retention window.
+	ctx.Every("country_backfill", time.Minute, m.backfillCountries, core.Delayed())
 	ctx.Route("GET", "/api/visibility/abroad", m.apiAbroad, core.Doc("Per local device, the foreign countries it reached, sessions and bytes per country, and the destinations behind them"),
 		core.Params("hours", "window, default 24", "ip", "one device only"))
 	ctx.Route("GET", "/api/visibility/flows", m.apiFlows, core.Doc("Recent flows"),
@@ -418,6 +422,12 @@ func (m *Module) poll() error {
 	if err := m.ctx.Store.AddMetrics(now, metrics); err != nil {
 		return err
 	}
+	look, _ := m.ctx.Service("enrich").(core.CountryLookup)
+	var isLocal func(string) bool
+	if m.identity != nil {
+		isLocal = m.identity.IsLocal
+	}
+	core.FillCountries(flows, look, isLocal)
 	if err := m.ctx.Store.AddFlows(flows); err != nil {
 		return err
 	}
@@ -597,7 +607,7 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 	}
 	home := m.homeCountry()
 	if r.Q("abroad", "") != "" && home != "" {
-		q += ` AND country<>'' AND upper(country)<>?`
+		q += ` AND country<>'' AND country<>'-' AND upper(country)<>?`
 		args = append(args, home)
 	}
 	q += ` ORDER BY COALESCE(end_ts,ts) DESC LIMIT ?`
@@ -634,7 +644,7 @@ func (m *Module) apiAbroad(r *core.Req) (any, error) {
 	home := m.homeCountry()
 	q := `SELECT src_ip, upper(country) AS cc, dst_ip, MAX(domain) AS domain, COUNT(*) AS sessions,
 		SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out, MAX(COALESCE(end_ts,ts)) AS last_seen
-		FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>''`
+		FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-'`
 	args := []any{since}
 	if home != "" {
 		q += ` AND upper(country)<>?`
@@ -1243,6 +1253,45 @@ func (m *Module) addressesOf(ip string) []string {
 		if len(list) > 1 {
 			return list
 		}
+	}
+	return nil
+}
+
+// backfillCountries stamps countries on recent flows that lack one.
+func (m *Module) backfillCountries() error {
+	look, _ := m.ctx.Service("enrich").(core.CountryLookup)
+	if look == nil {
+		return nil
+	}
+	since := time.Now().Add(-7 * 24 * time.Hour).Unix()
+	rows, err := m.ctx.Store.Rows(`SELECT id, src_ip, dst_ip FROM flows WHERE ts >= ? AND (country IS NULL OR country='') ORDER BY id DESC LIMIT 500`, since)
+	if err != nil || len(rows) == 0 {
+		return err
+	}
+	memo := map[string]string{}
+	cc := func(ip string) string {
+		if ip == "" || (m.identity != nil && m.identity.IsLocal(ip)) {
+			return ""
+		}
+		if v, ok := memo[ip]; ok {
+			return v
+		}
+		v := look.CountryOf(ip)
+		memo[ip] = v
+		return v
+	}
+	for _, r := range rows {
+		id := toI(r["id"])
+		dst, _ := r["dst_ip"].(string)
+		src, _ := r["src_ip"].(string)
+		c := cc(dst)
+		if c == "" {
+			c = cc(src)
+		}
+		if c == "" {
+			c = "-" // looked at, nothing to say: do not look again
+		}
+		_ = m.ctx.Store.Exec(`UPDATE flows SET country=? WHERE id=?`, c, id)
 	}
 	return nil
 }

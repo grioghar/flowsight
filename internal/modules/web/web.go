@@ -556,6 +556,13 @@ func (m *Module) pollLog() error {
 		ups = append(ups, core.HostUpdate{IP: ip, Blocked: c, Source: "web"})
 	}
 	_ = m.ctx.Store.UpsertHosts(ups)
+	if look, ok := m.ctx.Service("enrich").(core.CountryLookup); ok {
+		var isLocal func(string) bool
+		if m.identity != nil {
+			isLocal = m.identity.IsLocal
+		}
+		core.FillCountries(flows, look, isLocal)
+	}
 	if err := m.ctx.Store.AddFlows(flows); err != nil {
 		return err
 	}

@@ -1008,3 +1008,39 @@ func (s *Store) Stats() map[string]any {
 	}
 	return out
 }
+
+// CountryLookup is what the enrich module publishes as "enrich": the
+// country of a public address from the local database.
+type CountryLookup interface{ CountryOf(ip string) string }
+
+// FillCountries stamps the far end's country on flows that arrived without
+// one (the flow probe does not know countries; the proxy log never does).
+// The local end is the source for outbound flows and the destination for
+// inbound ones, so whichever side is not local is looked up.
+func FillCountries(flows []Flow, look CountryLookup, isLocal func(string) bool) {
+	if look == nil {
+		return
+	}
+	memo := map[string]string{}
+	cc := func(ip string) string {
+		if ip == "" || (isLocal != nil && isLocal(ip)) {
+			return ""
+		}
+		if v, ok := memo[ip]; ok {
+			return v
+		}
+		v := look.CountryOf(ip)
+		memo[ip] = v
+		return v
+	}
+	for i := range flows {
+		if flows[i].Country != "" {
+			continue
+		}
+		if c := cc(flows[i].DstIP); c != "" {
+			flows[i].Country = c
+			continue
+		}
+		flows[i].Country = cc(flows[i].SrcIP)
+	}
+}

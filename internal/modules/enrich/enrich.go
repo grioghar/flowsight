@@ -171,6 +171,31 @@ func (m *Module) Enabled() (bool, bool) {
 // Lookup answers from the cache and the database at once, and queues
 // reverse lookups for names it does not have yet. It never blocks on the
 // network, so a page render stays fast; the next call has the names.
+// CountryOf is the ISO country of a public address from the local
+// database, or "" when the database is off or the address is local. It
+// queues no reverse lookups and is cheap enough to call per flow.
+func (m *Module) CountryOf(ip string) string {
+	_, geo := m.Enabled()
+	if !geo {
+		return ""
+	}
+	addr := net.ParseIP(strings.TrimSpace(ip))
+	if addr == nil || addr.IsPrivate() || addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.IsMulticast() || addr.IsUnspecified() {
+		return ""
+	}
+	if m.identity != nil && m.identity.IsLocal(addr.String()) {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.geo == nil {
+		return ""
+	}
+	info := Info{IP: addr.String()}
+	m.place(addr, &info)
+	return info.Country
+}
+
 func (m *Module) Lookup(ips []string) map[string]Info {
 	rd, geo := m.Enabled()
 	out := make(map[string]Info, len(ips))

@@ -12,6 +12,14 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252040
+
+**Sessions carry the far end's country.** The flow probe never reported
+one and the proxy log cannot, so every session had an empty country and the
+new abroad views were empty. Sessions are now stamped at ingest from the
+local country database (both the probe's flows and the proxy's), and a quiet
+background pass fills in the last seven days a few hundred rows a minute.
+
 ## 0.9.8r202609252038
 
 **What leaves the country, per device.** Sessions now filter by the far
