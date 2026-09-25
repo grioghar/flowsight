@@ -1708,13 +1708,42 @@ type zoneResolver struct {
 
 func (zr *zoneResolver) Resolve(member string) []string {
 	if strings.HasPrefix(member, "zone:") {
+		// A zone is its subnet plus every device assigned to it, wherever
+		// that device currently sits (a device can be filed under IoT while
+		// still holding a lease on another network) and whichever address
+		// family it is using; a v4 subnet alone would leave the same
+		// devices' IPv6 traffic outside every rule.
 		zoneID := strings.TrimPrefix(member, "zone:")
-		for _, zone := range zr.m.zones.Zones {
-			if zone.ID == zoneID {
-				return []string{zone.Subnet}
+		seen := map[string]bool{}
+		var out []string
+		add := func(c string) {
+			if c != "" && !seen[c] {
+				seen[c] = true
+				out = append(out, c)
 			}
 		}
-		return nil
+		for _, zone := range zr.m.zones.Zones {
+			if zone.ID == zoneID {
+				add(zone.Subnet)
+			}
+		}
+		zr.m.mu.RLock()
+		var macs []string
+		for _, d := range zr.m.devices {
+			if d.Zone == zoneID && d.MAC != "" {
+				macs = append(macs, d.MAC)
+			}
+		}
+		zr.m.mu.RUnlock()
+		sort.Strings(macs)
+		for _, mac := range macs {
+			if zr.delegate != nil {
+				for _, c := range zr.delegate.Resolve("mac:" + strings.ToLower(mac)) {
+					add(c)
+				}
+			}
+		}
+		return out
 	}
 
 	if zr.delegate != nil {

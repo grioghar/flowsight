@@ -47,9 +47,11 @@ type TableInfo struct {
 	Invert    bool     `json:"invert,omitempty"` // holds every country except Countries
 	Prefixes  int      `json:"prefixes"`
 	// SkippedAnycast counts ranges left out because they are anycast.
-	SkippedAnycast int   `json:"skipped_anycast"`
-	Epoch          int64 `json:"epoch"` // database build epoch when last filled
-	Updated        int64 `json:"updated"`
+	SkippedAnycast int `json:"skipped_anycast"`
+	// Kernel is what pf itself reports holding, read at status time.
+	Kernel  int   `json:"kernel_addresses"`
+	Epoch   int64 `json:"epoch"` // database build epoch when last filled
+	Updated int64 `json:"updated"`
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -113,6 +115,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 		ctx.Every("geo-tables", time.Hour, m.refreshGeoTables, core.Delayed())
 	}
 	ctx.Route("GET", "/api/firewall/status", m.apiStatus, core.Doc("Anchor state, tables and rule counters"))
+	ctx.Route("GET", "/api/firewall/table", m.apiTable, core.Params("name", "table in the policy anchor (fs_geo_<cc>, fs_geox_<policy>, fs_app_<policy>)", "ip", "optional address to test for membership"),
+		core.Doc("What the kernel holds for one policy table: address count, and whether a given address is in it"))
 	return nil
 }
 
@@ -364,7 +368,65 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	}
 	sort.Slice(geoTables, func(i, j int) bool { return geoTables[i].Name < geoTables[j].Name })
 	m.mu.Unlock()
+	if len(geoTables) > 0 {
+		sizes := m.tableSizes("policy")
+		for i, t := range geoTables {
+			cp := *t
+			cp.Kernel = sizes[t.Name]
+			geoTables[i] = &cp
+		}
+	}
 	main, _ := m.pfctl("-sr")
 	return map[string]any{"available": true, "anchors": list, "counters": counters,
 		"referenced": strings.Contains(main, "flowsight"), "geo_tables": geoTables, "geo_filling": m.geoFilling}, nil
+}
+
+// tableSizes reads the kernel's own address counts for the tables of an
+// anchor, from pfctl -vsT ("Addresses: N" under each table line).
+func (m *Module) tableSizes(anchor string) map[string]int {
+	out, err := m.pfctl("-a", rootAnchor+"/"+anchor, "-vsT")
+	if err != nil {
+		return nil
+	}
+	sizes := map[string]int{}
+	cur := ""
+	for _, l := range strings.Split(out, "\n") {
+		t := strings.TrimSpace(l)
+		if t == "" {
+			continue
+		}
+		if !strings.HasPrefix(l, " ") && !strings.HasPrefix(l, "\t") {
+			f := strings.Fields(t)
+			cur = f[len(f)-1]
+			continue
+		}
+		if cur != "" && strings.HasPrefix(t, "Addresses:") {
+			n, _ := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(t, "Addresses:")))
+			sizes[cur] = n
+		}
+	}
+	return sizes
+}
+
+func (m *Module) apiTable(r *core.Req) (any, error) {
+	name := r.Q("name", "")
+	if !tableRe.MatchString(name) {
+		return nil, fmt.Errorf("name must be a table name")
+	}
+	if !m.Available() {
+		return map[string]any{"available": false}, nil
+	}
+	out := map[string]any{"name": name, "kernel_addresses": m.tableSizes("policy")[name]}
+	if ip := strings.TrimSpace(r.Q("ip", "")); ip != "" {
+		if net.ParseIP(ip) == nil {
+			return nil, fmt.Errorf("ip must be an address")
+		}
+		res, err := m.pfctl("-a", rootAnchor+"/policy", "-t", name, "-T", "test", ip)
+		// pfctl exits non-zero when the address is not in the table; the text
+		// says which of the two it was.
+		out["ip"] = ip
+		out["in_table"] = err == nil && strings.Contains(res, "match")
+		out["detail"] = strings.TrimSpace(res)
+	}
+	return out, nil
 }

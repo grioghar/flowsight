@@ -42,6 +42,41 @@
           { t: 'Denies', f: summary },
           { t: '', f: p => `<button class="btn small" data-edit="${esc(p.name)}">Edit</button> <button class="btn small danger" data-del="${esc(p.name)}">Delete</button>` }]), '') +
         (plan.providers ? card('Last plan', `<div class="small muted">${when(plan.at)} · ${plan.changes} provider(s) would change</div>` + (plan.providers || []).map(pp => `<div style="margin-top:8px"><b>${esc(pp.name)}</b> ${pp.error ? pill('error', 'bad') : pp.changed ? pill('changes', 'warn') : pill('in sync', 'ok')} <span class="muted small">${esc(pp.note || '')}</span>${pp.error ? `<div class="sev-high small">${esc(pp.error)}</div>` : ''}${pp.diff ? `<details><summary class="small">diff</summary><pre class="code">${FS.diffHtml(pp.diff.slice(0, 20000))}</pre></details>` : ''}</div>`).join('')) : '');
+      // Country tables and the anchor's live counters: the proof that a
+      // country rule exists in pf, what it holds, and whether it has matched.
+      (async () => {
+        const fw = await get('/api/firewall/status');
+        if (!fw || fw.available === false) return;
+        const gt = fw.geo_tables || [];
+        const pc = (fw.counters && fw.counters.policy) ? fw.counters.policy.filter(r => r.label) : [];
+        if (!gt.length && !pc.length) return;
+        const box = document.createElement('div');
+        box.style.marginTop = '14px';
+        box.innerHTML = card(`Firewall tables and rules${fw.geo_filling ? ' · <span class="pill info">filling…</span>' : ''}`,
+          (gt.length ? table(gt, [
+            { t: 'Table', f: t => `<span class="mono">${esc(t.name)}</span>` },
+            { t: 'Holds', f: t => t.invert ? `every country except ${esc((t.countries || []).join(', '))}` : esc((t.countries || []).join(', ')) },
+            { t: 'Prefixes', f: t => num(t.prefixes), num: true },
+            { t: 'In kernel', f: t => `<span class="${t.kernel_addresses === t.prefixes ? '' : 'sev-medium'}">${num(t.kernel_addresses)}</span>`, num: true },
+            { t: 'Anycast left out', f: t => num(t.skipped_anycast), num: true },
+            { t: 'Database', f: t => t.epoch ? new Date(t.epoch * 1000).toISOString().slice(0, 10) : '' },
+            { t: 'Filled', f: t => t.updated ? ago(t.updated) : '' }]) : '') +
+          (pc.length ? `<div style="margin-top:10px">${table(pc, [
+            { t: 'Rule', f: r => `<span class="mono small">${esc(r.rule)}</span>` },
+            { t: 'Evaluated', f: r => num(r.evaluations), num: true },
+            { t: 'Matched packets', f: r => `<b>${num(r.packets)}</b>`, num: true },
+            { t: 'Bytes', f: r => bytes(r.bytes), num: true },
+            { t: 'States', f: r => num(r.states), num: true }])}</div>` : '') +
+          `<form class="f" id="tbltest" style="margin-top:10px;display:flex;gap:8px;align-items:end"><div><label>Is an address in a table?</label><input type="text" name="ip" placeholder="34.249.231.250" style="width:200px"></div><div><label>Table</label><select name="name">${gt.map(t => `<option>${esc(t.name)}</option>`).join('')}</select></div><button class="btn">Test</button><span class="small muted" id="tblres"></span></form>
+          <div class="help">Monitor-mode rules use <span class="mono">match</span> and count without dropping; the packet count rises on the first new connection to an address in the table. Anycast ranges are left out of every table on purpose.</div>`);
+        el.appendChild(box);
+        const f = FS.$('#tbltest', box);
+        if (f) f.onsubmit = async (e) => {
+          e.preventDefault();
+          const r = await get(`/api/firewall/table?name=${encodeURIComponent(f.name.value)}&ip=${encodeURIComponent(f.ip.value.trim())}`);
+          FS.$('#tblres', box).textContent = r.error ? r.error : (r.in_table ? `${r.ip} is in ${r.name}` : `${r.ip} is not in ${r.name}`) + ` (kernel holds ${num(r.kernel_addresses)})`;
+        };
+      })();
       FS.$('#new', el).onclick = () => FS.policyEditor(null, doc, caps);
       FS.$$('[data-edit]', el).forEach(b => b.onclick = () => FS.policyEditor(doc.policies.find(p => p.name === b.dataset.edit), doc, caps));
       FS.$$('[data-del]', el).forEach(b => b.onclick = async () => { if (!await FS.confirm(`Delete policy "${b.dataset.del}"?`)) return; const r = await post('/api/policy/policy/delete', { name: b.dataset.del }); if (r.error) FS.toast(r.error, true); else FS.render(); });

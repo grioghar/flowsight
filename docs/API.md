@@ -125,6 +125,7 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 
 | Method | Path | What | Parameters |
 |---|---|---|---|
+| GET | `/api/firewall/table` | What the kernel holds for one policy table (`name`), and whether `ip` is in it |  |
 | GET | `/api/firewall/status` | Anchor state, tables and rule counters |  |
 
 ### identity

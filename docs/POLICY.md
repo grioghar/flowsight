@@ -107,8 +107,11 @@ from the policy's members to that table. On apply each table is filled in a
 single pass over the database (both address families). The tables follow the
 database: an hourly check rebuilds any table filled from an older build, and a
 restarted daemon refills them once. `GET /api/firewall/status` lists them
-under `geo_tables` with their countries, prefix count, database epoch and
-fill time; *Protect › Firewall Analysis Engine (FAE)* shows the same.
+under `geo_tables` with their countries, prefix count, what the kernel
+holds, anycast ranges left out, database epoch and fill time;
+`GET /api/firewall/table?name=&ip=` asks the kernel whether one address is
+in a table; the *Firewall tables and rules* card on the Policies page shows
+both with the anchor's live rule counters.
 
 **Anycast.** Ranges announced from many sites at once (Cloudflare, the
 public resolvers, the root servers, and the forty-odd thousand prefixes the

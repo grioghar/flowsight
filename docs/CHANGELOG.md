@@ -12,6 +12,24 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252118
+
+**Country tables, proven from the kernel.** The first live country policy
+(monitor mode, `zone:iot`, every country except the home one) filled its
+table with 1.07 million prefixes in about three minutes, 14 thousand
+anycast ranges left out. To see that from the UI rather than take it on
+trust, the Policies page gains a **Firewall tables and rules** card: each
+table with prefixes built and what pf reports holding, the anchor's rules
+with their live counters, and a box that asks the kernel whether an address
+is in a table (`GET /api/firewall/table?name=&ip=`).
+
+**`zone:<id>` now means the zone's devices too.** A zone member used to
+resolve to the zone's subnet alone, so devices filed under IoT while still
+holding a lease elsewhere, and every device's IPv6 addresses, fell outside
+the rule (pf had inferred `inet`). It now resolves to the subnet plus every
+device assigned to the zone in both address families. The home country is
+no longer listed twice on an except-table.
+
 ## 0.9.8r202609252110
 
 **A policy whose members are all excluded now says so.** The IoT subnet on

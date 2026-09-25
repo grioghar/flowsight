@@ -266,7 +266,7 @@ func (m *Module) populateGeoTables(specs []geoSpec, force bool) error {
 			continue
 		}
 		ccs := g.Countries
-		if g.Invert && home != "" {
+		if g.Invert && home != "" && !containsCC(ccs, home) {
 			ccs = append(append([]string(nil), ccs...), home)
 		}
 		prefixes, skipped, err := geo.NetworksFor(ccs, g.Invert, skip)
@@ -325,4 +325,13 @@ func (m *Module) fillGeoTablesAsync(specs []geoSpec, force bool) {
 			m.ctx.Event("firewall", "country tables not filled", map[string]any{"error": err.Error()})
 		}
 	}()
+}
+
+func containsCC(list []string, cc string) bool {
+	for _, x := range list {
+		if strings.EqualFold(x, cc) {
+			return true
+		}
+	}
+	return false
 }

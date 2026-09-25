@@ -73,10 +73,19 @@ Two ways in:
   means "home only") › action *block* › save.
 
 Applying writes the rule set to FlowSight's own pf anchor; your OPNsense
-firewall rules are not touched. *Protect › Firewall Analysis Engine (FAE)*
-shows the anchor's tables with their prefix counts, and *Monitor › Sessions*
-› **Blocked only** shows what the policy stopped, with the policy's name on
-each row.
+firewall rules are not touched. The **Firewall tables and rules** card at
+the foot of *Protect › Policies* shows each country table (prefixes built,
+what the kernel holds, anycast ranges left out), the anchor's rules with
+their live match counters, and a box to test whether a given address is in
+a table. *Monitor › Sessions* › **Blocked only** shows what the policy
+stopped, with the policy's name on each row.
+
+Two things to know about `zone:iot` as a member: it means the zone's subnet
+plus every device assigned to the zone, wherever that device currently sits
+and in both address families. And if the zone's subnet is in the policy
+document's *exclusions* (as it often is, to keep IoT out of web
+interception), tick **Apply even to hosts in the exclusions list** on the
+Who tab; the plan warns when exclusions would otherwise swallow the policy.
 
 ## What to expect, and the limits
 
