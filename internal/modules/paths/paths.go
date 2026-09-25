@@ -294,6 +294,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Destinations with a measured route"), core.Params("limit", "rows"))
 	ctx.Route("GET", "/api/paths/path", m.apiPath, core.Needs("paths.map"),
 		core.Doc("Every hop to one destination, with names and locations"), core.Params("dst", "destination"))
+	ctx.Route("GET", "/api/paths/who", m.apiWho, core.Needs("paths.map"), core.Params("dsts", "comma-separated destination addresses", "hours", "window, default 24"),
+		core.Doc("The devices whose traffic reached any of the given destinations: what a hop click on the map sets its device filter to"))
 	ctx.Route("GET", "/api/paths/devices", m.apiDevices, core.Needs("paths.map"),
 		core.Doc("Devices whose traffic has a measured route, one entry per device"))
 	ctx.Route("GET", "/api/paths/graph", m.apiGraph, core.Needs("paths.map"),

@@ -294,5 +294,33 @@ func (m *Module) apiHits(r *core.Req) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("hits: %w", err)
 	}
-	return map[string]any{"hits": rows, "log": m.LogStatus(), "since": since}, nil
+	out := map[string]any{"hits": rows, "log": m.LogStatus(), "since": since}
+	if r.Q("debug", "") != "" {
+		// The last lines of the log as they are, and the rule numbering the
+		// mapping relies on: for when the reader finds nothing and the
+		// counters say it should have.
+		out["rule_labels"] = m.ruleLabels()
+		if b, err := os.ReadFile(m.logPath()); err == nil {
+			lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+			if len(lines) > 12 {
+				lines = lines[len(lines)-12:]
+			}
+			for i := range lines {
+				if len(lines[i]) > 400 {
+					lines[i] = lines[i][:400]
+				}
+			}
+			out["tail"] = lines
+			var ours []string
+			for _, l := range strings.Split(string(b), "\n") {
+				if strings.Contains(l, "flowsight") && len(ours) < 8 {
+					ours = append(ours, l)
+				}
+			}
+			out["tail_flowsight"] = ours
+		} else {
+			out["tail_error"] = err.Error()
+		}
+	}
+	return out, nil
 }

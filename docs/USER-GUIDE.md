@@ -237,6 +237,11 @@ each other, is not seen by any of this; only routed traffic is.
 
 ### Map (Pro)
 
+Clicking a hop sets the **Device** filter to the devices whose traffic ran
+through it (one device selects itself; several appear as *N devices through
+the clicked hop*), so the map narrows to their routes. *Every device* clears
+it.
+
 Where traffic actually goes, measured rather than assumed. Everything else in
 FlowSight watches the first hop; this traces the rest of the route and keeps
 what it finds.

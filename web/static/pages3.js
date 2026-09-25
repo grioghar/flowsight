@@ -702,10 +702,11 @@
       if (ctx.params.max_hops) q.push('max_hops=' + encodeURIComponent(ctx.params.max_hops));
       const picked = ctx.params.dst || '';
       // Choosing a route must not throw away the filters that led to it.
-      const routeQ = (dst, hop) => {
+      const routeQ = (dst, hop, device) => {
         const p = [];
         ['device', 'country', 'max_latency', 'max_hops'].forEach(k => {
-          if (ctx.params[k]) p.push(k + '=' + encodeURIComponent(ctx.params[k]));
+          const v = (k === 'device' && device !== undefined) ? device : ctx.params[k];
+          if (v) p.push(k + '=' + encodeURIComponent(v));
         });
         if (dst) p.push('dst=' + encodeURIComponent(dst));
         if (hop) p.push('hop=' + encodeURIComponent(hop));
@@ -1274,7 +1275,7 @@
           <label class="small">Slower than (ms) <input id="f-lat" type="number" min="0" style="width:80px" value="${esc(ctx.params.max_latency || '')}" placeholder="any"></label>
           <label class="small">Within hops <input id="f-hops" type="number" min="1" max="64" style="width:70px" value="${esc(ctx.params.max_hops || '')}" placeholder="any"></label>
           <label class="small">Device
-            <select id="f-dev"><option value="">every device</option>${(devs.devices || []).map(d => {
+            <select id="f-dev"><option value="">every device</option>${(ctx.params.device || '').includes(',') ? `<option value="${esc(ctx.params.device)}" selected>${ctx.params.device.split(',').length} devices through the clicked hop</option>` : ''}${(devs.devices || []).map(d => {
               const sel = (d.addresses || []).includes(ctx.params.device) ? 'selected' : '';
               const n = (d.addresses || []).length;
               return `<option value="${esc(d.key)}" ${sel}>${esc(d.name || d.key)} &middot; ${d.destinations} dest${n > 1 ? ` (${n} addresses)` : ''}</option>`;
@@ -1721,27 +1722,42 @@
       // looking at can only mean you have finished looking at it.
       let zoomedOn = null;
       const CLOSE = MAPW / 9;
+      // Who made the requests that ran through a hop: the devices whose
+      // traffic reached any destination routed through it. The device filter
+      // follows the click, so the map narrows to those devices' traffic. One
+      // device selects itself; several become one "N devices through this
+      // hop" choice the server takes as a list.
+      const whoThrough = async (dsts) => {
+        if (!dsts || !dsts.length) return '';
+        const w = await get('/api/paths/who?dsts=' + encodeURIComponent(dsts.slice(0, 200).join(',')) + '&' + FS.since());
+        return ((w && w.devices) || []).map(d => d.key).join(',');
+      };
       el.querySelectorAll('.hop').forEach(c => {
         const id = c.getAttribute('data-hop');
         c.addEventListener('mouseenter', () => select(id));
-        c.addEventListener('click', () => {
+        c.addEventListener('click', async () => {
           const n0 = byId[id];
           // An endpoint is a destination, and what a reader wants from one is
           // the journey to it, not a closer look at the dot. So it opens that
           // route: the trail from this network to it, the map narrowed to it,
-          // and the whole thing framed.
+          // and the whole thing framed, filtered to whoever talked to it.
           if (n0 && n0.endpoint && (n0.reaches || []).length && n0.reaches[0] !== picked) {
-            FS.go('paths?' + routeQ(n0.reaches[0]));
+            FS.go('paths?' + routeQ(n0.reaches[0], undefined, await whoThrough(n0.reaches)));
             return;
           }
           // A hop that is not on the chosen route -- or there is no chosen
           // route -- loads the one it is on: the trail, the table and the
           // numbering all follow. Several routes through it are taken
-          // busiest first, and the chip offers the next.
+          // busiest first, and the chip offers the next. The device filter
+          // narrows to the devices whose traffic runs through this hop.
           const through = routesThrough(id);
           if (through.length && !(picked && inRoute[id])) {
-            FS.go('paths?' + routeQ(through[0], id));
+            FS.go('paths?' + routeQ(through[0], id, await whoThrough(through)));
             return;
+          }
+          if (through.length) {
+            const who = await whoThrough(through);
+            if (who && who !== (ctx.params.device || '')) { FS.go('paths?' + routeQ(picked, id, who)); return; }
           }
           select(id);
           litRoute(routeOf(id), (n0 && n0.ips ? n0.ips[0] : id), id);

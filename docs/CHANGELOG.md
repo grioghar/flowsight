@@ -12,6 +12,19 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252209
+
+**Map: clicking a hop filters to the devices behind it.** The *Device*
+filter follows the click: the devices whose traffic reached any destination
+routed through the hop become the filter (one selects itself; several show
+as *N devices through the clicked hop*), so the map narrows to what those
+devices did. `GET /api/paths/who?dsts=` answers the question and the
+graph's `device` parameter now takes a comma-separated list.
+
+**Filter-log diagnostics.** `GET /api/firewall/hits?debug=1` returns the
+log's last lines, the lines mentioning FlowSight, and the anchor's rule
+numbering, for when the reader finds nothing and the counters say it should.
+
 ## 0.9.8r202609252205
 
 **Where a country rule's packets go, and from which device.** *Protect ›

@@ -216,15 +216,28 @@ func (m *Module) apiGraph(r *core.Req) (any, error) {
 	// clicked. A laptop answers to an IPv4 lease and a fistful of rotating
 	// IPv6 privacy addresses, and filtering on one of them would show a
 	// fraction of where that laptop has actually been.
+	// Several devices at once (a comma-separated list) is what a hop click
+	// produces: every device whose traffic ran through that hop.
 	if dev := strings.TrimSpace(r.Q("device", "")); dev != "" {
-		addrs := m.addressesOf(dev)
-		ph := make([]string, len(addrs))
-		for i, a := range addrs {
-			ph[i] = "?"
-			args = append(args, a)
+		var ph []string
+		seen := map[string]bool{}
+		for _, one := range strings.Split(dev, ",") {
+			one = strings.TrimSpace(one)
+			if one == "" {
+				continue
+			}
+			for _, a := range m.addressesOf(one) {
+				if !seen[a] {
+					seen[a] = true
+					ph = append(ph, "?")
+					args = append(args, a)
+				}
+			}
 		}
-		where = `WHERE dst IN (SELECT DISTINCT dst_ip FROM flows WHERE dst_ip <> '' AND src_ip IN (` +
-			strings.Join(ph, ",") + `))`
+		if len(ph) > 0 {
+			where = `WHERE dst IN (SELECT DISTINCT dst_ip FROM flows WHERE dst_ip <> '' AND src_ip IN (` +
+				strings.Join(ph, ",") + `))`
+		}
 	}
 	// Built once and kept briefly. The page asks for this every couple of
 	// minutes on its own, several readers may be looking at once, and the
@@ -909,4 +922,90 @@ func markOperatorAnycast(g *Graph) {
 			n.Impossible, n.Tight, n.Why = false, false, ""
 		}
 	}
+}
+
+// apiWho answers "who made the requests that ran through here": the devices
+// whose traffic reached any of the given destinations in the window, one
+// entry per device with every address it used. The map asks this when a hop
+// is clicked and sets its device filter to the answer.
+func (m *Module) apiWho(r *core.Req) (any, error) {
+	var dsts []string
+	for _, d := range strings.Split(r.Q("dsts", ""), ",") {
+		if d = strings.TrimSpace(d); d != "" && len(dsts) < 200 {
+			dsts = append(dsts, d)
+		}
+	}
+	hours := r.QInt("hours", 24, 1, 24*30)
+	if len(dsts) == 0 {
+		return map[string]any{"devices": []any{}, "hours": hours}, nil
+	}
+	ph := make([]string, len(dsts))
+	args := []any{time.Now().Add(-time.Duration(hours) * time.Hour).Unix()}
+	for i, d := range dsts {
+		ph[i] = "?"
+		args = append(args, d)
+	}
+	rows, err := m.ctx.Store.Rows(`SELECT src_ip AS ip, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out, SUM(flows) AS flows,
+		COUNT(DISTINCT dst_ip) AS destinations FROM rollup_dst WHERE bucket >= ? AND src_ip <> '' AND dst_ip IN (`+strings.Join(ph, ",")+`) GROUP BY src_ip`, args...)
+	if err != nil {
+		return nil, err
+	}
+	type dev struct {
+		Key          string   `json:"key"`
+		Name         string   `json:"name,omitempty"`
+		Vendor       string   `json:"vendor,omitempty"`
+		Addresses    []string `json:"addresses"`
+		BytesIn      int64    `json:"bytes_in"`
+		BytesOut     int64    `json:"bytes_out"`
+		Flows        int64    `json:"flows"`
+		Destinations int      `json:"destinations"`
+	}
+	byKey := map[string]*dev{}
+	var order []string
+	for _, row := range rows {
+		ip, _ := row["ip"].(string)
+		if ip == "" || (m.identity != nil && !m.identity.IsLocal(ip)) {
+			continue
+		}
+		key, name, vendor := ip, "", ""
+		if m.identity != nil {
+			if mac := m.identity.MAC(ip); mac != "" {
+				key = mac
+				vendor = m.identity.Vendor(mac)
+			}
+			name = m.identity.Name(ip)
+		}
+		d := byKey[key]
+		if d == nil {
+			d = &dev{Key: ip, Name: name, Vendor: vendor}
+			byKey[key] = d
+			order = append(order, key)
+		}
+		if d.Name == "" {
+			d.Name = name
+		}
+		d.Addresses = append(d.Addresses, ip)
+		d.BytesIn += asInt(row["bytes_in"])
+		d.BytesOut += asInt(row["bytes_out"])
+		d.Flows += asInt(row["flows"])
+		if n := int(asInt(row["destinations"])); n > d.Destinations {
+			d.Destinations = n
+		}
+	}
+	out := make([]dev, 0, len(order))
+	for _, k := range order {
+		d := byKey[k]
+		sort.Strings(d.Addresses)
+		// The IPv4 address as the key when there is one: it is the one a
+		// reader recognises, and the filter expands it to the rest anyway.
+		for _, a := range d.Addresses {
+			if !strings.Contains(a, ":") {
+				d.Key = a
+				break
+			}
+		}
+		out = append(out, *d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].BytesIn+out[i].BytesOut > out[j].BytesIn+out[j].BytesOut })
+	return map[string]any{"devices": out, "hours": hours, "destinations": len(dsts)}, nil
 }

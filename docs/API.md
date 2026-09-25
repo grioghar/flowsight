@@ -180,6 +180,7 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/paths/talkers` | Devices on this network that talked to an endpoint, each with its services (`app`, `domain`, `port`, `proto`, bytes, flows), plus a cross-device service summary; also embedded as `talkers` in `/api/paths/path` | dst (endpoint), hours (window, default 24) |
 | GET | `/api/paths/corrections` | What the address database has been shown to get wrong: `corrections` (prefixes placed by one of their own routers or a RIPE measurement, with `by`, `from`, `from_km`, `seen`) and `distrusted` (registrant coordinates per ASN, with `count` and `examples`; applied once `count` reaches `distrust_after`) |  |
 | POST | `/api/paths/corrections/forget` | Forget learned items | body `prefix` (a correction), `key` (a distrusted coordinate), or `all: true` (everything, to be relearned) |
+| GET | `/api/paths/who` | Devices whose traffic reached any of `dsts` (comma-separated) in `hours`: what a hop click sets the map's device filter to |  |
 | GET | `/api/paths/devices` | Devices whose traffic has a measured route, one entry per device |  |
 | GET | `/api/paths/cables` | The submarine cable map, simplified for drawing | detail (points per cable) |
 | GET | `/api/paths/home` | The origin the map is drawn from, this gateway's own public addresses (`public_v4`, `public_v6`, and `public_address` for the one the origin was worked out from), and what could be detected for it |  |
