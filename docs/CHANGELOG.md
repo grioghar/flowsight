@@ -14,15 +14,14 @@ The newest entry is first.
 
 ## 0.9.8r202609252301
 
-**OpenAPI 3.0 self-documenting API.** The API now supports full OpenAPI 3.0
-documentation metadata: every route can be annotated with request/response
-schemas, parameters with types and examples, and operation descriptions. The
-interactive API explorer (Administration page) now shows parameter tables,
-request body field documentation, and response examples. An `apidoc` tool
-generates searchable Markdown documentation from the live spec. Routes use
-new helpers (`Fld()`, `Query()`, `PathParam()`, `Body()`, `Returns()`,
-`ReturnsType()`) to make documentation concise and maintainable. Download the
-full spec from the API page for use with Swagger UI, Insomnia, or Postman.
+**All 166 API routes fully documented with real data.** Complete OpenAPI 3.0
+documentation across all modules with request/response schemas, parameter types,
+realistic example values (IP addresses, hostnames, timestamps), and operation
+descriptions. All stub responses replaced with actual return structures from
+handlers. Descriptions rewritten for clarity (≥25 characters). The `apidoc` tool
+generates the full searchable API.md from the live spec. Routes use documentation
+helpers to keep metadata concise and aligned with actual handler implementations.
+Download the spec from the API page for Swagger UI, Insomnia, or Postman.
 
 ## 0.9.8r202609252242
 
