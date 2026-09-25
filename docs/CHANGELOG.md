@@ -12,7 +12,7 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8r202609252318
+## 0.9.8r202609252328
 
 **Anomaly detection: know when a device does something new.** A new Baseline
 module learns each device's normal behavior (countries, ports, destinations,

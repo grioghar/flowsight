@@ -89,6 +89,31 @@ Stored at `alerting.maintenance` in KV store. When enabled, all alerts are suppr
 - Delivery credentials never appear in logs or delivery logs
 - HMAC-SHA256 signatures for webhooks; AWS SigV4 for AWS services
 
+### baseline
+
+Anomaly detection: learns each device's normal behavior (countries, ports, destinations) over a configurable learning period, then flags deviations. Every finding includes the baseline ("21 days of history had US, CA") and observation ("first time talked to IE"). Findings are dedup'd with cooldown and integrated with alerting rules.
+
+| Key | Setting | Type | Default | Notes |
+|---|---|---|---|---|
+| `learning_days` | Learning period (days) | int | `7` | Days before anomaly detection begins per device; no findings raised during learning. |
+| `max_destinations` | Max destinations per device | int | `50` | Prune least-frequent when exceeded; keeps memory bounded. |
+| `bytes_multiplier` | Bytes threshold multiplier | float | `2.0` | Flag outbound bytes above N × device daily median. |
+| `beaconing_min_sessions` | Beaconing: min sessions | int | `5` | Minimum sessions to a destination for beaconing analysis. |
+| `beaconing_cv_threshold` | Beaconing: regularity threshold | float | `0.2` | Coefficient of variation of inter-arrival times; lower = more regular (stricter). |
+| `dns_tunnel_min_length` | DNS: min label length | int | `20` | Flag mean DNS label length at or above this (characters). |
+| `dns_tunnel_min_entropy` | DNS: min entropy | float | `5.0` | Flag DNS entropy at or above this (bits). |
+| `dns_tunnel_min_rate` | DNS: NXDOMAIN rate | float | `0.3` | Flag when NXDOMAIN rate exceeds this and is far above device baseline. |
+| `cooldown_minutes` | Finding cooldown (minutes) | int | `60` | Deduplication window; suppress repeat findings for same device and kind. |
+| `excluded_zones` | Excluded zones | list | `[]` | Devices in these zones are never flagged; e.g., `["guest", "lab"]`. |
+
+**Detection kinds and alert rule keys:**
+
+- `new_country`: First connection to a country outside the learning window. Rule key: `baseline.new_country` (severity: high).
+- `new_port`: First connection to a protocol/port pair. Rule key: `baseline.new_port` (severity: medium).
+- `new_destination`: First connection to an IP or domain (only flagged for small, stable destination sets). Rule key: `baseline.new_destination` (severity: medium).
+- `beaconing`: Regular, timed connections with constant payload size. Rule key: `baseline.beaconing` (severity: high).
+- `dns_tunneling`: DNS abuse (high entropy, high NXDOMAIN rate). Rule key: `baseline.dns_tunneling` (severity: high).
+
 ### appcontrol
 
 Application control: denied applications, identified by nDPI, are cut off at the firewall.

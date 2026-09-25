@@ -19,76 +19,76 @@ import (
 func init() { core.Register(func() core.Module { return &Module{} }) }
 
 type Module struct {
-	ctx        *core.Context
-	identity   core.Identity
-	enricher   interface{}
-	alerting   core.AlertingSend
-	mu         sync.RWMutex
-	learning   map[string]time.Time // mac -> learning start time
-	devStates  map[string]*deviceState
-	cooldowns  map[string]time.Time // dedup key -> cooldown until
-	settings   Settings
+	ctx       *core.Context
+	identity  core.Identity
+	enricher  interface{}
+	alerting  core.AlertingSend
+	mu        sync.RWMutex
+	learning  map[string]time.Time // mac -> learning start time
+	devStates map[string]*deviceState
+	cooldowns map[string]time.Time // dedup key -> cooldown until
+	settings  Settings
 }
 
 type Settings struct {
-	LearningDays        int     `json:"learning_days"`
-	MaxDestinations     int     `json:"max_destinations"`
-	BytesMultiplier     float64 `json:"bytes_multiplier"`
-	BeaconingMinSessions int    `json:"beaconing_min_sessions"`
-	BeaconingCVThreshold float64 `json:"beaconing_cv_threshold"`
-	DNSTunnelMinLength  int     `json:"dns_tunnel_min_length"`
-	DNSTunnelMinEntropy float64 `json:"dns_tunnel_min_entropy"`
-	DNSTunnelMinRate    float64 `json:"dns_tunnel_min_rate"`
-	CooldownMinutes     int     `json:"cooldown_minutes"`
-	ExcludedZones       []string `json:"excluded_zones"`
+	LearningDays         int      `json:"learning_days"`
+	MaxDestinations      int      `json:"max_destinations"`
+	BytesMultiplier      float64  `json:"bytes_multiplier"`
+	BeaconingMinSessions int      `json:"beaconing_min_sessions"`
+	BeaconingCVThreshold float64  `json:"beaconing_cv_threshold"`
+	DNSTunnelMinLength   int      `json:"dns_tunnel_min_length"`
+	DNSTunnelMinEntropy  float64  `json:"dns_tunnel_min_entropy"`
+	DNSTunnelMinRate     float64  `json:"dns_tunnel_min_rate"`
+	CooldownMinutes      int      `json:"cooldown_minutes"`
+	ExcludedZones        []string `json:"excluded_zones"`
 }
 
 type deviceState struct {
-	Mac             string
-	FirstSeen       int64
-	Countries       map[string]*countryRecord
-	Ports           map[string]*portRecord   // proto:port -> record
-	Destinations    map[string]*dstRecord    // ip or domain -> record
-	Activities      [24]int64                // hourly byte count
-	DailyBytes      []int64                  // rolling window of daily sums
-	DNSStats        DNSStats
+	Mac          string
+	FirstSeen    int64
+	Countries    map[string]*countryRecord
+	Ports        map[string]*portRecord // proto:port -> record
+	Destinations map[string]*dstRecord  // ip or domain -> record
+	Activities   [24]int64              // hourly byte count
+	DailyBytes   []int64                // rolling window of daily sums
+	DNSStats     DNSStats
 }
 
 type countryRecord struct {
-	Country  string
+	Country   string
 	FirstSeen int64
-	LastSeen int64
-	Count    int64
-	Bytes    int64
+	LastSeen  int64
+	Count     int64
+	Bytes     int64
 }
 
 type portRecord struct {
-	Proto    string
-	Port     int
+	Proto     string
+	Port      int
 	FirstSeen int64
-	LastSeen int64
-	Count    int64
-	Bytes    int64
+	LastSeen  int64
+	Count     int64
+	Bytes     int64
 }
 
 type dstRecord struct {
 	Destination string
-	FirstSeen  int64
-	LastSeen   int64
-	Count      int64
-	Bytes      int64
+	FirstSeen   int64
+	LastSeen    int64
+	Count       int64
+	Bytes       int64
 }
 
 type DNSStats struct {
-	Domains       map[string]*dnsRecord // registered domain -> record
-	GlobalCount   int64
-	NXDOMAIN      int64
+	Domains     map[string]*dnsRecord // registered domain -> record
+	GlobalCount int64
+	NXDOMAIN    int64
 }
 
 type dnsRecord struct {
 	RegisteredDomain string
-	Queries         int64
-	NXDOMAIN        int64
+	Queries          int64
+	NXDOMAIN         int64
 	UniqueSubdomains map[string]bool
 	MeanLabelLength  float64
 	Entropy          float64
@@ -103,16 +103,16 @@ func (m *Module) Info() core.ModuleInfo {
 		Capabilities: []string{core.CapThreatDetect},
 		After:        []string{"identity", "enrich", "alerting"},
 		Defaults: map[string]any{
-			"learning_days":        7,
-			"max_destinations":     50,
-			"bytes_multiplier":     2.0,
+			"learning_days":          7,
+			"max_destinations":       50,
+			"bytes_multiplier":       2.0,
 			"beaconing_min_sessions": 5,
 			"beaconing_cv_threshold": 0.2,
-			"dns_tunnel_min_length": 20,
+			"dns_tunnel_min_length":  20,
 			"dns_tunnel_min_entropy": 5.0,
-			"dns_tunnel_min_rate":   0.3,
-			"cooldown_minutes":     60,
-			"excluded_zones":       []string{},
+			"dns_tunnel_min_rate":    0.3,
+			"cooldown_minutes":       60,
+			"excluded_zones":         []string{},
 		},
 		Schema: []core.SettingField{
 			{Key: "learning_days", Label: "Learning period (days)", Type: "int", Section: "Detection"},
@@ -470,10 +470,12 @@ func (m *Module) detectCountries(mac, name, ip string, state *deviceState, keep 
 				// New country
 				fp := fmt.Sprintf("baseline:%s:country:%s", mac, country)
 				keep[fp] = true
+				days := (now.Unix() - state.FirstSeen) / 86400
+				baselineCountries := m.getCountriesString(state.Countries)
 				m.addAnomaly(mac, name, "new_country", "high",
 					fmt.Sprintf("First time in %s", country),
-					fmt.Sprintf("Device %s (%s) first connected to %s. Known countries: %s",
-						name, mac, country, m.getCountriesString(state.Countries)))
+					fmt.Sprintf("First time %s talked to %s; %d days of history had %s",
+						mac, country, days, baselineCountries))
 			}
 		}
 	}
@@ -501,10 +503,12 @@ func (m *Module) detectPorts(mac, name, ip string, state *deviceState, keep map[
 			if !exists || (baseline != nil && baseline.FirstSeen > now.Add(-24*time.Hour).Unix()) {
 				fp := fmt.Sprintf("baseline:%s:port:%s", mac, key)
 				keep[fp] = true
+				days := (now.Unix() - state.FirstSeen) / 86400
+				baselinePorts := m.getPortsString(state.Ports)
 				m.addAnomaly(mac, name, "new_port", "medium",
 					fmt.Sprintf("First connection to %s/%d", proto, port),
-					fmt.Sprintf("Device %s (%s) first connected to %s/%d. Known ports: %s",
-						name, mac, proto, port, m.getPortsString(state.Ports)))
+					fmt.Sprintf("First time %s talked to %s/%d; %d days of history had %s",
+						mac, proto, port, days, baselinePorts))
 			}
 		}
 	}
@@ -535,10 +539,12 @@ func (m *Module) detectDestinations(mac, name, ip string, state *deviceState, ke
 			if !exists || (baseline != nil && baseline.FirstSeen > now.Add(-24*time.Hour).Unix()) {
 				fp := fmt.Sprintf("baseline:%s:destination:%s", mac, dst)
 				keep[fp] = true
+				days := (now.Unix() - state.FirstSeen) / 86400
+				baselineDestinations := m.getDestinationsString(state.Destinations)
 				m.addAnomaly(mac, name, "new_destination", "medium",
 					fmt.Sprintf("First connection to %s", dst),
-					fmt.Sprintf("Device %s (%s) first connected to %s. Known destinations: %s",
-						name, mac, dst, m.getDestinationsString(state.Destinations)))
+					fmt.Sprintf("First time %s talked to %s; %d days of history had %s",
+						mac, dst, days, baselineDestinations))
 			}
 		}
 	}
@@ -589,10 +595,11 @@ func (m *Module) detectBeaconing(mac, name, ip string, state *deviceState, keep 
 			if avgBytes.Valid {
 				avgBytesVal = avgBytes.Float64
 			}
+			days := (now.Unix() - state.FirstSeen) / 86400
 			m.addAnomaly(mac, name, "beaconing", "high",
 				fmt.Sprintf("Beacon to %s (~%.0fs period)", dst, period.Seconds()),
-				fmt.Sprintf("Device %s (%s) shows regular beacon traffic to %s with ~%.0fs interval, %.0f bytes per packet",
-					name, mac, dst, period.Seconds(), avgBytesVal))
+				fmt.Sprintf("Regular beacon from %s to %s: ~%.0fs interval, %.0f bytes per packet; %d days of history showed no such pattern",
+					mac, dst, period.Seconds(), avgBytesVal, days))
 		}
 	}
 }
@@ -629,10 +636,11 @@ func (m *Module) detectDNSTunneling(mac, name, ip string, state *deviceState, ke
 				meanLabelLen >= float64(m.settings.DNSTunnelMinLength) {
 				fp := fmt.Sprintf("baseline:%s:dns_tunnel:%s", mac, domain)
 				keep[fp] = true
+				days := (now.Unix() - state.FirstSeen) / 86400
 				m.addAnomaly(mac, name, "dns_tunneling", "high",
 					fmt.Sprintf("Possible DNS tunneling to %s", domain),
-					fmt.Sprintf("Device %s (%s) shows DNS tunneling indicators to %s: %d%% NXDOMAIN, entropy %.1f, label length %.0f",
-						name, mac, domain, int(nxRate*100), entropy, meanLabelLen))
+					fmt.Sprintf("DNS tunneling indicators from %s to %s: %d%% NXDOMAIN (far above baseline), entropy %.1f, label length %.0f; %d days of history showed normal patterns",
+						mac, domain, int(nxRate*100), entropy, meanLabelLen, days))
 			}
 		}
 	}
@@ -904,11 +912,11 @@ func (m *Module) apiStatus(req *core.Req) (any, error) {
 }
 
 type Flow struct {
-	SrcIP   string
-	DstIP   string
-	DstPort int
-	Proto   string
-	Country string
-	ASN     string
+	SrcIP    string
+	DstIP    string
+	DstPort  int
+	Proto    string
+	Country  string
+	ASN      string
 	BytesOut int64
 }

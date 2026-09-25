@@ -156,6 +156,35 @@ destination, count over time, with the host page one click away. Requires
 the IDS to be enabled in OPNsense; the module reports a finding when the
 log is missing.
 
+### Anomalies
+
+Device behavior deviations detected by learning what is normal for each device
+over a learning period (7 days by default, configurable). Once learning
+completes, the module flags:
+
+- **First-seen countries**: a device calling a country it has never contacted
+  before (severity: high).
+- **First-seen ports**: new protocol/port pairs (severity: medium).
+- **First-seen destinations**: new IP addresses or domains, only for devices
+  with small, stable destination sets (typical of IoT); (severity: medium).
+- **Beaconing**: regular, timed connections with constant payload size,
+  detected via coefficient of variation of inter-arrival times (severity: high).
+  Useful for identifying C2 or vendor beacons that phone home.
+- **DNS tunneling**: DNS abuse (high entropy query names, high NXDOMAIN rate)
+  (severity: high). Often indicates exfiltration or DNS-based C2.
+
+Each finding includes what the baseline was ("21 days of history had US, CA") 
+and what was observed ("first time talked to IE"). Every finding is acknowledgeable
+and can be used to filter the Sessions view. Device profiles show all known
+countries, ports, destinations and activity patterns. Configuration options
+tune the learning period, thresholds for beaconing regularity and DNS entropy,
+and zone exclusions (devices in excluded zones like "guest" are never flagged).
+
+Findings integrate with alerting rules under keys like `baseline.new_country`
+and `baseline.beaconing` for automatic routing or suppression.
+
+For details, see the [Anomalies how-to](howto/anomalies.md).
+
 ### TLS
 
 Certificate transparency for the network.

@@ -27,6 +27,7 @@ flowsightd
 ├── pihole      Pi-hole query log (v6 REST API, v5 api.php) → the same DNS log, with blocks, lists, client names
 ├── firewall    pf anchors flowsight/*; provider net.block and the tables for app.block
 ├── appcontrol  subscribes to the flow bus; denied apps → pf table + state kill
+├── baseline    learns per-device profiles (countries, ports, destinations); detects anomalies (new-country, beaconing, DNS tunneling); findings with context
 ├── tls         inspection CA (EC, generated in Go), certificate inventory, findings
 ├── ids         Suricata EVE → alerts, TLS sessions and certificates
 ├── categories  open domain feeds, cached; classification index; custom categories

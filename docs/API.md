@@ -60,6 +60,24 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | POST | `/api/alerting/import-apprise` | Import channel from Apprise URL | url |
 | GET | `/api/alerting/feed.xml` | RSS feed of recent alerts (token-protected) | token (query param) |
 
+### baseline
+
+**Anomalies**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/baseline/anomalies` | List all open anomalies | none |
+| POST | `/api/baseline/ack` | Acknowledge an anomaly (mark as reviewed) | id (request body) |
+
+**Profiles**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/baseline/profile` | Device baseline profile (countries, ports, destinations, activity) | ip or mac (query param) |
+
+**Status**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/baseline/status` | Module health and current settings | none |
+
 ### appcontrol
 
 | Method | Path | What | Parameters |

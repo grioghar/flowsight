@@ -366,12 +366,52 @@
   FS.registerPage('anomalies', {
     title: 'Anomalies', refresh: 30,
     async render(el, ctx) {
+      const ip = ctx.params.ip;
+      // If viewing device profile
+      if (ip) {
+        const p = await get(`/api/baseline/profile?ip=${encodeURIComponent(ip)}`);
+        if (p.error) { el.innerHTML = FS.err(p.error); return; }
+        const profile = p.profile;
+        if (!profile) { el.innerHTML = FS.err('Device not found'); return; }
+        const countries = profile.countries || {};
+        const ports = profile.ports || {};
+        const dests = profile.destinations || {};
+        const countryEntries = Object.entries(countries).map(([c, r]) => ({ country: c, ...r }));
+        const portEntries = Object.entries(ports).map(([p, r]) => ({ port: p, ...r }));
+        const destEntries = Object.entries(dests).map(([d, r]) => ({ dest: d, ...r }));
+        el.innerHTML = `
+          ${card('Device profile', `<b>${esc(profile.mac)}</b><div class="small muted">First seen ${new Date(profile.first_seen * 1000).toISOString().slice(0, 10)}</div>`)}
+          ${card('Countries', countryEntries.length ? table(countryEntries, [
+            { t: 'Country', k: 'country' },
+            { t: 'First seen', f: r => new Date(r.first_seen * 1000).toISOString().slice(0, 10) },
+            { t: 'Last seen', f: r => ago(r.last_seen), sort: 'last_seen' },
+            { t: 'Flows', f: r => num(r.count), num: true, sort: 'count' },
+            { t: 'Bytes', f: r => bytes(r.bytes), num: true, sort: 'bytes' }
+          ]) : FS.empty('No countries'))}
+          ${card('Ports', portEntries.length ? table(portEntries, [
+            { t: 'Port', k: 'port' },
+            { t: 'First seen', f: r => new Date(r.first_seen * 1000).toISOString().slice(0, 10) },
+            { t: 'Last seen', f: r => ago(r.last_seen), sort: 'last_seen' },
+            { t: 'Flows', f: r => num(r.count), num: true, sort: 'count' },
+            { t: 'Bytes', f: r => bytes(r.bytes), num: true, sort: 'bytes' }
+          ]) : FS.empty('No ports'))}
+          ${card('Destinations', destEntries.length ? table(destEntries, [
+            { t: 'Destination', k: 'dest' },
+            { t: 'First seen', f: r => new Date(r.first_seen * 1000).toISOString().slice(0, 10) },
+            { t: 'Last seen', f: r => ago(r.last_seen), sort: 'last_seen' },
+            { t: 'Flows', f: r => num(r.count), num: true, sort: 'count' },
+            { t: 'Bytes', f: r => bytes(r.bytes), num: true, sort: 'bytes' }
+          ]) : FS.empty('No destinations'))}
+        `;
+        return;
+      }
+      // Show anomalies list
       const d = await get('/api/baseline/anomalies');
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
       const anomalies = d.anomalies || [];
       const openAnomalies = anomalies.filter(a => !a.acked);
       el.innerHTML = card('Open Anomalies', openAnomalies.length ? table(openAnomalies, [
-        { t: 'Device', f: r => `<b>${esc(r.device)}</b><div class="muted small mono">${esc(r.mac)}</div>` },
+        { t: 'Device', f: r => `<a href="#anomalies?ip=${encodeURIComponent(r.device)}"><b>${esc(r.device)}</b></a><div class="muted small mono">${esc(r.mac)}</div>` },
         { t: 'Kind', f: r => pill(r.kind), sort: 'kind' },
         { t: 'Finding', f: r => `<b>${esc(r.title)}</b><div class="muted small">${esc((r.detail || '').slice(0, 100))}</div>` },
         { t: 'Severity', f: r => FS.sevPill(r.severity), sort: 'severity' },

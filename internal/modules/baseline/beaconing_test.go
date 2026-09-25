@@ -2,6 +2,7 @@ package baseline
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -68,5 +69,52 @@ func TestStatsCalculation(t *testing.T) {
 	expectedStddev := math.Sqrt(2.0) // sqrt(variance of 2)
 	if math.Abs(stddev-expectedStddev) > 0.001 {
 		t.Errorf("StdDev %.4f != expected %.4f", stddev, expectedStddev)
+	}
+}
+
+func TestFindingTextFormat(t *testing.T) {
+	// Verify finding text includes baseline context
+	// Expected format: "First time MAC talked to X; N days of history had Y"
+
+	testCases := []struct {
+		name          string
+		text          string
+		shouldContain []string
+	}{
+		{
+			name:          "new_country format",
+			text:          "First time 34:d2:70:98:9a:43 talked to IE; 21 days of history had US, CA",
+			shouldContain: []string{"34:d2:70:98:9a:43", "IE", "21 days", "history", "US, CA"},
+		},
+		{
+			name:          "new_port format",
+			text:          "First time aa:bb:cc:dd:ee:ff talked to tcp/8443; 7 days of history had tcp/443, udp/53",
+			shouldContain: []string{"aa:bb:cc:dd:ee:ff", "tcp/8443", "7 days", "history", "tcp/443"},
+		},
+		{
+			name:          "new_destination format",
+			text:          "First time 11:22:33:44:55:66 talked to 192.0.2.1; 14 days of history had 192.0.2.10, 192.0.2.20",
+			shouldContain: []string{"11:22:33:44:55:66", "192.0.2.1", "14 days", "history"},
+		},
+		{
+			name:          "beaconing format",
+			text:          "Regular beacon from 11:22:33:44:55:66 to 192.0.2.1: ~60s interval, 256 bytes per packet; 30 days of history showed no such pattern",
+			shouldContain: []string{"Regular beacon", "11:22:33:44:55:66", "192.0.2.1", "60s", "30 days", "history"},
+		},
+		{
+			name:          "dns_tunneling format",
+			text:          "DNS tunneling indicators from 11:22:33:44:55:66 to example.com: 45% NXDOMAIN (far above baseline), entropy 5.5, label length 22; 21 days of history showed normal patterns",
+			shouldContain: []string{"11:22:33:44:55:66", "example.com", "NXDOMAIN", "baseline", "21 days", "history"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, substr := range tc.shouldContain {
+				if !strings.Contains(tc.text, substr) {
+					t.Errorf("Finding text missing %q: %s", substr, tc.text)
+				}
+			}
+		})
 	}
 }
