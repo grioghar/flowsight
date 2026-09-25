@@ -31,7 +31,9 @@ type Schedule struct {
 	Enabled  bool   `json:"enabled"`
 	Cadence  string `json:"cadence"`  // "hourly", "daily", "weekly", "monthly"
 	TimeUTC  string `json:"time_utc"` // HH:MM in UTC
-	Timezone string `json:"timezone"` // system timezone
+	Timezone string `json:"timezone"` // system timezone or "local"
+	Weekday  string `json:"weekday"`  // "mon", "tue", etc for weekly cadence
+	Day      int    `json:"day"`      // 1-31 for monthly cadence
 }
 
 // Run is a single report execution result.

@@ -643,13 +643,14 @@ func (m *Module) sendDueReports() error {
 	}
 
 	now := time.Now()
+	alerting, _ := m.ctx.Service("alerting_send").(core.AlertingSend)
 
 	for _, def := range defs {
 		if def.Schedule == nil || !def.Schedule.Enabled || len(def.Recipients) == 0 {
 			continue
 		}
 
-		if isDue(now, def.Schedule) {
+		if m.isDueForRun(now, &def) {
 			// Generate report
 			window := &TimeWindow{
 				From: now.Unix() - 24*3600, // Last 24h default
@@ -663,33 +664,149 @@ func (m *Module) sendDueReports() error {
 				continue
 			}
 
-			// Store run metadata
+			// Store run metadata and formats
 			_ = m.storeRun(run, &def)
 
-			// Send via alerting (when alerting branch implements Send)
-			// For now, just log
-			m.ctx.Log.Info("scheduled report executed", "definition", def.ID, "run", run.ID)
+			// Store all formats
+			if html, _ := m.engine.RenderHTML(&def, run); html != "" {
+				_ = m.storeRunFormat(run, &def, "html", []byte(html))
+			}
+			if md, _ := m.engine.RenderMarkdown(&def, run); md != "" {
+				_ = m.storeRunFormat(run, &def, "markdown", []byte(md))
+			}
+			if jsonData, _ := m.engine.RenderJSON(&def, run); len(jsonData) > 0 {
+				_ = m.storeRunFormat(run, &def, "json", jsonData)
+			}
 
-			// Update last run time
-			_ = m.ctx.Store.KVSet("reports.last_run."+def.ID, now.Unix())
+			// Deliver through alerting service if available
+			if alerting != nil {
+				for _, channelID := range def.Recipients {
+					html, _ := m.engine.RenderHTML(&def, run)
+					msg := core.Message{
+						Subject: def.Name + " - " + time.Unix(now.Unix(), 0).Format("2006-01-02"),
+						HTML:    html,
+					}
+
+					// Add HTML format as attachment if PDF available
+					if len(def.Formats) > 0 && contains(def.Formats, "pdf") {
+						pdf := NewSimplePDF()
+						pdf.AddHeading(def.Name)
+						pdf.AddText(fmt.Sprintf("Generated %s", time.Now().Format("2006-01-02 15:04 MST")))
+						msg.Attachments = append(msg.Attachments, core.Attachment{
+							Name:  def.ID + ".pdf",
+							MIME:  "application/pdf",
+							Bytes: pdf.Bytes(),
+						})
+					}
+
+					if err := alerting.Send(channelID, msg); err != nil {
+						m.ctx.Log.Error("failed to send report", "definition", def.ID, "channel", channelID, "error", err)
+					}
+				}
+			} else {
+				m.ctx.Log.Info("scheduled report generated (alerting service not available)", "definition", def.ID, "run", run.ID)
+			}
+
+			// Update next run time
+			nextRun := m.nextRunTime(now, def.Schedule)
+			_ = m.ctx.Store.KVSet("reports.next_run."+def.ID, nextRun.Unix())
 		}
 	}
 
 	return nil
 }
 
-func isDue(now time.Time, sched *Schedule) bool {
-	var lastRunTime int64
-	// Simplified: check if last run was more than cadence ago
+func (m *Module) isDueForRun(now time.Time, def *Definition) bool {
+	var nextRunTS int64
+	m.ctx.Store.KVGet("reports.next_run."+def.ID, &nextRunTS)
+
+	// If no next run is set, calculate it
+	if nextRunTS == 0 {
+		nextRun := m.nextRunTime(now, def.Schedule)
+		nextRunTS = nextRun.Unix()
+	}
+
+	// Check if we've passed the scheduled time and haven't run yet in this period
+	return now.Unix() >= nextRunTS
+}
+
+func (m *Module) nextRunTime(now time.Time, sched *Schedule) time.Time {
+	// Parse time from schedule
+	parts := strings.Split(sched.TimeUTC, ":")
+	var hour, minute int
+	if len(parts) >= 2 {
+		fmt.Sscanf(parts[0], "%d", &hour)
+		fmt.Sscanf(parts[1], "%d", &minute)
+	}
+
+	// Get timezone
+	tz := time.UTC
+	if sched.Timezone != "" && sched.Timezone != "UTC" {
+		if loc, err := time.LoadLocation(sched.Timezone); err == nil {
+			tz = loc
+		}
+	}
+
+	// Construct next run time based on cadence
+	var next time.Time
 	switch sched.Cadence {
 	case "hourly":
-		return now.Unix()-lastRunTime > 3600
+		next = now.Add(time.Hour).Truncate(time.Hour).Add(time.Duration(minute) * time.Minute)
 	case "daily":
-		return now.Unix()-lastRunTime > 86400
+		next = time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, tz)
+		if next.Before(now) {
+			next = next.AddDate(0, 0, 1)
+		}
 	case "weekly":
-		return now.Unix()-lastRunTime > 7*86400
+		next = time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, tz)
+		if next.Before(now) {
+			next = next.AddDate(0, 0, 1)
+		}
+		// Find the right weekday
+		target := m.weekdayNum(sched.Weekday)
+		for next.Weekday() != time.Weekday(target) {
+			next = next.AddDate(0, 0, 1)
+		}
 	case "monthly":
-		return now.Unix()-lastRunTime > 30*86400
+		day := sched.Day
+		if day < 1 {
+			day = 1
+		}
+		if day > 31 {
+			day = 31
+		}
+		next = time.Date(now.Year(), now.Month(), day, hour, minute, 0, 0, tz)
+		if next.Before(now) {
+			next = next.AddDate(0, 1, 0)
+		}
+	default:
+		next = now.Add(24 * time.Hour)
+	}
+
+	return next
+}
+
+func (m *Module) weekdayNum(day string) int {
+	days := map[string]int{
+		"sun": 0, "sunday": 0,
+		"mon": 1, "monday": 1,
+		"tue": 2, "tuesday": 2,
+		"wed": 3, "wednesday": 3,
+		"thu": 4, "thursday": 4,
+		"fri": 5, "friday": 5,
+		"sat": 6, "saturday": 6,
+	}
+	if num, ok := days[strings.ToLower(day)]; ok {
+		return num
+	}
+	return 1 // default to monday
+}
+
+func contains(slice []string, item string) bool {
+	for _, v := range slice {
+		if v == item {
+			return true
+		}
 	}
 	return false
 }
