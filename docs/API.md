@@ -202,6 +202,21 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | POST | `/api/rulehygiene/run` | Run analysis now |  |
 | GET | `/api/rulehygiene/summary` | Risk score, finding counts, rules analysed, ruleset loaded since |  |
 
+### space
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/space/layout` | Current layout: floors, rooms, placements, scan info, transform |  |
+| PUT | `/api/space/layout` | Update layout (rooms, floors, placements, scan transform) |  |
+| POST | `/api/space/scan` | Upload a scan file (GLB, OBJ, PLY, or RoomPlan JSON) | name (filename) |
+| GET | `/api/space/scan` | Download the uploaded scan file |  |
+| DELETE | `/api/space/scan` | Delete the scan file |  |
+| POST | `/api/space/place` | Place a device in space | mac, x, y, z, floor, room |
+| DELETE | `/api/space/place/{mac}` | Unplace a device |  |
+| GET | `/api/space/devices` | Devices and placement status |  |
+| POST | `/api/space/locate` | Geocode an address using US Census Geocoder |  |
+| GET | `/api/space/records` | Address records: geocode, buildings, elevation, broadband providers |  |
+
 ### system
 
 | Method | Path | What | Parameters |

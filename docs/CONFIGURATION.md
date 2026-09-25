@@ -245,6 +245,18 @@ Firewall ruleset analysis: shadowed, unused, redundant and overly permissive rul
 | `wan_interfaces` | WAN interfaces (empty = auto-detect) | list | `[]` |  |
 | `mgmt_ports` | Management ports (22, 80, 443) | list | `["22", "80", "443"]` |  |
 
+### space (Pro tier)
+
+Physical space mapping and device placement visualization.
+
+| Key | Setting | Type | Default | Notes |
+|---|---|---|---|---|
+| `address` | Address | string | `""` | Your physical address for geocoding (US Census Geocoder). |
+| `lat` | Latitude | float | `0.0` | Cached latitude from geocoding. |
+| `lon` | Longitude | float | `0.0` | Cached longitude from geocoding. |
+| `floor_height_m` | Default floor ceiling height (m) | float | `2.6` | Default height for new rooms. |
+| `units` | Measurement units | string | `"metric"` | `"metric"` for metres, `"imperial"` for feet. |
+
 ### telemetry (Business tier)
 
 Export metrics, events and alerts to an OpenTelemetry/HTTP endpoint (Grafana Mimir/Loki).

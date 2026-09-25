@@ -12,6 +12,29 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609250700 (unreleased)
+
+**Space: full end-to-end 3D layout and placement.** Five new features complete
+the Space module's core functionality. (1) **Marker interaction in 3D:** Click
+a placed device marker to see a popover with name, vendor, MAC, room, placement
+date, and a 60-point visibility sparkline. An Unplace button removes it. Drag
+markers to reposition them (wheel to adjust z). Highlight a device in the Palette
+to fly the camera to it. (2) **Calibration tools:** Level the scan by clicking
+three floor points; the tool fits a plane and stores the rotation and z offset.
+Align the scan to your plan by picking two 3D points and two plan points; the
+tool computes scale, rotation, and offset. (3) **Plan editor completeness:** Drag
+vertices to edit room polygons in real time. Click a room to select it; Rename
+and Delete buttons appear. Undo and Redo work for all operations (drawing, scaling,
+importing, room edits, placement moves); an unsaved indicator shows when the layout
+has pending changes. Placement dots on the plan are draggable. (4) **Mobile layout:**
+At viewports ≤768px, the three panes become tabs (3D, Plan, Devices) with smooth
+switching. Network errors show as auto-dismissing toasts. (5) **3D multi-floor
+view:** Rooms from all floors are shown as extruded boxes; the current floor's
+rooms are opaque, others faint to show context. The docs now include a walkthrough:
+scan your space with LiDAR Scanner (iOS) or 3D Scanner App (Android), upload the
+GLB file, level the floor, draw rooms or import from OSM, calibrate scale, and
+place devices. All 42 space tests pass (15 calibration, 8 parser, 19 reducer).
+
 ## 0.9.8r202609250530
 
 **Space: scan loading and device placement now work end-to-end.** Upload a scan
