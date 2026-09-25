@@ -12,6 +12,18 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251900
+
+**Load testing, benchmarking and end-to-end regression harness.** New tools
+measure FlowSight's performance envelope: `cmd/fsload` generates synthetic
+data (flows, DNS records, hosts) deterministically; `cmd/fsbench` measures
+daemon latency and peak memory on heavy read paths; `test/e2e/run.py` walks
+every UI page and API endpoint in headless Chrome and fails on rendering
+errors or console messages. A new "Tested envelope" section in
+docs/OPERATIONS.md documents the limits at three measured scales
+(50/500/2000 devices across 7/30/90 days). macOS now runs the daemon in
+generic mode for local testing, without firewall, DNS or proxy integration.
+
 ## 0.9.8r202609252307
 
 **No more "example.com" on every Cloudflare session.** With no SNI or Host

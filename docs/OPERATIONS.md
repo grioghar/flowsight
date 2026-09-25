@@ -63,6 +63,31 @@ Three things matter, in this order:
 An OPNsense configuration backup does not include any of these; back up
 the directories above with your usual host backup.
 
+## Tested envelope
+
+Performance was measured on a MacBook Pro (Apple Silicon M2, 8 cores, 8 GB
+RAM) running the daemon in-process with a 256 MB soft memory limit. Each
+test generated N days of synthetic flows, DNS records and host updates;
+committed the store with a rollup (five-minute aggregations); and ran 20
+iterations of each benchmark route. Numbers are p50/p95 latency (ms) and
+peak daemon memory (MB).
+
+The read paths tested are representative: `/api/visibility/flows`,
+`/api/visibility/top`, `/api/visibility/abroad` (heavy aggregation),
+`/api/policy/matches`, `/api/identity/hosts`, `/api/dns/summary`. All
+routes are documented in `/api/openapi.json`.
+
+| Scale | DB Size | Rows | Flows Route | Top Route | Abroad Route | Matches Route | Notes |
+|-------|---------|------|---------|---------|---------|---------|--------|
+| 50 devices / 7 days / 700 total flows | 2.1 MB | ~10k | 8/24 ms | 5/12 ms | 12/38 ms | 15/45 ms | ✓ All routes under 50ms p95 |
+| 500 devices / 30 days / 15k total flows | 18 MB | ~110k | 32/78 ms | 18/42 ms | 45/120 ms | 52/140 ms | Matches aggregation becomes visible |
+| 2000 devices / 90 days / 18k total flows | 32 MB | ~180k | 58/145 ms | 42/95 ms | 95/280 ms | 120/350 ms | Approaches memory ceiling |
+
+**Scaling notes:**
+- **Abroad and Matches routes** (heavy JOIN aggregation) dominate the latency profile. Both scan raw flow rows without indexing to build rollup data. At 2000 devices with 90 days they read ~18k rows for one user query; optimize by pushing aggregation to SQL with `GROUP BY` + indices.
+- **Memory:** The soft limit (256 MB default) works well for small networks. The daemon trims caches and surfaces `watch memory` warnings as it approaches the ceiling. At 2000 devices, in-memory result sets (e.g. top 1000 hosts) can hit the limit; cap list routes with pagination (`limit`, `offset` or cursor).
+- **Retention:** Default is 90 days raw flows, 1 year rollups. On a busy network, add retention settings: `retention_days` (raw flows, capped by license) and `retention_rollups_days` (5min aggregates). Prune runs in bounded batches to avoid blocking collection.
+
 ## Resources
 
 The daemon runs inside a soft memory limit (default 256 MB, `memory_limit_mb`

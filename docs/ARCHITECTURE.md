@@ -106,6 +106,34 @@ ACL, and one legacy page that serves the embedded UI and proxies its API
 with the session's CSRF token and a same-origin check. Everything else is
 the daemon.
 
+## Testing
+
+Three tools measure and validate the daemon:
+
+**Load generation** (`cmd/fsload`): generates synthetic flows, DNS records,
+and host updates deterministically. Use it to fill a store for testing:
+`fsload -devices=50 -days=7 -flows-per-device-per-day=100 -out=/tmp/data`.
+The seed flag (default 42) ensures reproducibility.
+
+**Benchmarking** (`cmd/fsbench`): measures latency (p50/p95/p99) and peak
+memory for heavy read paths on a running daemon. Start the daemon manually
+with GOMEMLIMIT set, point fsbench to its data directory and port, and read
+the results:
+```
+./fsbench -data-dir=/tmp/data -port=8888 -mem-limit-mb=256
+```
+
+**End-to-end regression** (`test/e2e/run.py`): starts the daemon, walks
+every UI page in headless Chrome, and fails on rendering errors or console
+messages. Also contract-tests every GET route from the OpenAPI spec. Run
+with `python3 test/e2e/run.py` or make a data directory and Chrome path
+explicit:
+```
+python3 test/e2e/run.py --data-dir=/tmp/data --chrome=/path/to/chrome
+```
+
+The measured performance envelope is in [OPERATIONS.md](OPERATIONS.md).
+
 ## Where it beats Zenarmor
 
 No licence gates: exclusions, unlimited policies, every report. No cloud: data
