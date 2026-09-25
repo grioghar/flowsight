@@ -160,6 +160,42 @@ func (e *Engine) renderSectionHTML(buf *bytes.Buffer, key string, data any) {
 		if tls, ok := data.(TLSPosture); ok {
 			e.renderTLSPostureHTML(buf, tls)
 		}
+	case "traffic_by_zone":
+		if tbz, ok := data.(TrafficByZone); ok {
+			e.renderTrafficByZoneHTML(buf, tbz)
+		}
+	case "traffic_by_app":
+		if tba, ok := data.(TrafficByApp); ok {
+			e.renderTrafficByAppHTML(buf, tba)
+		}
+	case "traffic_by_category":
+		if tbc, ok := data.(TrafficByCategory); ok {
+			e.renderTrafficByCategoryHTML(buf, tbc)
+		}
+	case "traffic_by_site":
+		if tbs, ok := data.(TrafficBySite); ok {
+			e.renderTrafficBySiteHTML(buf, tbs)
+		}
+	case "egress_activity":
+		if ea, ok := data.(EgressActivity); ok {
+			e.renderEgressActivityHTML(buf, ea)
+		}
+	case "scan_findings":
+		if sf, ok := data.(ScanFindings); ok {
+			e.renderScanFindingsHTML(buf, sf)
+		}
+	case "device_inventory":
+		if di, ok := data.(DeviceInventoryChanges); ok {
+			e.renderDeviceInventoryHTML(buf, di)
+		}
+	case "alerting_deliveries":
+		if ad, ok := data.(AlertingDeliveries); ok {
+			e.renderAlertingDeliveriesHTML(buf, ad)
+		}
+	case "system_health":
+		if sh, ok := data.(SystemHealth); ok {
+			e.renderSystemHealthHTML(buf, sh)
+		}
 	case "alerts":
 		if alerts, ok := data.(Alerts); ok {
 			e.renderAlertsHTML(buf, alerts)
@@ -172,6 +208,113 @@ func (e *Engine) renderSectionHTML(buf *bytes.Buffer, key string, data any) {
 		}
 		buf.WriteString(`</pre>`)
 	}
+}
+
+func (e *Engine) renderTrafficByZoneHTML(buf *bytes.Buffer, tbz TrafficByZone) {
+	buf.WriteString(`<table><tr><th>Zone</th><th>Flows</th><th>Bytes In</th><th>Bytes Out</th><th>Blocked</th><th>Devices</th></tr>`)
+	for _, row := range tbz.Rows {
+		buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%d</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td></tr>`,
+			escapeHTML(row.Zone), row.Flows, formatBytes(row.BytesIn), formatBytes(row.BytesOut), row.Blocked, row.Devices))
+	}
+	buf.WriteString(`</table>`)
+}
+
+func (e *Engine) renderTrafficByAppHTML(buf *bytes.Buffer, tba TrafficByApp) {
+	buf.WriteString(`<table><tr><th>Application</th><th>Flows</th><th>Bytes</th><th>Blocked</th><th>Devices</th></tr>`)
+	for _, row := range tba.Rows {
+		buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%d</td><td>%s</td><td>%d</td><td>%d</td></tr>`,
+			escapeHTML(row.App), row.Flows, formatBytes(row.Bytes), row.Blocked, row.Devices))
+	}
+	buf.WriteString(`</table>`)
+}
+
+func (e *Engine) renderTrafficByCategoryHTML(buf *bytes.Buffer, tbc TrafficByCategory) {
+	buf.WriteString(`<table><tr><th>Category</th><th>Flows</th><th>Bytes</th><th>Blocked</th><th>Devices</th><th>Apps</th></tr>`)
+	for _, row := range tbc.Rows {
+		buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%d</td><td>%s</td><td>%d</td><td>%d</td><td>%d</td></tr>`,
+			escapeHTML(row.Category), row.Flows, formatBytes(row.Bytes), row.Blocked, row.Devices, row.Apps))
+	}
+	buf.WriteString(`</table>`)
+}
+
+func (e *Engine) renderTrafficBySiteHTML(buf *bytes.Buffer, tbs TrafficBySite) {
+	buf.WriteString(`<table><tr><th>Domain</th><th>Flows</th><th>Bytes</th><th>Blocked</th></tr>`)
+	for _, row := range tbs.Rows {
+		buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%d</td><td>%s</td><td>%d</td></tr>`,
+			escapeHTML(row.Domain), row.Flows, formatBytes(row.Bytes), row.Blocked))
+	}
+	buf.WriteString(`</table>`)
+}
+
+func (e *Engine) renderEgressActivityHTML(buf *bytes.Buffer, ea EgressActivity) {
+	buf.WriteString(fmt.Sprintf(`<p>Total Outbound: %s</p>`, formatBytes(ea.TotalOutbound)))
+	if len(ea.Rows) > 0 {
+		buf.WriteString(`<table><tr><th>Source IP</th><th>Destination IP</th><th>Bytes</th><th>App</th></tr>`)
+		for _, row := range ea.Rows {
+			buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+				escapeHTML(row.DeviceIP), escapeHTML(row.DestIP), formatBytes(row.Bytes), escapeHTML(row.App)))
+		}
+		buf.WriteString(`</table>`)
+	}
+}
+
+func (e *Engine) renderScanFindingsHTML(buf *bytes.Buffer, sf ScanFindings) {
+	if len(sf.Rows) > 0 {
+		buf.WriteString(`<table><tr><th>Severity</th><th>Finding</th><th>Timestamp</th></tr>`)
+		for _, row := range sf.Rows {
+			buf.WriteString(fmt.Sprintf(`<tr><td><span class="pill %s">%s</span></td><td>%s</td><td>%s</td></tr>`,
+				sevClass(row.Severity), escapeHTML(row.Severity), escapeHTML(row.Finding), time.Unix(row.Timestamp, 0).Format("2006-01-02 15:04")))
+		}
+		buf.WriteString(`</table>`)
+	} else {
+		buf.WriteString(`<p class="muted">No findings.</p>`)
+	}
+}
+
+func (e *Engine) renderDeviceInventoryHTML(buf *bytes.Buffer, di DeviceInventoryChanges) {
+	if len(di.Rows) > 0 {
+		buf.WriteString(`<table><tr><th>Device IP</th><th>Device Name</th><th>Change Type</th><th>Previous Value</th><th>Timestamp</th></tr>`)
+		for _, row := range di.Rows {
+			buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%s</td><td><span class="pill info">%s</span></td><td>%s</td><td>%s</td></tr>`,
+				escapeHTML(row.DeviceIP), escapeHTML(row.DeviceName), escapeHTML(row.ChangeType), escapeHTML(row.PreviousVal), time.Unix(row.Timestamp, 0).Format("2006-01-02 15:04")))
+		}
+		buf.WriteString(`</table>`)
+	} else {
+		buf.WriteString(`<p class="muted">No inventory changes.</p>`)
+	}
+}
+
+func (e *Engine) renderAlertingDeliveriesHTML(buf *bytes.Buffer, ad AlertingDeliveries) {
+	buf.WriteString(fmt.Sprintf(`<p>Sent: %d | Failed: %d</p>`, ad.TotalSent, ad.TotalFailed))
+	if len(ad.Rows) > 0 {
+		buf.WriteString(`<table><tr><th>Rule</th><th>Channel</th><th>Subject</th><th>Status</th><th>Timestamp</th></tr>`)
+		for _, row := range ad.Rows {
+			statusClass := "ok"
+			if row.Status == "failed" {
+				statusClass = "bad"
+			}
+			buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%s</td><td>%s</td><td><span class="pill %s">%s</span></td><td>%s</td></tr>`,
+				escapeHTML(row.RuleName), escapeHTML(row.Channel), escapeHTML(row.Subject), statusClass, escapeHTML(row.Status), time.Unix(row.Timestamp, 0).Format("2006-01-02 15:04")))
+		}
+		buf.WriteString(`</table>`)
+	}
+}
+
+func (e *Engine) renderSystemHealthHTML(buf *bytes.Buffer, sh SystemHealth) {
+	buf.WriteString(`<div class="kpis">`)
+	if sh.Uptime > 0 {
+		hours := sh.Uptime / 3600
+		days := hours / 24
+		buf.WriteString(renderKPI("Uptime", fmt.Sprintf("%dd %dh", days, hours%24), ""))
+	}
+	if sh.MemoryMB > 0 {
+		buf.WriteString(renderKPI("Memory", fmt.Sprintf("%d MB", sh.MemoryMB), ""))
+	}
+	buf.WriteString(renderKPI("Jobs Failed", fmt.Sprint(sh.JobsFailed), ""))
+	if sh.DataSince > 0 {
+		buf.WriteString(renderKPI("Data Since", time.Unix(sh.DataSince, 0).Format("2006-01-02"), ""))
+	}
+	buf.WriteString(`</div>`)
 }
 
 func (e *Engine) renderBlockedActivityHTML(buf *bytes.Buffer, ba BlockedActivity) {
@@ -350,6 +493,25 @@ func (e *Engine) renderSectionMarkdown(buf *bytes.Buffer, key string, data any) 
 		if tls, ok := data.(TLSPosture); ok {
 			e.renderTLSPostureMarkdown(buf, tls)
 		}
+	case "traffic_by_zone":
+		if tbz, ok := data.(TrafficByZone); ok {
+			e.renderTrafficByZoneMarkdown(buf, tbz)
+		}
+	case "traffic_by_app":
+		if tba, ok := data.(TrafficByApp); ok {
+			e.renderTrafficByAppMarkdown(buf, tba)
+		}
+	case "traffic_by_category":
+		if tbc, ok := data.(TrafficByCategory); ok {
+			e.renderTrafficByCategoryMarkdown(buf, tbc)
+		}
+	case "traffic_by_site":
+		if tbs, ok := data.(TrafficBySite); ok {
+			e.renderTrafficBySiteMarkdown(buf, tbs)
+		}
+	case "egress_activity", "scan_findings", "device_inventory", "alerting_deliveries", "system_health":
+		// Default to JSON for new sections
+		fallthrough
 	case "alerts":
 		if alerts, ok := data.(Alerts); ok {
 			e.renderAlertsMarkdown(buf, alerts)
@@ -360,6 +522,42 @@ func (e *Engine) renderSectionMarkdown(buf *bytes.Buffer, key string, data any) 
 			buf.WriteString(string(b))
 			buf.WriteString("\n```\n")
 		}
+	}
+}
+
+func (e *Engine) renderTrafficByZoneMarkdown(buf *bytes.Buffer, tbz TrafficByZone) {
+	buf.WriteString("| Zone | Flows | Bytes In | Bytes Out | Blocked | Devices |\n")
+	buf.WriteString("|------|-------|----------|-----------|---------|----------|\n")
+	for _, row := range tbz.Rows {
+		buf.WriteString(fmt.Sprintf("| %s | %d | %s | %s | %d | %d |\n",
+			row.Zone, row.Flows, formatBytes(row.BytesIn), formatBytes(row.BytesOut), row.Blocked, row.Devices))
+	}
+}
+
+func (e *Engine) renderTrafficByAppMarkdown(buf *bytes.Buffer, tba TrafficByApp) {
+	buf.WriteString("| Application | Flows | Bytes | Blocked | Devices |\n")
+	buf.WriteString("|-------------|-------|-------|---------|----------|\n")
+	for _, row := range tba.Rows {
+		buf.WriteString(fmt.Sprintf("| %s | %d | %s | %d | %d |\n",
+			row.App, row.Flows, formatBytes(row.Bytes), row.Blocked, row.Devices))
+	}
+}
+
+func (e *Engine) renderTrafficByCategoryMarkdown(buf *bytes.Buffer, tbc TrafficByCategory) {
+	buf.WriteString("| Category | Flows | Bytes | Blocked | Devices | Apps |\n")
+	buf.WriteString("|----------|-------|-------|---------|---------|------|\n")
+	for _, row := range tbc.Rows {
+		buf.WriteString(fmt.Sprintf("| %s | %d | %s | %d | %d | %d |\n",
+			row.Category, row.Flows, formatBytes(row.Bytes), row.Blocked, row.Devices, row.Apps))
+	}
+}
+
+func (e *Engine) renderTrafficBySiteMarkdown(buf *bytes.Buffer, tbs TrafficBySite) {
+	buf.WriteString("| Domain | Flows | Bytes | Blocked |\n")
+	buf.WriteString("|--------|-------|-------|----------|\n")
+	for _, row := range tbs.Rows {
+		buf.WriteString(fmt.Sprintf("| %s | %d | %s | %d |\n",
+			row.Domain, row.Flows, formatBytes(row.Bytes), row.Blocked))
 	}
 }
 

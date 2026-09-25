@@ -17,12 +17,26 @@ import (
 func init() { core.Register(func() core.Module { return &Module{} }) }
 
 type Module struct {
-	ctx      *core.Context
-	engine   *Engine
-	mu       sync.RWMutex
-	lastErr  string
-	identity core.Identity
-	dataDir  string
+	ctx         *core.Context
+	engine      *Engine
+	mu          sync.RWMutex
+	lastErr     string
+	identity    core.Identity
+	dataDir     string
+	keepRuns    map[string]int // per-definition retention count
+	maxTotalMB  int             // global retention limit
+}
+
+// RunIndex tracks stored runs for retention
+type RunIndex struct {
+	DefinitionID string            `json:"definition_id"`
+	RunID        string            `json:"run_id"`
+	StartedAt    int64             `json:"started_at"`
+	FinishedAt   int64             `json:"finished_at"`
+	Status       string            `json:"status"`
+	Error        string            `json:"error,omitempty"`
+	Sizes        map[string]int    `json:"sizes"` // bytes per format
+	Formats      []string          `json:"formats"` // ["html", "pdf", etc]
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -32,10 +46,14 @@ func (m *Module) Info() core.ModuleInfo {
 		Capabilities: []string{},
 		After:        []string{"identity", "alerting"},
 		Defaults: map[string]any{
-			"definitions": []any{},
+			"definitions":  []any{},
+			"keep_runs":    10,
+			"max_total_mb": 500,
 		},
 		Schema: []core.SettingField{
 			{Key: "definitions", Label: "Report definitions", Type: "list", Help: "Custom report templates."},
+			{Key: "keep_runs", Label: "Keep last N runs per definition", Type: "number", Help: "Number of recent runs to retain per definition (0 = unlimited)."},
+			{Key: "max_total_mb", Label: "Max total storage (MB)", Type: "number", Help: "Maximum total size of all stored runs (oldest pruned first)."},
 		},
 	}
 }
@@ -47,13 +65,32 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.dataDir = filepath.Join(ctx.Platform.DataDir, "reports")
 	_ = os.MkdirAll(m.dataDir, 0o750)
 
+	// Load retention settings
+	m.keepRuns = make(map[string]int)
+	m.maxTotalMB = 500
+	settings := ctx.Settings()
+	if val, ok := settings["max_total_mb"]; ok {
+		if v, ok := val.(float64); ok {
+			m.maxTotalMB = int(v)
+		}
+	}
+
 	// Initialize definitions in KV if not present
 	if !ctx.Store.KVGet("reports.definitions", &[]Definition{}) {
 		_ = ctx.Store.KVSet("reports.definitions", ListBuiltIns())
 	}
 
-	// Scheduler job
-	ctx.Every("scheduler", time.Minute, m.sendDueReports)
+	// Initialize runs index if not present
+	if !ctx.Store.KVGet("reports.runs.index", &[]RunIndex{}) {
+		_ = ctx.Store.KVSet("reports.runs.index", []RunIndex{})
+	}
+
+	// Scheduler job: send due reports and prune old runs
+	ctx.Every("scheduler", time.Minute, func() error {
+		_ = m.sendDueReports()
+		_ = m.pruneOldRuns()
+		return nil
+	})
 
 	// API routes
 	ctx.Route("GET", "/api/reports/definitions", m.apiGetDefinitions,
@@ -231,16 +268,44 @@ func (m *Module) apiRunReport(r *core.Req) (any, error) {
 		return nil, err
 	}
 
-	// Store run
-	_ = m.storeRun(run)
+	// Store run metadata
+	_ = m.storeRun(run, def)
+
+	// Store all formats
+	if html, _ := m.engine.RenderHTML(def, run); html != "" {
+		_ = m.storeRunFormat(run, def, "html", []byte(html))
+	}
+	if md, _ := m.engine.RenderMarkdown(def, run); md != "" {
+		_ = m.storeRunFormat(run, def, "markdown", []byte(md))
+	}
+	if json, _ := m.engine.RenderJSON(def, run); len(json) > 0 {
+		_ = m.storeRunFormat(run, def, "json", json)
+	}
 
 	return run, nil
 }
 
 func (m *Module) apiListRuns(r *core.Req) (any, error) {
 	defID := r.Q("definition", "")
-	runs := []Run{}
-	// In a real impl, would scan m.dataDir for run files
+
+	var index []RunIndex
+	m.ctx.Store.KVGet("reports.runs.index", &index)
+
+	var runs []map[string]any
+	for _, idx := range index {
+		if defID == "" || idx.DefinitionID == defID {
+			runs = append(runs, map[string]any{
+				"id":           idx.RunID,
+				"definition":   idx.DefinitionID,
+				"started_at":   idx.StartedAt,
+				"finished_at":  idx.FinishedAt,
+				"status":       idx.Status,
+				"error":        idx.Error,
+				"sizes":        idx.Sizes,
+				"formats":      idx.Formats,
+			})
+		}
+	}
 	return map[string]any{"runs": runs, "definition": defID}, nil
 }
 
@@ -275,6 +340,30 @@ func (m *Module) apiDownloadRun(r *core.Req) (any, error) {
 		return nil, core.NotFound("definition not found")
 	}
 
+	// Try to load from disk first
+	defDir := filepath.Join(m.dataDir, def.ID)
+	filePath := filepath.Join(defDir, runID+"."+format)
+	if data, err := os.ReadFile(filePath); err == nil {
+		// File exists on disk
+		var contentType string
+		switch format {
+		case "html":
+			contentType = "text/html; charset=utf-8"
+		case "json":
+			contentType = "application/json"
+		case "markdown":
+			contentType = "text/markdown"
+		case "pdf":
+			contentType = "application/pdf"
+		case "csv":
+			contentType = "text/csv"
+		default:
+			contentType = "application/octet-stream"
+		}
+		return core.Raw{ContentType: contentType, Filename: def.ID + "." + format, Body: data}, nil
+	}
+
+	// Fall back to rendering
 	switch format {
 	case "html":
 		html, _ := m.engine.RenderHTML(def, run)
@@ -293,7 +382,6 @@ func (m *Module) apiDownloadRun(r *core.Req) (any, error) {
 	case "csv":
 		csvs, _ := m.engine.RenderCSV(def, run)
 		if len(csvs) > 0 {
-			// Return first CSV
 			for _, csv := range csvs {
 				return core.Raw{ContentType: "text/csv", Filename: def.ID + ".csv", Body: []byte(csv)}, nil
 			}
@@ -305,8 +393,25 @@ func (m *Module) apiDownloadRun(r *core.Req) (any, error) {
 
 func (m *Module) apiDeleteRun(r *core.Req) (any, error) {
 	runID := r.Params["run"]
-	path := filepath.Join(m.dataDir, runID+".json")
-	_ = os.Remove(path)
+
+	var index []RunIndex
+	m.ctx.Store.KVGet("reports.runs.index", &index)
+
+	var removed *RunIndex
+	for _, idx := range index {
+		if idx.RunID == runID {
+			removed = &idx
+			break
+		}
+	}
+	if removed == nil {
+		return nil, core.NotFound("run not found")
+	}
+
+	m.deleteRunFiles(removed.DefinitionID, runID)
+	index = removeRunFromIndex(index, runID)
+	_ = m.ctx.Store.KVSet("reports.runs.index", index)
+
 	return map[string]any{"ok": true}, nil
 }
 
@@ -336,27 +441,197 @@ func parseWindow(r *core.Req) *TimeWindow {
 	}
 }
 
-func (m *Module) storeRun(run *Run) error {
-	// Store run as JSON in dataDir
-	path := filepath.Join(m.dataDir, run.ID+".json")
-	data, err := json.Marshal(run)
-	if err != nil {
+func (m *Module) storeRun(run *Run, def *Definition) error {
+	// Create definition directory
+	defDir := filepath.Join(m.dataDir, def.ID)
+	if err := os.MkdirAll(defDir, 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o640)
+
+	// Store metadata in index
+	idx := RunIndex{
+		DefinitionID: def.ID,
+		RunID:        run.ID,
+		StartedAt:    run.StartedAt,
+		FinishedAt:   run.CompletedAt,
+		Status:       run.Status,
+		Error:        run.Error,
+		Sizes:        make(map[string]int),
+		Formats:      []string{},
+	}
+
+	// Store runs metadata in KV
+	var index []RunIndex
+	m.ctx.Store.KVGet("reports.runs.index", &index)
+	index = append(index, idx)
+	_ = m.ctx.Store.KVSet("reports.runs.index", index)
+
+	// Store metadata as JSON
+	metaPath := filepath.Join(defDir, run.ID+".meta.json")
+	metaData, _ := json.Marshal(idx)
+	_ = os.WriteFile(metaPath, metaData, 0o640)
+
+	return nil
+}
+
+func (m *Module) storeRunFormat(run *Run, def *Definition, format string, content []byte) error {
+	defDir := filepath.Join(m.dataDir, def.ID)
+	path := filepath.Join(defDir, run.ID+"."+format)
+	if err := os.WriteFile(path, content, 0o640); err != nil {
+		return err
+	}
+
+	// Update metadata
+	idx := m.getRunIndex(run.ID)
+	if idx != nil {
+		idx.Sizes[format] = len(content)
+		idx.Formats = append(idx.Formats, format)
+		// Update in KV
+		var index []RunIndex
+		m.ctx.Store.KVGet("reports.runs.index", &index)
+		for i, r := range index {
+			if r.RunID == run.ID {
+				index[i] = *idx
+				break
+			}
+		}
+		_ = m.ctx.Store.KVSet("reports.runs.index", index)
+	}
+
+	return nil
+}
+
+func (m *Module) getRunIndex(runID string) *RunIndex {
+	var index []RunIndex
+	if !m.ctx.Store.KVGet("reports.runs.index", &index) {
+		return nil
+	}
+	for _, r := range index {
+		if r.RunID == runID {
+			return &r
+		}
+	}
+	return nil
 }
 
 func (m *Module) loadRun(runID string) (*Run, error) {
-	path := filepath.Join(m.dataDir, runID+".json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
+	var index []RunIndex
+	m.ctx.Store.KVGet("reports.runs.index", &index)
+
+	var runIdx *RunIndex
+	for _, r := range index {
+		if r.RunID == runID {
+			runIdx = &r
+			break
+		}
 	}
-	var run Run
-	if err := json.Unmarshal(data, &run); err != nil {
-		return nil, err
+	if runIdx == nil {
+		return nil, core.NotFound("run not found")
 	}
-	return &run, nil
+
+	run := &Run{
+		ID:           runID,
+		DefinitionID: runIdx.DefinitionID,
+		StartedAt:    runIdx.StartedAt,
+		CompletedAt:  runIdx.FinishedAt,
+		Status:       runIdx.Status,
+		Error:        runIdx.Error,
+		Sizes:        runIdx.Sizes,
+		SectionData:  make(map[string]any),
+	}
+
+	return run, nil
+}
+
+func (m *Module) pruneOldRuns() error {
+	var index []RunIndex
+	if !m.ctx.Store.KVGet("reports.runs.index", &index) {
+		return nil
+	}
+
+	// Group runs by definition
+	runsByDef := make(map[string][]RunIndex)
+	for _, r := range index {
+		runsByDef[r.DefinitionID] = append(runsByDef[r.DefinitionID], r)
+	}
+
+	// Prune by definition's keep_runs limit
+	keepRuns := 10 // default
+	settings := m.ctx.Settings()
+	if val, ok := settings["keep_runs"]; ok {
+		if v, ok := val.(float64); ok {
+			keepRuns = int(v)
+		}
+	}
+
+	for defID, runs := range runsByDef {
+		if keepRuns > 0 && len(runs) > keepRuns {
+			// Sort by started time (oldest first)
+			sortByStartedAsc(runs)
+			// Remove oldest
+			toDelete := runs[:len(runs)-keepRuns]
+			for _, r := range toDelete {
+				m.deleteRunFiles(defID, r.RunID)
+				// Remove from index
+				index = removeRunFromIndex(index, r.RunID)
+			}
+		}
+	}
+
+	// Check global size limit
+	if m.maxTotalMB > 0 {
+		totalSize := int64(0)
+		for _, r := range index {
+			for _, size := range r.Sizes {
+				totalSize += int64(size)
+			}
+		}
+
+		maxBytes := int64(m.maxTotalMB) * 1024 * 1024
+		if totalSize > maxBytes {
+			// Sort all by started time and prune oldest
+			sortByStartedAsc(index)
+			for totalSize > maxBytes && len(index) > 0 {
+				removed := index[0]
+				m.deleteRunFiles(removed.DefinitionID, removed.RunID)
+				index = index[1:]
+				for _, size := range removed.Sizes {
+					totalSize -= int64(size)
+				}
+			}
+		}
+	}
+
+	_ = m.ctx.Store.KVSet("reports.runs.index", index)
+	return nil
+}
+
+func (m *Module) deleteRunFiles(defID, runID string) {
+	defDir := filepath.Join(m.dataDir, defID)
+	_ = os.Remove(filepath.Join(defDir, runID+".meta.json"))
+	for _, fmt := range []string{"html", "pdf", "json", "markdown", "csv"} {
+		_ = os.Remove(filepath.Join(defDir, runID+"."+fmt))
+	}
+}
+
+func removeRunFromIndex(index []RunIndex, runID string) []RunIndex {
+	for i, r := range index {
+		if r.RunID == runID {
+			return append(index[:i], index[i+1:]...)
+		}
+	}
+	return index
+}
+
+func sortByStartedAsc(runs []RunIndex) {
+	// Simple bubble sort (small array)
+	for i := 0; i < len(runs); i++ {
+		for j := i + 1; j < len(runs); j++ {
+			if runs[j].StartedAt < runs[i].StartedAt {
+				runs[i], runs[j] = runs[j], runs[i]
+			}
+		}
+	}
 }
 
 // Scheduler -------------------------------------------------------
@@ -388,8 +663,8 @@ func (m *Module) sendDueReports() error {
 				continue
 			}
 
-			// Store run
-			_ = m.storeRun(run)
+			// Store run metadata
+			_ = m.storeRun(run, &def)
 
 			// Send via alerting (when alerting branch implements Send)
 			// For now, just log

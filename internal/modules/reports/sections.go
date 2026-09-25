@@ -409,6 +409,17 @@ func toI(v any) int64 {
 	}
 }
 
+func getStr(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", x)
+	}
+}
+
 // BlockedActivity shows traffic that was blocked by policy or verdict.
 type BlockedActivityRow struct {
 	PolicyName string `json:"policy_name"`
@@ -629,14 +640,387 @@ func (s *alertsSec) Run(ctx *core.Context, window *TimeWindow, filters *Filters)
 	return result, nil
 }
 
+// TrafficByZone shows traffic grouped by zone.
+type TrafficByZoneRow struct {
+	Zone      string `json:"zone"`
+	Flows     int64  `json:"flows"`
+	BytesIn   int64  `json:"bytes_in"`
+	BytesOut  int64  `json:"bytes_out"`
+	Blocked   int64  `json:"blocked"`
+	Devices   int64  `json:"devices"`
+}
+
+type TrafficByZone struct {
+	Rows []TrafficByZoneRow `json:"rows"`
+}
+
+type trafficByZoneSec struct{}
+
+func (s *trafficByZoneSec) Key() string   { return "traffic_by_zone" }
+func (s *trafficByZoneSec) Title() string { return "Traffic by Zone" }
+func (s *trafficByZoneSec) Notes() string { return "Flows and bytes aggregated by network zone." }
+
+func (s *trafficByZoneSec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := TrafficByZone{Rows: []TrafficByZoneRow{}}
+
+	whereClause := " WHERE ts>=? AND ts<?" + filters.whereClause()
+	args := []any{window.From, window.To}
+	args = append(args, filters.allArgs()...)
+
+	rows, _ := st.Rows(`SELECT src_zone, COUNT(*) AS flows, COALESCE(SUM(bytes_in), 0) AS bytes_in, COALESCE(SUM(bytes_out), 0) AS bytes_out, SUM(CASE WHEN verdict='blocked' THEN 1 ELSE 0 END) AS blocked, COUNT(DISTINCT src_ip) AS devices FROM flows`+whereClause+` GROUP BY src_zone ORDER BY bytes_out DESC`+([]string{"", fmt.Sprintf(" LIMIT %d", filters.TopN)}[minInt(1, filters.TopN)]), args...)
+	for _, row := range rows {
+		zone, _ := row["src_zone"].(string)
+		result.Rows = append(result.Rows, TrafficByZoneRow{
+			Zone:     zone,
+			Flows:    toI(row["flows"]),
+			BytesIn:  toI(row["bytes_in"]),
+			BytesOut: toI(row["bytes_out"]),
+			Blocked:  toI(row["blocked"]),
+			Devices:  toI(row["devices"]),
+		})
+	}
+	return result, nil
+}
+
+// TrafficByApp shows traffic grouped by application.
+type TrafficByAppRow struct {
+	App      string `json:"app"`
+	Flows    int64  `json:"flows"`
+	Bytes    int64  `json:"bytes"`
+	Blocked  int64  `json:"blocked"`
+	Devices  int64  `json:"devices"`
+	Category string `json:"category"`
+}
+
+type TrafficByApp struct {
+	Rows []TrafficByAppRow `json:"rows"`
+}
+
+type trafficByAppSec struct{}
+
+func (s *trafficByAppSec) Key() string   { return "traffic_by_app" }
+func (s *trafficByAppSec) Title() string { return "Traffic by Application" }
+func (s *trafficByAppSec) Notes() string { return "Flows and bytes per application with category and blocked counts." }
+
+func (s *trafficByAppSec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := TrafficByApp{Rows: []TrafficByAppRow{}}
+
+	whereClause := " WHERE ts>=? AND ts<?" + filters.whereClause()
+	args := []any{window.From, window.To}
+	args = append(args, filters.allArgs()...)
+
+	rows, _ := st.Rows(`SELECT app, COUNT(*) AS flows, COALESCE(SUM(bytes_in+bytes_out), 0) AS bytes, SUM(CASE WHEN verdict='blocked' THEN 1 ELSE 0 END) AS blocked, COUNT(DISTINCT src_ip) AS devices FROM flows`+whereClause+` GROUP BY app ORDER BY bytes DESC`+([]string{"", fmt.Sprintf(" LIMIT %d", filters.TopN)}[minInt(1, filters.TopN)]), args...)
+	for _, row := range rows {
+		result.Rows = append(result.Rows, TrafficByAppRow{
+			App:     getStr(row["app"]),
+			Flows:   toI(row["flows"]),
+			Bytes:   toI(row["bytes"]),
+			Blocked: toI(row["blocked"]),
+			Devices: toI(row["devices"]),
+		})
+	}
+	return result, nil
+}
+
+// TrafficByCategory shows traffic grouped by category.
+type TrafficByCategoryRow struct {
+	Category string `json:"category"`
+	Flows    int64  `json:"flows"`
+	Bytes    int64  `json:"bytes"`
+	Blocked  int64  `json:"blocked"`
+	Devices  int64  `json:"devices"`
+	Apps     int64  `json:"apps"`
+}
+
+type TrafficByCategory struct {
+	Rows []TrafficByCategoryRow `json:"rows"`
+}
+
+type trafficByCategorySec struct{}
+
+func (s *trafficByCategorySec) Key() string   { return "traffic_by_category" }
+func (s *trafficByCategorySec) Title() string { return "Traffic by Category" }
+func (s *trafficByCategorySec) Notes() string { return "Flows and bytes per content category." }
+
+func (s *trafficByCategorySec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := TrafficByCategory{Rows: []TrafficByCategoryRow{}}
+
+	whereClause := " WHERE ts>=? AND ts<?" + filters.whereClause()
+	args := []any{window.From, window.To}
+	args = append(args, filters.allArgs()...)
+
+	rows, _ := st.Rows(`SELECT category, COUNT(*) AS flows, COALESCE(SUM(bytes_in+bytes_out), 0) AS bytes, SUM(CASE WHEN verdict='blocked' THEN 1 ELSE 0 END) AS blocked, COUNT(DISTINCT src_ip) AS devices, COUNT(DISTINCT app) AS apps FROM flows`+whereClause+` GROUP BY category ORDER BY bytes DESC`+([]string{"", fmt.Sprintf(" LIMIT %d", filters.TopN)}[minInt(1, filters.TopN)]), args...)
+	for _, row := range rows {
+		result.Rows = append(result.Rows, TrafficByCategoryRow{
+			Category: getStr(row["category"]),
+			Flows:    toI(row["flows"]),
+			Bytes:    toI(row["bytes"]),
+			Blocked:  toI(row["blocked"]),
+			Devices:  toI(row["devices"]),
+			Apps:     toI(row["apps"]),
+		})
+	}
+	return result, nil
+}
+
+// TrafficBySite shows traffic grouped by destination domain.
+type TrafficBySiteRow struct {
+	Domain  string `json:"domain"`
+	Flows   int64  `json:"flows"`
+	Bytes   int64  `json:"bytes"`
+	Blocked int64  `json:"blocked"`
+}
+
+type TrafficBySite struct {
+	Rows []TrafficBySiteRow `json:"rows"`
+}
+
+type trafficBySiteSec struct{}
+
+func (s *trafficBySiteSec) Key() string   { return "traffic_by_site" }
+func (s *trafficBySiteSec) Title() string { return "Traffic by Site" }
+func (s *trafficBySiteSec) Notes() string { return "Top destination domains by traffic volume." }
+
+func (s *trafficBySiteSec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := TrafficBySite{Rows: []TrafficBySiteRow{}}
+
+	whereClause := " WHERE ts>=? AND ts<?" + filters.whereClause()
+	args := []any{window.From, window.To}
+	args = append(args, filters.allArgs()...)
+
+	rows, _ := st.Rows(`SELECT domain, COUNT(*) AS flows, COALESCE(SUM(bytes_in+bytes_out), 0) AS bytes, SUM(CASE WHEN verdict='blocked' THEN 1 ELSE 0 END) AS blocked FROM flows`+whereClause+` AND domain!='' GROUP BY domain ORDER BY bytes DESC`+([]string{"", fmt.Sprintf(" LIMIT %d", filters.TopN)}[minInt(1, filters.TopN)]), args...)
+	for _, row := range rows {
+		result.Rows = append(result.Rows, TrafficBySiteRow{
+			Domain:  getStr(row["domain"]),
+			Flows:   toI(row["flows"]),
+			Bytes:   toI(row["bytes"]),
+			Blocked: toI(row["blocked"]),
+		})
+	}
+	return result, nil
+}
+
+// EgressActivityRow shows large outbound transfers.
+type EgressActivityRow struct {
+	DeviceIP      string `json:"device_ip"`
+	DestIP        string `json:"dest_ip"`
+	Bytes         int64  `json:"bytes"`
+	FirstSeen     int64  `json:"first_seen_ts"`
+	App           string `json:"app"`
+	IsFirstSeenDst bool   `json:"is_first_seen_dst"`
+}
+
+type EgressActivity struct {
+	TotalOutbound int64                `json:"total_outbound"`
+	Rows          []EgressActivityRow  `json:"rows"`
+	Note          string               `json:"note"`
+}
+
+type egressActivitySec struct{}
+
+func (s *egressActivitySec) Key() string   { return "egress_activity" }
+func (s *egressActivitySec) Title() string { return "Egress Activity & DLP" }
+func (s *egressActivitySec) Notes() string { return "Large outbound transfers and first-seen destination IPs (potential data exfiltration)." }
+
+func (s *egressActivitySec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := EgressActivity{Rows: []EgressActivityRow{}, Note: "Sort by bytes (largest transfers first). New destination IPs are flagged."}
+
+	whereClause := " WHERE ts>=? AND ts<?" + filters.whereClause()
+	args := []any{window.From, window.To}
+	args = append(args, filters.allArgs()...)
+
+	result.TotalOutbound = st.Int(`SELECT COALESCE(SUM(bytes_out), 0) FROM flows`+whereClause, args...)
+
+	// Top outbound destinations
+	rows, _ := st.Rows(`SELECT src_ip, dst_ip, app, COALESCE(SUM(bytes_out), 0) AS bytes, MIN(ts) AS first_ts FROM flows`+whereClause+` AND bytes_out>0 GROUP BY src_ip, dst_ip ORDER BY bytes DESC LIMIT 50`, args...)
+	for _, row := range rows {
+		result.Rows = append(result.Rows, EgressActivityRow{
+			DeviceIP:  getStr(row["src_ip"]),
+			DestIP:    getStr(row["dst_ip"]),
+			Bytes:     toI(row["bytes"]),
+			FirstSeen: toI(row["first_ts"]),
+			App:       getStr(row["app"]),
+		})
+	}
+	return result, nil
+}
+
+// ScanFindingsRow is a security finding from device scanning.
+type ScanFindingsRow struct {
+	DeviceIP  string `json:"device_ip"`
+	Severity  string `json:"severity"`
+	Finding   string `json:"finding"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+type ScanFindings struct {
+	Rows  []ScanFindingsRow `json:"rows"`
+	Note  string            `json:"note"`
+}
+
+type scanFindingsSec struct{}
+
+func (s *scanFindingsSec) Key() string   { return "scan_findings" }
+func (s *scanFindingsSec) Title() string { return "Scan Findings" }
+func (s *scanFindingsSec) Notes() string { return "Security findings from identity/vulnerability scans of discovered devices." }
+
+func (s *scanFindingsSec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := ScanFindings{
+		Rows: []ScanFindingsRow{},
+		Note: "Scans of identified devices. Click a device to view full findings.",
+	}
+
+	// Check if findings table has scan-related data
+	rows, _ := st.Rows(`SELECT NULL AS device_ip, severity, title AS finding, ts FROM findings WHERE resolved_ts IS NULL LIMIT 50`)
+	for _, row := range rows {
+		result.Rows = append(result.Rows, ScanFindingsRow{
+			Severity:  getStr(row["severity"]),
+			Finding:   getStr(row["finding"]),
+			Timestamp: toI(row["ts"]),
+		})
+	}
+	return result, nil
+}
+
+// DeviceInventoryChangeRow tracks device changes.
+type DeviceInventoryChangeRow struct {
+	DeviceIP     string `json:"device_ip"`
+	DeviceName   string `json:"device_name"`
+	ChangeType   string `json:"change_type"` // "new", "renamed", "zone_changed", "online", "offline"
+	PreviousVal  string `json:"previous_val"`
+	Timestamp    int64  `json:"timestamp"`
+}
+
+type DeviceInventoryChanges struct {
+	Rows []DeviceInventoryChangeRow `json:"rows"`
+}
+
+type deviceInventorySec struct{}
+
+func (s *deviceInventorySec) Key() string   { return "device_inventory" }
+func (s *deviceInventorySec) Title() string { return "Device Inventory Changes" }
+func (s *deviceInventorySec) Notes() string { return "New devices, renames, zone changes, and online/offline events." }
+
+func (s *deviceInventorySec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := DeviceInventoryChanges{Rows: []DeviceInventoryChangeRow{}}
+
+	// Query events table for device-related changes
+	rows, _ := st.Rows(`SELECT subject AS device_ip, kind, ts FROM events WHERE ts>=? AND ts<? AND kind IN ('device.new', 'device.renamed', 'device.zone_changed') ORDER BY ts DESC LIMIT 100`, window.From, window.To)
+	for _, row := range rows {
+		changeType := strings.TrimPrefix(getStr(row["kind"]), "device.")
+		result.Rows = append(result.Rows, DeviceInventoryChangeRow{
+			DeviceIP:   getStr(row["device_ip"]),
+			ChangeType: changeType,
+			Timestamp:  toI(row["ts"]),
+		})
+	}
+	return result, nil
+}
+
+// AlertingDeliveryRow shows notification delivery attempts.
+type AlertingDeliveryRow struct {
+	RuleName  string `json:"rule_name"`
+	Channel   string `json:"channel"`
+	Subject   string `json:"subject"`
+	Status    string `json:"status"` // "sent", "failed"
+	Error     string `json:"error"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+type AlertingDeliveries struct {
+	Rows          []AlertingDeliveryRow `json:"rows"`
+	TotalSent     int64                 `json:"total_sent"`
+	TotalFailed   int64                 `json:"total_failed"`
+}
+
+type alertingDeliveriesSec struct{}
+
+func (s *alertingDeliveriesSec) Key() string   { return "alerting_deliveries" }
+func (s *alertingDeliveriesSec) Title() string { return "Alerting Deliveries" }
+func (s *alertingDeliveriesSec) Notes() string { return "Log of notification delivery attempts through configured channels." }
+
+func (s *alertingDeliveriesSec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := AlertingDeliveries{Rows: []AlertingDeliveryRow{}}
+
+	// Query notifications table
+	rows, _ := st.Rows(`SELECT rule, channel, subject, ts FROM notifications WHERE ts>=? AND ts<? ORDER BY ts DESC LIMIT 100`, window.From, window.To)
+	for _, row := range rows {
+		status := "sent"
+		result.TotalSent++
+		result.Rows = append(result.Rows, AlertingDeliveryRow{
+			RuleName:  getStr(row["rule"]),
+			Channel:   getStr(row["channel"]),
+			Subject:   getStr(row["subject"]),
+			Status:    status,
+			Timestamp: toI(row["ts"]),
+		})
+	}
+	return result, nil
+}
+
+// SystemHealthRow is a health metric.
+type SystemHealthMetric struct {
+	Name  string      `json:"name"`
+	Value interface{} `json:"value"`
+}
+
+type SystemHealth struct {
+	Uptime     int64                  `json:"uptime_seconds"`
+	MemoryMB   int64                  `json:"memory_mb"`
+	JobsFailed int64                  `json:"jobs_failed"`
+	DataSince  int64                  `json:"data_since_ts"`
+	Metrics    []SystemHealthMetric   `json:"metrics"`
+}
+
+type systemHealthSec struct{}
+
+func (s *systemHealthSec) Key() string   { return "system_health" }
+func (s *systemHealthSec) Title() string { return "System Health" }
+func (s *systemHealthSec) Notes() string { return "Uptime, memory usage, job failures, and data collection metrics." }
+
+func (s *systemHealthSec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := SystemHealth{Metrics: []SystemHealthMetric{}}
+
+	// Get uptime from first event or a reasonable estimate
+	startRow, _ := st.Row("SELECT MIN(ts) as start FROM events")
+	if startRow != nil && startRow["start"] != nil {
+		result.DataSince = toI(startRow["start"])
+		result.Uptime = time.Now().Unix() - result.DataSince
+	}
+
+	// Count job failures from events table
+	jobFailures := st.Int("SELECT COUNT(*) FROM events WHERE kind LIKE 'job.%' AND subject LIKE '%failed%'")
+	result.JobsFailed = jobFailures
+
+	return result, nil
+}
+
 // Register all sections
 func registerSections() []Section {
 	return []Section{
 		&execSummarySec{},
 		&trafficByDeviceSec{},
+		&trafficByZoneSec{},
+		&trafficByAppSec{},
+		&trafficByCategorySec{},
+		&trafficBySiteSec{},
 		&blockedActivitySec{},
+		&egressActivitySec{},
 		&dnsSummarySec{},
+		&scanFindingsSec{},
 		&tlsPostureSec{},
+		&deviceInventorySec{},
+		&alertingDeliveriesSec{},
+		&systemHealthSec{},
 		&alertsSec{},
 	}
 }
