@@ -356,6 +356,23 @@ Active network scanning for local devices: ICMP, TCP/UDP probes, service detecti
 | `sweep_window` | Sweep time window | string | `""` | Optional UTC time window, e.g. `"02:00-05:00"`. Sweeps only run inside it. |
 | `rate_limit_pps` | Rate limit (packets/sec) | int | `200` | ICMP and UDP probe rate; TCP respects connection limits. |
 
+### inspect
+
+Stateful and deep packet inspection via the firewall's state table and `tcpdump` capture with Wireshark-class analysis.
+
+| Key | Setting | Type | Default | Notes |
+|---|---|---|---|---|
+| `max_states` | Max firewall states in memory | int | `20000` | Keep the newest N states; older discarded to cap memory. |
+| `state_age_seconds` | State age threshold | int | `300` | States older than this are flagged for cleanup detection. |
+| `snaplen` | Default snaplen (bytes) | int | `96` | 96: headers only (private-data safe). 65535: full payload (sensitive). |
+| `max_capture_secs` | Max capture duration | int | `600` | Hard limit on capture runtime (seconds). |
+| `max_capture_files` | Max rotated capture files | int | `5` | `tcpdump -W` limit: number of files in the ring buffer. |
+| `max_capture_bytes` | Max total capture storage (MB) | int | `100` | Hard cap; oldest captures deleted when exceeded. |
+| `payload_allowed` | Allow payload capture | bool | `false` | If true, users can select full payload (65535 bytes). Payload is sensitive. |
+| `state_poll_seconds` | State poll interval | int | `30` | How often to query pfctl for state changes. |
+| `syn_flood_threshold` | SYN flood alert threshold | int | `100` | Alert if SYN_SENT states from one source exceed this in the poll window. |
+| `port_scan_threshold` | Port scan alert threshold | int | `50` | Alert if one source has this many non-established destinations in one poll. |
+
 ### Proxmox
 
 The Proxmox module maps Proxmox VE cluster inventory into FlowSight: nodes, QEMU VMs, and LXC containers with their network addresses, OS information, and optional guest agent data. It enriches FlowSight's host database and optionally writes notes to guest descriptions.

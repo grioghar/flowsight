@@ -13,6 +13,7 @@ import (
 	_ "github.com/grioghar/flowsight/internal/modules/firewall"
 	_ "github.com/grioghar/flowsight/internal/modules/identity"
 	_ "github.com/grioghar/flowsight/internal/modules/ids"
+	_ "github.com/grioghar/flowsight/internal/modules/inspect"
 	_ "github.com/grioghar/flowsight/internal/modules/license"
 	_ "github.com/grioghar/flowsight/internal/modules/mitm"
 	_ "github.com/grioghar/flowsight/internal/modules/paths"

@@ -1106,6 +1106,71 @@ the VM.Monitor privilege on the token. Containers have no agent, so
 container-to-container traffic on one subnet appears only through declared
 relationships.
 
+## Packet Inspection
+
+The **Packet Inspection** page gives you two views of traffic:
+
+### Stateful Packet Inspection (SPI)
+
+The *States* tab shows the firewall's own connection state table, captured
+every 30 seconds (configurable). You see each active TCP, UDP and ICMP flow,
+its state (ESTABLISHED, SYN_SENT, etc.), age, packets and bytes in each
+direction, and the rule number that allowed it.
+
+**Use SPI to**:
+- Troubleshoot half-open connections and SYN floods (the *half-open* KPI and
+  *SYN_SENT* state filter)
+- Find long-lived idle states that might be holding resources
+- Understand traffic flows in real time without capture overhead
+
+**Anomaly detection**: The module flags **SYN floods** (many half-open
+connections from one source in the poll window) and **port scans** (one
+source attempting connections to many different destinations in
+non-established states). Findings flow through your alert channels.
+
+States are aggregated: you see up to 20,000 of the newest states in memory,
+and older ones are discarded as new flows are created. Filter by host, protocol
+or state type; use the live per-second state delta to watch the conversation
+rate.
+
+### Deep Packet Inspection (DPI)
+
+The *Capture* tab lets you record traffic with `tcpdump` and analyse it with
+Wireshark-class parsing. Start a capture on any interface with optional BPF
+filtering (preset filters: DNS, HTTPS, HTTP, local traffic exclusion, ARP).
+Set snaplen to 96 bytes for headers only (the default, privacy-friendly) or
+65535 for full payloads (if your settings allow); captures rotate into 20 MB
+files with a total cap of 100 MB. Hard timeout: 10 minutes.
+
+Once a capture finishes, the page auto-analyzes it: per-conversation table
+(5-tuple, packets/bytes each way, TCP flags, retransmissions, RTT estimate,
+zero-window and reset counts), protocol counts (Ethernet, IP, TCP, UDP, ICMP,
+ARP, DNS, TLS, HTTP, QUIC, mDNS, SSDP, DHCP, NTP), extracted artefacts:
+- **DNS**: queries and answers with response codes
+- **TLS**: SNI, JA3-like fingerprint, certificate CN/SAN from handshakes
+- **HTTP**: request line, Host header, User-Agent (plaintext only)
+- **DHCP**: options and fingerprints
+- **ARP**: who-has/is-at and gratuitous ARP
+- **ICMP**: types and codes
+
+**Expert notes** flag anomalies: retransmission, duplicate ACK, zero window,
+reset, TCP port reuse, ARP conflict, DNS response without a query, etc.
+
+**Top talkers** by bytes and packets. A protocol hierarchy bar chart. Download
+the pcap file for offline analysis in Wireshark.
+
+The *Live* tab (experimental) streams packet summaries in real time for 30
+seconds, one-line format, no analysis: use it to watch traffic while it
+happens.
+
+**Capture notes**:
+- Root-only: capture files are root-owned, readable only by FlowSight.
+- Payload is sensitive: if snaplen is 65535, the pcap contains user data,
+  headers and payloads. The default 96 bytes captures only headers.
+- Free space check: a capture cannot start if less than 1 GB is free.
+- Captures live under your data directory; oldest are deleted first when the
+  total size cap is reached.
+
 ## Administration
 
 ### Setup wizard
