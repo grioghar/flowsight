@@ -12,6 +12,14 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252156
+
+**Overview showed raw link tags.** The *Top applications* and *Top sites*
+subtitles name the hosts behind each entry as links; the bar renderer
+escaped them, so the tags appeared as text. The renderer now takes an HTML
+subtitle for that purpose, and an interface check renders the Overview and
+fails on escaped tags. The parse check now covers every script the UI ships.
+
 ## 0.9.8r202609252154
 
 **Policies, Categories and Groups & Schedules were blank since 0.9.8r202609252049.**

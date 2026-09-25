@@ -56,11 +56,11 @@
       </div>
       <div class="grid cols-3" style="margin-top:14px">
         ${card('Top hosts', bars((top.hosts || []).map(h => ({ label: h.name || h.ip, sub: `${h.name ? h.ip + ' · ' : ''}${num(h.apps || 0)} apps · ${bytes((h.bytes_in || 0) + (h.bytes_out || 0))}`, value: h.flows || 0, href: '#host/' + h.ip })), sessions), 'by sessions')}
-        ${card('Top applications', bars((top.apps || []).map(a => ({ label: a.app, sub: whoDid(a), value: a.flows || 0, href: '#flows?app=' + encodeURIComponent(a.app) })), sessions), 'by sessions')}
+        ${card('Top applications', bars((top.apps || []).map(a => ({ label: a.app, subHTML: whoDid(a), value: a.flows || 0, href: '#flows?app=' + encodeURIComponent(a.app) })), sessions), 'by sessions')}
         ${card('Top categories', donut((top.categories || []).map(c => ({ label: c.category, value: c.flows || 0 })), sessions), 'by sessions')}
       </div>
       <div class="grid cols-3" style="margin-top:14px">
-        ${card('Top sites', bars((top.domains || []).map(d => ({ label: d.domain, sub: whoDid(d), value: d.flows || 0, href: '#flows?domain=' + encodeURIComponent(d.domain),
+        ${card('Top sites', bars((top.domains || []).map(d => ({ label: d.domain, subHTML: whoDid(d), value: d.flows || 0, href: '#flows?domain=' + encodeURIComponent(d.domain),
           // Where the site's traffic actually went, on the map: the endpoint
           // with a measured route when there is one, else the busiest.
           extra: d.dst_ip ? ` <a class="maplink${d.traced ? '' : ' untraced'}" href="#paths?dst=${encodeURIComponent(d.dst_ip)}" title="${d.traced ? 'Route to ' + FS.esc(d.dst_ip) + ' on the map' : FS.esc(d.dst_ip) + ' on the map \u2014 not traced yet; the map will trace it when it can'}">map</a>` : '' })), sessions), 'by sessions',
