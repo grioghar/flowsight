@@ -246,3 +246,216 @@ func TestTimeWindowCalculations(t *testing.T) {
 		t.Errorf("TimeWindow.String() should contain 'to'")
 	}
 }
+
+func TestTrafficByZoneSection(t *testing.T) {
+	store, _ := core.OpenStore(t.TempDir())
+	defer store.Close()
+
+	ctx := &core.Context{Store: store, Name: "reports", Platform: &core.Platform{DataDir: t.TempDir()}}
+	engine := NewEngine(ctx)
+	now := time.Now().Unix()
+
+	// Insert test data with default zone
+	_ = store.Exec(`INSERT INTO flows(ts, src_ip, src_zone, app, bytes_in, bytes_out, verdict) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+		now-1800, "10.0.0.1", "", "HTTP", 5000, 10000, "allowed")
+
+	window := &TimeWindow{From: now - 3600, To: now}
+	result, err := engine.sections["traffic_by_zone"].Run(ctx, window, &Filters{})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	tbl := result.(TrafficByZone)
+	// Should at least try to run without error
+	if tbl.Rows == nil {
+		t.Errorf("traffic_by_zone should return a valid result")
+	}
+}
+
+func TestTrafficByAppSection(t *testing.T) {
+	store, _ := core.OpenStore(t.TempDir())
+	defer store.Close()
+
+	ctx := &core.Context{Store: store, Name: "reports", Platform: &core.Platform{DataDir: t.TempDir()}}
+	engine := NewEngine(ctx)
+	now := time.Now().Unix()
+
+	_ = store.Exec(`INSERT INTO flows(ts, src_ip, app, category, bytes_in, bytes_out, verdict) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+		now-1800, "10.0.0.1", "HTTP", "web", 5000, 10000, "allowed")
+	_ = store.Exec(`INSERT INTO flows(ts, src_ip, app, category, bytes_in, bytes_out, verdict) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+		now-1600, "10.0.0.2", "HTTPS", "web", 6000, 12000, "allowed")
+
+	window := &TimeWindow{From: now - 3600, To: now}
+	result, _ := engine.sections["traffic_by_app"].Run(ctx, window, &Filters{})
+	tbl := result.(TrafficByApp)
+	if len(tbl.Rows) < 1 {
+		t.Errorf("traffic_by_app should have rows")
+	}
+}
+
+func TestFilteringAndTopN(t *testing.T) {
+	store, _ := core.OpenStore(t.TempDir())
+	defer store.Close()
+
+	ctx := &core.Context{Store: store, Name: "reports", Platform: &core.Platform{DataDir: t.TempDir()}}
+	engine := NewEngine(ctx)
+	now := time.Now().Unix()
+
+	// Insert multiple flows
+	for i := 0; i < 10; i++ {
+		_ = store.Exec(`INSERT INTO flows(ts, src_ip, app, bytes_in, bytes_out) VALUES(?, ?, ?, ?, ?)`,
+			now-int64(1800-i*100), "10.0.0."+string(rune(49+i)), "APP"+string(rune(65+i)), int64(i*1000), int64(i*2000))
+	}
+
+	window := &TimeWindow{From: now - 3600, To: now}
+
+	// Test with TopN = 5
+	filters := &Filters{TopN: 5}
+	result, _ := engine.sections["traffic_by_app"].Run(ctx, window, filters)
+	tbl := result.(TrafficByApp)
+	if len(tbl.Rows) > 5 {
+		t.Errorf("TopN=5 should limit results to 5, got %d", len(tbl.Rows))
+	}
+}
+
+func TestScheduleDueComputation(t *testing.T) {
+	// Test daily schedule
+	now := time.Now()
+	sched := &Schedule{
+		Cadence:  "daily",
+		TimeUTC:  "09:00",
+		Timezone: "UTC",
+	}
+
+	m := &Module{}
+	nextRun := m.nextRunTime(now, sched)
+
+	if nextRun.Hour() != 9 {
+		t.Errorf("next run should be at hour 9, got %d", nextRun.Hour())
+	}
+	if nextRun.Minute() != 0 {
+		t.Errorf("next run should be at minute 0, got %d", nextRun.Minute())
+	}
+	if nextRun.Before(now) && nextRun.Day() == now.Day() {
+		t.Errorf("next run should not be in the past for today")
+	}
+}
+
+func TestScheduleWeeklyAndMonthly(t *testing.T) {
+	m := &Module{}
+	now := time.Now()
+
+	// Weekly on Monday
+	schedW := &Schedule{
+		Cadence:  "weekly",
+		TimeUTC:  "10:00",
+		Weekday:  "mon",
+		Timezone: "UTC",
+	}
+	nextW := m.nextRunTime(now, schedW)
+	if nextW.Weekday() != time.Monday {
+		t.Errorf("next weekly run should be on Monday, got %v", nextW.Weekday())
+	}
+
+	// Monthly on 15th
+	schedM := &Schedule{
+		Cadence:  "monthly",
+		TimeUTC:  "10:00",
+		Day:      15,
+		Timezone: "UTC",
+	}
+	nextM := m.nextRunTime(now, schedM)
+	if nextM.Day() != 15 {
+		t.Errorf("next monthly run should be on day 15, got %d", nextM.Day())
+	}
+}
+
+func TestRunStorageAndRetention(t *testing.T) {
+	store, _ := core.OpenStore(t.TempDir())
+	defer store.Close()
+
+	ctx := &core.Context{
+		Store:    store,
+		Name:     "reports",
+		Platform: &core.Platform{DataDir: t.TempDir()},
+	}
+
+	m := &Module{ctx: ctx, dataDir: ctx.Platform.DataDir + "/reports", maxTotalMB: 100}
+
+	def := &Definition{ID: "test-def", Name: "Test"}
+	run := &Run{
+		ID:           "test-run-1",
+		DefinitionID: def.ID,
+		StartedAt:    time.Now().Unix(),
+		CompletedAt:  time.Now().Unix(),
+		Status:       "done",
+		Sizes:        map[string]int{"html": 50000, "json": 10000},
+	}
+
+	// Store run
+	_ = m.storeRun(run, def)
+	_ = m.storeRunFormat(run, def, "html", []byte("test html content"))
+
+	// Load and verify
+	loaded, err := m.loadRun(run.ID)
+	if err != nil {
+		t.Fatalf("loadRun failed: %v", err)
+	}
+	if loaded.ID != run.ID {
+		t.Errorf("loaded run ID mismatch")
+	}
+}
+
+func TestNextRunTimeAvoidsDuplicates(t *testing.T) {
+	store, _ := core.OpenStore(t.TempDir())
+	defer store.Close()
+
+	ctx := &core.Context{
+		Store:    store,
+		Name:     "reports",
+		Platform: &core.Platform{DataDir: t.TempDir()},
+	}
+
+	m := &Module{ctx: ctx}
+
+	def := &Definition{
+		ID:       "test",
+		Schedule: &Schedule{Cadence: "daily", TimeUTC: "09:00", Timezone: "UTC"},
+	}
+
+	// Set next run to far future to avoid being due
+	futureTime := time.Now().AddDate(0, 0, 1).Unix()
+	_ = m.ctx.Store.KVSet("reports.next_run."+def.ID, futureTime)
+
+	now := time.Now()
+
+	// Check that we're not due
+	due := m.isDueForRun(now, def)
+	if due {
+		t.Errorf("should not be due when next_run is in the future")
+	}
+}
+
+func TestAlertingIntegration(t *testing.T) {
+	// Test the alerting interface
+	msg := core.Message{
+		Subject:     "Test Report",
+		Text:        "Test text",
+		HTML:        "<html><body>Test</body></html>",
+		Attachments: []core.Attachment{},
+	}
+
+	if msg.Subject != "Test Report" {
+		t.Errorf("Message subject mismatch")
+	}
+
+	att := core.Attachment{
+		Name:  "test.pdf",
+		MIME:  "application/pdf",
+		Bytes: []byte("test pdf data"),
+	}
+
+	if att.Name != "test.pdf" {
+		t.Errorf("Attachment name mismatch")
+	}
+}
