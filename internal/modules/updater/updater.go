@@ -2,7 +2,6 @@
 package updater
 
 import (
-	"net/url"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -12,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
