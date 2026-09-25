@@ -12,6 +12,13 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252211
+
+**The filter-log reader found nothing.** OPNsense's filterlog names the leaf
+anchor (`policy`), not the full path (`flowsight/policy`), so every line
+was skipped. The reader now accepts either, and the test uses a line as the
+gateway really writes it.
+
 ## 0.9.8r202609252209
 
 **Map: clicking a hop filters to the devices behind it.** The *Device*

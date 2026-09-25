@@ -214,8 +214,9 @@ func (m *Module) readLog() error {
 		if len(line) > 0 && strings.HasSuffix(line, "\n") {
 			off += int64(len(line))
 			lines++
-			if strings.Contains(line, rootAnchor+"/policy") {
-				if l, ok := parseFilterlog(line, now); ok && l.Anchor == rootAnchor+"/policy" {
+			// filterlog names the leaf anchor ("policy"), not the full path.
+			if strings.Contains(line, ",policy,") {
+				if l, ok := parseFilterlog(line, now); ok && isPolicyAnchor(l.Anchor) {
 					n := l.SubRuleNr
 					if n < 0 {
 						n = l.RuleNr
@@ -323,4 +324,10 @@ func (m *Module) apiHits(r *core.Req) (any, error) {
 		}
 	}
 	return out, nil
+}
+
+// isPolicyAnchor accepts the anchor as filterlog writes it: the leaf name
+// on OPNsense, the full path on a pf that logs it that way.
+func isPolicyAnchor(a string) bool {
+	return a == "policy" || a == rootAnchor+"/policy" || strings.HasSuffix(a, "/policy")
 }
