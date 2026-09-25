@@ -921,12 +921,27 @@ scan app — iPhone (Polycam, Scaniverse, Apple RoomPlan apps), Android
 (Polycam, Scaniverse, ARCore-based apps) — export as **GLB** (recommended,
 supports mesh and textures), **OBJ** (mesh only), **RoomPlan JSON** (auto-
 parsed into room outlines), or **PLY** (point cloud). Decimate scans to
-under 50 MB in your app before upload. Address records: geocoding from the
-US Census Geocoder (no API key); elevation from USGS; building footprints
-from OpenStreetMap when available; broadband provider lookup when FCC
-credentials are set in the Paths module. Placements are saved in the layout
-and linked to device identity; when you move a device physically, update
-its location here and it will update links on the Devices page.
+under 50 MB in your app before upload.
+
+**3D controls:** orbit with mouse drag (or single-finger touch), pan with
+right-click drag or shift-drag, zoom with mouse wheel (or two-finger pinch).
+The viewer draws the floor grid and XYZ axes, computes smooth normals for
+scans without them, and handles large meshes efficiently with spatial
+indexing.
+
+**Device placement:** drag a device from the palette onto the 3D surface to
+place it; the viewer ray-casts from screen coordinates to find the hit point.
+Click a placed marker to see its details (vendor, addresses, room assignment
+from polygon containment, live traffic sparkline), or drag it to move it.
+Right-click to level the scan: pick three points on the floor to define the
+z=0 plane and up-axis.
+
+Address records: geocoding from the US Census Geocoder (no API key); elevation
+from USGS; building footprints from OpenStreetMap when available; broadband
+provider lookup when FCC credentials are set in the Paths module. Placements
+are saved in the layout and linked to device identity; when you move a device
+physically, update its location here and it will update links on the Devices
+page.
 
 ## Administration
 

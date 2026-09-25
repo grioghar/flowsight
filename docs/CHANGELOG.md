@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609250005
+
+**Space: WebGL2 3D viewer and interactive device placement.** The 3D pane now
+renders scans with full WebGL2 support, orbit/pan/zoom camera with mouse and
+touch, floor grid and RGB axes. Large scans (500k+ triangles) are handled
+efficiently with spatial indexing. Ray-cast from screen coordinates to place
+devices on any surface; click a marker to see its room assignment (from
+polygon containment), vendor, addresses, and live traffic sparkline. Level
+the scan with three floor points to define z=0 and up-axis. Smooth normals
+are computed for scans that lack them.
+
 ## 0.9.8r202609240001
 
 **Space module: physical space mapping and 3D device placement.** A new Space
