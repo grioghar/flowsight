@@ -12,6 +12,15 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251808
+
+**The GUI keeps working when the API gets a token.** Setting `api_token`
+in the daemon's config (to reach the API from the LAN as well as through
+the OPNsense page) used to lock out the page itself, because the daemon
+stops trusting the loopback proxy once a token exists. The page now reads
+the token from the daemon's own config file and presents it. Plugin file
+only; no daemon change.
+
 ## 0.9.8r202609251643
 
 **Proxmox: the hypervisors join the inventory.** A new *Proxmox* page under

@@ -2,7 +2,7 @@
 
 Every setting lives under **FlowSight › Settings** (module by module) and in `flowsight.json` under `modules.<name>`. The file holds only what you change; the defaults below apply otherwise. Settings marked *restart* take effect at the next service restart; everything else applies immediately.
 
-The core keys `bind`, `port`, `api_token`, `data_dir` and `paths` can only be changed in the file, never through the API or the UI. Where an empty value means "platform default", the settings page shows the value actually in use beneath the field.
+The core keys `bind`, `port`, `api_token`, `data_dir` and `paths` can only be changed in the file, never through the API or the UI. Where an empty value means "platform default", the settings page shows the value actually in use beneath the field. With a token set, bind the daemon to `0.0.0.0` (the OPNsense WAN rules still block it from outside) and the OPNsense page reads the token from `flowsight.json` and presents it on every proxied request, so the GUI keeps working while LAN clients must send `X-Flowsight-Token`.
 
 ## Core (`flowsight.json`)
 

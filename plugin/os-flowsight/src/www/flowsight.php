@@ -21,10 +21,30 @@ require_once("guiconfig.inc");
 
 $FLOWSIGHT_BASE = "http://127.0.0.1:8080";
 
+/* The daemon trusts the loopback proxy only while no API token is set. Once
+ * an operator sets one (to reach the API from the LAN as well), this page
+ * presents it, read from the daemon's own config, so the GUI keeps working. */
+function fs_api_token()
+{
+    static $tok = null;
+    if ($tok !== null) {
+        return $tok;
+    }
+    $tok = "";
+    $cfg = @json_decode(@file_get_contents("/usr/local/etc/flowsight/flowsight.json"), true);
+    if (is_array($cfg) && !empty($cfg["core"]["api_token"]) && is_string($cfg["core"]["api_token"])) {
+        $tok = $cfg["core"]["api_token"];
+    }
+    return $tok;
+}
+
 function fs_fetch($url, $method = "GET", $body = null, $headers = [])
 {
     $ch = curl_init($url);
     $hdrs = array_merge(["X-Requested-With: Flowsight"], $headers);
+    if (fs_api_token() !== "") {
+        $hdrs[] = "X-Flowsight-Token: " . fs_api_token();
+    }
     if (!empty($_SESSION["Username"])) {
         $hdrs[] = "X-Flowsight-User: " . preg_replace('/[^A-Za-z0-9@._-]/', '', $_SESSION["Username"]);
     }
