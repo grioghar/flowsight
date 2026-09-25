@@ -21,11 +21,73 @@ The core keys `bind`, `port`, `api_token`, `data_dir` and `paths` can only be ch
 
 ### alerting
 
-Notification channels and alert rules.
+Notification channels (multi-protocol, 54+ destinations), alert rules (severity/module/device matching), delivery configuration, and maintenance mode.
 
-| Key | Setting | Type | Default | Notes |
-|---|---|---|---|---|
-| `channels` | Notification channels | list | `[]` | Configured channels for sending notifications. |
+**Storage:** Channels and rules are stored as JSON in the database (KV store `alerting.channels` and `alerting.rules`)
+
+**Channel configuration** varies by type:
+
+- **SMTP**: host, port, user, password, from, to (comma-separated), tls (starttls|implicit|none)
+- **Webhook**: url, headers (JSON), method (POST/PUT), timeout_seconds, signature_secret (for HMAC-SHA256)
+- **Slack**: webhook_url
+- **Discord**: webhook_url
+- **Teams**: webhook_url
+- **Telegram**: bot_token, chat_id
+- **Twilio**: account_sid, auth_token, from_number, to_numbers (comma-separated)
+- **PagerDuty**: integration_key, service_id (optional for routing)
+- **Opsgenie**: api_key, region (us|eu)
+- **SendGrid**: api_key, from, to (comma-separated)
+- **Splunk HEC**: hec_url, hec_token, source, sourcetype
+- **Datadog**: api_key, site (us|eu), tags (optional)
+- **Syslog**: server, port, facility (default 16=local0), protocol (udp|tcp)
+- **AWS SNS**: access_key_id, secret_access_key, topic_arn, region
+- **MQTT**: broker_url, topic, username (optional), password (optional), qos (0-2)
+- **Sentry**: dsn (project key URL)
+
+**Rule configuration:**
+
+| Key | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | yes | Unique rule identifier |
+| `name` | string | yes | Human-readable rule name |
+| `enabled` | bool | no | Enable/disable without deleting (default: true) |
+| `severity` | string | yes | Minimum severity: info, low, medium, high, critical |
+| `module` | string | no | Filter by source module (dns, web, firewall, ids, etc); empty = all |
+| `category` | string | no | Filter by category (anomaly, threat, finding, etc); empty = all |
+| `device` | string | no | Filter by IP or MAC address; empty = all |
+| `zone` | string | no | Filter by zone name; empty = all |
+| `channels` | string[] | yes | Channel IDs to send to (at least one) |
+| `cooldown` | int | no | Minimum seconds between identical alerts (prevent spam, default: 300) |
+| `digest_minutes` | int | no | Bundle alerts into periodic summaries (0 = immediate, default: 0) |
+| `escalation` | object | no | Escalate to additional channels if unacknowledged after N minutes |
+| `escalation.after_minutes` | int | yes | Minutes until escalation triggers |
+| `escalation.channels` | string[] | yes | Additional channels for escalation |
+| `escalation.only_once` | bool | no | Only escalate once per alert (default: true) |
+
+**Maintenance mode:**
+
+Stored at `alerting.maintenance` in KV store. When enabled, all alerts are suppressed until the deadline or indefinitely.
+
+```json
+{
+  "enabled": true,
+  "until": 1696281600,  // Unix timestamp; 0 = indefinitely
+  "reason": "System maintenance window"
+}
+```
+
+**Delivery log & rate limiting:**
+
+- Delivery attempts are logged per channel for 7 days (retention: /var/lib/flowsight/alerting/deliveries)
+- Rate limiting per (channel_id, alert_key) pair: configurable in channel config via `rate_limit_minutes` (0 = no limit)
+- Deduplication: 10-minute window by default (drop identical alerts from same rule/channel)
+
+**Secrets & security:**
+
+- All secret fields (passwords, API keys, tokens) are masked with `***` in API responses
+- Secrets are stored encrypted in the database (at-rest encryption via SQLite pragma key)
+- Delivery credentials never appear in logs or delivery logs
+- HMAC-SHA256 signatures for webhooks; AWS SigV4 for AWS services
 
 ### appcontrol
 

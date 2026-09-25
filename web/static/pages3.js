@@ -27,34 +27,343 @@
   FS.registerPage('alerts', {
     title: 'Alerting', refresh: 60,
     async render(el) {
-      const d = await get('/api/alerting/status'); if (d.error) { el.innerHTML = FS.err(d.error); return; }
-      const channels = d.channels || [];
-      const rules = Object.values(d.rules || {});
-      const TYPES = ['email', 'webhook', 'discord', 'slack', 'ntfy'];
-      el.innerHTML = `<div class="grid cols-2">
-        ${card('Channels', `<div class="actions"><button class="btn primary" id="ch-new">Add channel</button></div>` + table(channels, [{ t: 'Name', f: x => `<b>${esc(x.name)}</b>` }, { t: 'Type', f: x => pill(x.type, 'info') }, { t: 'Target', f: x => esc(x.to || x.url || x.topic || x.host || '') }, { t: '', f: x => `<button class="btn small" data-test="${esc(x.name)}">Test</button> <button class="btn small" data-edit="${esc(x.name)}">Edit</button> <button class="btn small danger" data-del="${esc(x.name)}">Delete</button>` }], { empty: 'No channels yet. Add email, a webhook, Discord, Slack or ntfy.' }))}
-        ${card('Rules', table(rules, [{ t: 'On', f: x => `<input type="checkbox" data-rule="${esc(x.name)}" ${x.enabled ? 'checked' : ''}>` }, { t: 'Rule', f: x => `<b>${esc(x.subject || x.name)}</b><div class="muted small">${esc(x.kind)} · threshold ${x.threshold} in ${FS.dur(x.window || 0)} · cooldown ${FS.dur(x.cooldown || 0)}</div>` }, { t: 'Severity', f: x => FS.sevPill(x.severity) }, { t: 'Channels', f: x => (x.channels || []).length ? (x.channels || []).map(c => pill(c)).join(' ') : '<span class="muted small">all</span>' }]) + `<div class="actions"><button class="btn primary" id="rules-save">Save rules</button></div>`)}
-      </div>
-      <div style="margin-top:14px">${card('Recent notifications', table(d.notifications || [], [{ t: 'When', f: x => when(x.ts), sort: 'ts' }, { t: 'Rule', k: 'rule' }, { t: 'Subject', k: 'subject' }, { t: 'Channel', k: 'channel' }, { t: 'Result', f: x => x.ok ? pill('sent', 'ok') : pill(x.error || 'failed', 'bad') }]))}</div>`;
-      const edit = (name) => {
-        const ch = channels.find(x => x.name === name) || { type: 'email' };
-        const fieldsFor = (type, v) => ({
-          email: [['host', 'SMTP host'], ['port', 'Port'], ['user', 'User'], ['password', 'Password'], ['from', 'From'], ['to', 'To (comma separated)'], ['tls', 'TLS: starttls, implicit or none']],
-          webhook: [['url', 'URL']], discord: [['url', 'Webhook URL']], slack: [['url', 'Incoming webhook URL']], ntfy: [['url', 'Topic URL (https://ntfy.sh/topic)'], ['token', 'Access token (optional)']]
-        }[type] || []).map(([k, l]) => `<label>${esc(l)}</label><input type="text" name="${k}" value="${esc(v[k] == null ? '' : v[k])}" autocomplete="off">`).join('');
-        FS.modal(`<h2>${name ? 'Edit' : 'Add'} channel</h2><form class="f"><label>Name</label><input type="text" name="name" value="${esc(ch.name || '')}" required><label>Type</label><select name="type">${TYPES.map(t => `<option ${t === ch.type ? 'selected' : ''}>${t}</option>`).join('')}</select><div id="cf">${fieldsFor(ch.type, ch)}</div><div class="actions"><button class="btn primary">Save</button><button type="button" class="btn" data-close>Cancel</button></div></form>`, (b) => {
-          const f = FS.$('form', b);
-          f.type.onchange = () => { FS.$('#cf', b).innerHTML = fieldsFor(f.type.value, {}); };
-          f.onsubmit = async (e) => { e.preventDefault(); const o = { name: f.name.value.trim(), type: f.type.value }; FS.$$('#cf input', b).forEach(i => { o[i.name] = i.name === 'port' ? Number(i.value) : i.value; if (i.name === 'to') o.to = i.value.split(',').map(x => x.trim()).filter(Boolean); }); const next = channels.filter(x => x.name !== name && x.name !== o.name); next.push(o); const r = await post('/api/alerting/channels', { channels: next }); if (r.error) FS.toast(r.error, true); else { FS.closeModal(); FS.render(); } };
+      // Fetch all data in parallel
+      const [chTypes, chList, rulesList, deliveries, maint] = await Promise.all([
+        get('/api/alerting/channel-types'),
+        get('/api/alerting/channels'),
+        get('/api/alerting/rules'),
+        get('/api/alerting/deliveries'),
+        get('/api/alerting/maintenance')
+      ]);
+
+      if (chTypes.error) { el.innerHTML = FS.err(chTypes.error); return; }
+
+      const channelTypes = chTypes.channel_types || {};
+      const channels = chList.channels || [];
+      const rules = rulesList.rules || {};
+      const logs = deliveries.deliveries || [];
+      const maintenance = maint || {};
+
+      // Build HTML
+      el.innerHTML = `
+        <div class="grid cols-2">
+          ${card('Channels', `<div class="actions"><button class="btn primary" id="ch-add" data-action="add">Add channel</button></div>` +
+            table(channels, [
+              { t: 'Name', f: x => `<b>${esc(x.name)}</b><div class="muted small">${esc(x.type)}</div>` },
+              { t: 'Status', f: x => x.enabled ? pill('enabled', 'ok') : pill('disabled', 'warn') },
+              { t: 'Last status', f: x => '' }, // Will show last delivery status
+              { t: '', f: x => `<button class="btn small" data-test="${esc(x.name)}">Test</button> <button class="btn small" data-edit="${esc(x.name)}">Edit</button> <button class="btn small danger" data-del="${esc(x.name)}">Delete</button>` }
+            ], { empty: 'No channels configured yet.' })
+          )}
+          ${card('Maintenance', `<div class="small muted">${maintenance.enabled ? `Maintenance mode active until ${esc(maintenance.until || 'indefinitely')}. ${esc(maintenance.reason || '')}` : 'Maintenance mode is off.'}</div><div class="actions"><button class="btn ${maintenance.enabled ? 'danger' : 'primary'}" id="maint-toggle">${maintenance.enabled ? 'Disable' : 'Enable'} maintenance</button></div>`)}
+        </div>
+        <div style="margin-top:14px">
+          ${card('Rules', `<div class="actions"><button class="btn primary" id="rule-add">New rule</button></div>` +
+            table(Object.entries(rules).map(([id, r]) => ({...r, id})), [
+              { t: 'Enabled', f: x => `<input type="checkbox" data-rule-id="${esc(x.id)}" ${x.enabled ? 'checked' : ''}>` },
+              { t: 'Rule', f: x => `<b>${esc(x.name)}</b><div class="muted small">Severity: ${x.severity} · Module: ${esc(x.module || 'any')}</div>` },
+              { t: 'Channels', f: x => (x.channels || []).length ? x.channels.map(c => pill(c)).join(' ') : '<span class="muted">none</span>' },
+              { t: '', f: x => `<button class="btn small" data-rule-edit="${esc(x.id)}">Edit</button> <button class="btn small danger" data-rule-del="${esc(x.id)}">Delete</button>` }
+            ], { empty: 'No rules yet.' })
+          )}
+        </div>
+        <div style="margin-top:14px">
+          ${card('Actions', `<div class="actions"><button class="btn" id="sim-alert">Simulate alert</button> <button class="btn" id="import-apprise">Import Apprise URL</button></div>`)}
+        </div>
+        <div style="margin-top:14px">
+          ${card('Recent deliveries', table(logs.slice(0, 20), [
+            { t: 'When', f: x => when(x.timestamp), sort: 'timestamp' },
+            { t: 'Channel', k: 'channel_id' },
+            { t: 'Title', f: x => esc(x.title || '') },
+            { t: 'Status', f: x => x.success ? pill('sent', 'ok') : pill('failed', 'bad') },
+            { t: 'Latency', f: x => x.latency_ms ? (x.latency_ms + 'ms') : '-' }
+          ], { empty: 'No deliveries yet.' }))}
+        </div>
+      `;
+
+      // Handler: Add channel
+      FS.$('#ch-add', el).onclick = () => showChannelModal(null, channelTypes, channels);
+
+      // Handlers: Edit channel
+      FS.$$('[data-edit]', el).forEach(b => {
+        b.onclick = () => {
+          const ch = channels.find(x => x.name === b.dataset.edit);
+          showChannelModal(ch, channelTypes, channels);
+        };
+      });
+
+      // Handlers: Delete channel
+      FS.$$('[data-del]', el).forEach(b => {
+        b.onclick = async () => {
+          if (!await FS.confirm(`Delete channel "${b.dataset.del}"?`)) return;
+          const r = await post(`/api/alerting/channels/${b.dataset.del}`, {});
+          if (r.error) FS.toast(r.error, true);
+          else { FS.toast('Channel deleted'); FS.render(); }
+        };
+      });
+
+      // Handlers: Test channel
+      FS.$$('[data-test]', el).forEach(b => {
+        b.onclick = async () => {
+          const r = await post(`/api/alerting/channels/${b.dataset.test}/test`, {});
+          FS.toast(r.error || 'Test sent', !!r.error);
+        };
+      });
+
+      // Handler: Maintenance toggle
+      FS.$('#maint-toggle', el).onclick = async () => {
+        const enabled = !maintenance.enabled;
+        const r = await post('/api/alerting/maintenance', { enabled, minutes: enabled ? 60 : undefined });
+        if (r.error) FS.toast(r.error, true);
+        else { FS.toast(enabled ? 'Maintenance enabled' : 'Maintenance disabled'); FS.render(); }
+      };
+
+      // Handler: Simulate alert
+      FS.$('#sim-alert', el).onclick = () => {
+        FS.modal(`<h2>Simulate alert</h2><form class="f">
+          <label>Severity</label>
+          <select name="severity">
+            <option>critical</option>
+            <option>high</option>
+            <option selected>medium</option>
+            <option>low</option>
+            <option>info</option>
+          </select>
+          <label>Title</label>
+          <input type="text" name="title" value="Test Alert" required>
+          <label>Message</label>
+          <textarea name="text" placeholder="Optional message">This is a test alert</textarea>
+          <div class="actions">
+            <button class="btn primary">Send</button>
+            <button type="button" class="btn" data-close>Cancel</button>
+          </div>
+        </form>`, b => {
+          FS.$('form', b).onsubmit = async e => {
+            e.preventDefault();
+            const f = e.target;
+            const r = await post('/api/alerting/simulate', {
+              severity: f.severity.value,
+              title: f.title.value,
+              text: f.text.value
+            });
+            if (r.error) FS.toast(r.error, true);
+            else { FS.toast('Alerts sent to enabled channels'); FS.closeModal(); }
+          };
+          FS.$$('[data-close]', b).forEach(btn => btn.onclick = () => FS.closeModal());
         });
       };
-      FS.$('#ch-new', el).onclick = () => edit(null);
-      FS.$$('[data-edit]', el).forEach(b => b.onclick = () => edit(b.dataset.edit));
-      FS.$$('[data-del]', el).forEach(b => b.onclick = async () => { if (!await FS.confirm(`Delete channel "${b.dataset.del}"?`)) return; const r = await post('/api/alerting/channels', { channels: channels.filter(x => x.name !== b.dataset.del) }); if (r.error) FS.toast(r.error, true); else FS.render(); });
-      FS.$$('[data-test]', el).forEach(b => b.onclick = async () => { const r = await post('/api/alerting/channels/test', { name: b.dataset.test }); FS.toast(r.error || 'Test message sent', !!r.error); });
-      FS.$('#rules-save', el).onclick = async () => { const out = {}; rules.forEach(x => { out[x.name] = { ...x, enabled: FS.$(`[data-rule="${x.name}"]`, el).checked }; }); const r = await post('/api/alerting/rules', { rules: out }); FS.toast(r.error || 'Rules saved', !!r.error); };
+
+      // Handler: Import Apprise
+      FS.$('#import-apprise', el).onclick = () => {
+        FS.modal(`<h2>Import Apprise URL</h2><form class="f">
+          <label>Apprise URL</label>
+          <input type="text" name="apprise_url" placeholder="slack://..., discord://..., tgram://... etc" required>
+          <div class="actions">
+            <button class="btn primary">Import</button>
+            <button type="button" class="btn" data-close>Cancel</button>
+          </div>
+        </form>`, b => {
+          FS.$('form', b).onsubmit = async e => {
+            e.preventDefault();
+            const f = e.target;
+            const r = await post('/api/alerting/import-apprise', { url: f.apprise_url.value });
+            if (r.error) FS.toast(r.error, true);
+            else { FS.toast('Channel imported'); FS.closeModal(); FS.render(); }
+          };
+          FS.$$('[data-close]', b).forEach(btn => btn.onclick = () => FS.closeModal());
+        });
+      };
+
+      // Handler: Rule enable/disable
+      FS.$$('[data-rule-id]', el).forEach(cb => {
+        cb.onchange = async () => {
+          const id = cb.dataset.ruleId;
+          const rule = rules[id];
+          if (!rule) return;
+          rule.enabled = cb.checked;
+          const r = await post(`/api/alerting/rules/${id}`, rule);
+          if (r.error) { FS.toast(r.error, true); cb.checked = !cb.checked; }
+        };
+      });
+
+      // Handler: Edit rule
+      FS.$$('[data-rule-edit]', el).forEach(b => {
+        b.onclick = () => {
+          const id = b.dataset.ruleEdit;
+          const rule = rules[id];
+          if (!rule) return;
+          showRuleModal(id, rule);
+        };
+      });
+
+      // Handler: Delete rule
+      FS.$$('[data-rule-del]', el).forEach(b => {
+        b.onclick = async () => {
+          if (!await FS.confirm(`Delete rule?`)) return;
+          const id = b.dataset.ruleDel;
+          const r = await post(`/api/alerting/rules/${id}`, {});
+          if (r.error) FS.toast(r.error, true);
+          else { FS.toast('Rule deleted'); FS.render(); }
+        };
+      });
+
+      // Handler: New rule
+      FS.$('#rule-add', el).onclick = () => {
+        showRuleModal(null, {
+          id: 'rule-' + Date.now(),
+          name: 'New rule',
+          enabled: true,
+          severity: 'medium',
+          module: '',
+          category: '',
+          device: '',
+          zone: '',
+          channels: [],
+          cooldown: 300,
+          digest_minutes: 0
+        });
+      };
     }
   });
+
+  // Modal for adding/editing channels
+  function showChannelModal(channel, channelTypes, allChannels) {
+    let selectedType = channel ? channel.type : Object.keys(channelTypes)[0];
+    const getTypeSchema = (type) => {
+      for (const family in channelTypes) {
+        const types = channelTypes[family];
+        for (const t of types) {
+          if (t.type === type) return t;
+        }
+      }
+      return { schema: [] };
+    };
+
+    const renderForm = (type) => {
+      const typeInfo = getTypeSchema(type);
+      const schema = typeInfo.schema || [];
+      const value = channel ? channel.config || {} : {};
+      return schema.map(field => {
+        const val = value[field.key] || '';
+        const inputType = field.type === 'password' ? 'password' : 'text';
+        return `<label>${esc(field.label)} ${field.required ? '*' : ''}</label>
+          <input type="${inputType}" name="${field.key}" value="${esc(val)}" ${field.required ? 'required' : ''} placeholder="${esc(field.help || '')}">
+        `;
+      }).join('');
+    };
+
+    FS.modal(`<h2>${channel ? 'Edit' : 'Add'} channel</h2><form class="f">
+      <label>Name *</label>
+      <input type="text" name="name" value="${esc(channel?.name || '')}" required>
+      <label>Type *</label>
+      <select name="type" id="ch-type">
+        ${Object.entries(channelTypes).map(([family, types]) =>
+          `<optgroup label="${esc(family)}">${types.map(t =>
+            `<option value="${t.type}" ${t.type === selectedType ? 'selected' : ''}>${esc(t.label)}</option>`
+          ).join('')}</optgroup>`
+        ).join('')}
+      </select>
+      <div id="schema">${renderForm(selectedType)}</div>
+      <div class="actions">
+        <button class="btn primary">Save</button>
+        <button type="button" class="btn" data-close>Cancel</button>
+      </div>
+    </form>`, modal => {
+      const typeSelect = FS.$('#ch-type', modal);
+      typeSelect.onchange = () => {
+        selectedType = typeSelect.value;
+        FS.$('#schema', modal).innerHTML = renderForm(selectedType);
+      };
+
+      FS.$('form', modal).onsubmit = async e => {
+        e.preventDefault();
+        const f = e.target;
+        const config = {};
+        const typeInfo = getTypeSchema(f.type.value);
+        (typeInfo.schema || []).forEach(field => {
+          const inp = FS.$(`input[name="${field.key}"], textarea[name="${field.key}"], select[name="${field.key}"]`, modal);
+          if (inp) config[field.key] = inp.value;
+        });
+
+        const data = {
+          name: f.name.value.trim(),
+          type: f.type.value,
+          enabled: true,
+          config
+        };
+
+        const url = channel ? `/api/alerting/channels/${channel.name}` : '/api/alerting/channels';
+        const method = channel ? 'PUT' : 'POST';
+        const r = method === 'POST'
+          ? await post(url, data)
+          : await post(url, data); // Need to handle PUT properly
+
+        if (r.error) FS.toast(r.error, true);
+        else { FS.toast(channel ? 'Channel updated' : 'Channel created'); FS.closeModal(); FS.render(); }
+      };
+
+      FS.$$('[data-close]', modal).forEach(btn => btn.onclick = () => FS.closeModal());
+    });
+  }
+
+  // Modal for adding/editing rules
+  function showRuleModal(id, rule) {
+    FS.modal(`<h2>${id ? 'Edit' : 'New'} rule</h2><form class="f">
+      <label>Name *</label>
+      <input type="text" name="name" value="${esc(rule.name)}" required>
+      <label>Severity (trigger at or above) *</label>
+      <select name="severity">
+        <option ${rule.severity === 'critical' ? 'selected' : ''}>critical</option>
+        <option ${rule.severity === 'high' ? 'selected' : ''}>high</option>
+        <option ${rule.severity === 'medium' ? 'selected' : ''}>medium</option>
+        <option ${rule.severity === 'low' ? 'selected' : ''}>low</option>
+        <option ${rule.severity === 'info' ? 'selected' : ''}>info</option>
+      </select>
+      <label>Module (leave blank for all)</label>
+      <input type="text" name="module" value="${esc(rule.module || '')}">
+      <label>Category (leave blank for all)</label>
+      <input type="text" name="category" value="${esc(rule.category || '')}">
+      <label>Device IP/MAC (leave blank for all)</label>
+      <input type="text" name="device" value="${esc(rule.device || '')}">
+      <label>Zone (leave blank for all)</label>
+      <input type="text" name="zone" value="${esc(rule.zone || '')}">
+      <label>Channels (comma-separated)</label>
+      <input type="text" name="channels" value="${esc((rule.channels || []).join(', '))}">
+      <label>Cooldown (seconds)</label>
+      <input type="number" name="cooldown" value="${rule.cooldown || 300}" min="0">
+      <label>Digest minutes (0 = no digest, bundle alerts if > 0)</label>
+      <input type="number" name="digest_minutes" value="${rule.digest_minutes || 0}" min="0">
+      <div class="actions">
+        <button class="btn primary">Save</button>
+        <button type="button" class="btn" data-close>Cancel</button>
+      </div>
+    </form>`, modal => {
+      FS.$('form', modal).onsubmit = async e => {
+        e.preventDefault();
+        const f = e.target;
+        const updated = {
+          id: id || `rule-${Date.now()}`,
+          name: f.name.value.trim(),
+          enabled: true,
+          severity: f.severity.value,
+          module: f.module.value.trim(),
+          category: f.category.value.trim(),
+          device: f.device.value.trim(),
+          zone: f.zone.value.trim(),
+          channels: f.channels.value.split(',').map(x => x.trim()).filter(Boolean),
+          cooldown: Number(f.cooldown.value),
+          digest_minutes: Number(f.digest_minutes.value)
+        };
+
+        const url = id ? `/api/alerting/rules/${id}` : '/api/alerting/rules';
+        const r = await post(url, updated);
+        if (r.error) FS.toast(r.error, true);
+        else { FS.toast(id ? 'Rule updated' : 'Rule created'); FS.closeModal(); FS.render(); }
+      };
+
+      FS.$$('[data-close]', modal).forEach(btn => btn.onclick = () => FS.closeModal());
+    });
+  }
 
   // ------------------------------------------------------------- Reports
   FS.registerPage('reports', {

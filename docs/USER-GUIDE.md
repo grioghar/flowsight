@@ -1249,14 +1249,74 @@ reports are served with proper authentication and content types.
 
 ### Alerting
 
-**Rules** evaluated every minute over the store: a new device, a blocked
-request from a given group, traffic above a threshold, a threat alert of a
-severity, a finding of a severity, a certificate about to expire, a policy
-apply failure. Each rule has a severity and, for Pro, channels to notify.
-**Channels** (Pro): e-mail (SMTP), webhook (JSON POST), Discord, Slack,
-ntfy; *Test* sends a message. **Notifications** is the log of what was
-raised and where it went. Without Pro, alerts still appear here and on the
-Overview.
+Comprehensive multi-channel alerting system with 54+ notification destinations, flexible rule routing, digest bundling, escalation, and quiet hours.
+
+#### Channels
+
+Connect to notification services via channel types grouped by family:
+
+**Chat & Collaboration (11)**: Slack, Discord, Microsoft Teams, Telegram, Mattermost, Rocket.Chat, Google Chat, Matrix, Pushover, Pushbullet, Home Assistant
+
+**Email (5)**: SMTP, SendGrid, Mailgun, Amazon SES, Postmark
+
+**SMS & Voice (7)**: Twilio, Vonage, Telnyx, AWS SNS, Plivo, MessageBird, ClickSend
+
+**Incident Management (8)**: PagerDuty, Opsgenie, Splunk On-Call, Squadcast, incident.io, xMatters, Zenduty, Better Stack
+
+**SIEM & Logging (14)**: Splunk HEC, Elastic, OpenSearch, Graylog, Microsoft Sentinel, Datadog, Sumo Logic, New Relic, Grafana Loki, Sentry, AWS CloudWatch, QRadar, Wazuh, Syslog
+
+**Generic (3)**: Webhook (HTTP POST with signatures), MQTT, RSS feed
+
+Each channel requires configuration (API keys, URLs, recipients). *Test* sends a test message to verify connectivity. Secrets are masked in the UI and database after initial save.
+
+#### Rules
+
+Route alerts based on:
+- **Severity**: Trigger at or above a threshold (info, low, medium, high, critical)
+- **Source**: Filter by module, category, device IP/MAC, or zone
+- **Channels**: One or more destinations for matched alerts
+- **Cooldown**: Prevent alert fatigue; minimum seconds between identical alerts
+- **Digest**: Bundle low-severity alerts into periodic summaries (N minutes)
+- **Escalation**: Automatically escalate to additional channels if unacknowledged after N minutes
+- **Quiet hours**: Skip or defer delivery during specified times
+
+#### Maintenance Mode
+
+Temporarily suppress all alerts (useful during maintenance windows). Set duration in minutes or enable indefinitely with optional reason.
+
+#### Simulation & Testing
+
+- **Simulate alert**: Test rule matching and channel delivery without waiting for real alerts
+- **Apprise import**: Migrate channel configs from Apprise URLs (supports 90+ providers)
+- **Delivery log**: View recent delivery attempts with status, latency, and error details
+
+#### Setup: Channel-Specific Tables
+
+| Channel | Setup | Notes |
+|---------|-------|-------|
+| Slack | Create Incoming Webhook at api.slack.com; paste URL | Supports message threads, blocks formatting |
+| Discord | Create Webhook in channel settings; paste URL | JSON-formatted embeds with severity colors |
+| Teams | Create Incoming Webhook in channel connectors; paste URL | Adaptive cards with action buttons |
+| Telegram | Create bot via @BotFather; paste bot token and chat ID | Supports HTML, inline buttons |
+| Twilio | API credentials from twilio.com; add phone numbers | SMS format: title [SEV]: body (160 char limit) |
+| PagerDuty | Create integration key in service settings | Auto-creates incidents; escalates if acked not resolved |
+| Opsgenie | API key from integrations; configure team/responders | Incident routing based on severity |
+| SendGrid | API key from settings; configure from address | HTML emails with severity-based styling |
+| Splunk HEC | Enable HEC, create token, paste URL and port | CEF/JSON event format with timestamp |
+| Datadog | API + app key from organization settings | Posts events to Datadog event stream |
+| AWS SNS | IAM credentials with SNS publish permission; topic ARN | Supports SMS via SNS subscriptions |
+| Webhook | Any URL accepting JSON POST | Custom payload via Go template; HMAC-SHA256 signature |
+| MQTT | Broker address, port, topic, optional credentials | Binary-safe payload; QoS 1 default |
+| Syslog | Server address, port (usually 514); facility level | CEF/LEEF format; UDP or TCP |
+| Grafana Loki | API endpoint, optional credentials, log labels | Streams alerts as structured logs with labels |
+| Sentry | DSN from project settings | Captures alerts as events; auto-groups similar ones |
+
+All channels support:
+- **Test message** to verify connectivity before enabling
+- **Severity abbreviation**: [C] critical, [H] high, [M] medium, [L] low, [I] info
+- **Device context**: IP, hostname, zone (if available in alert)
+- **Links**: Click-through to relevant page in FlowSight UI
+- **Retry**: Automatic retry with exponential backoff (3 attempts, up to 2s delay)
 
 ### Findings
 
