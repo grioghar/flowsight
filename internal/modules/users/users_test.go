@@ -19,7 +19,7 @@ func TestRADIUSPacketParsing(t *testing.T) {
 
 	// Header: Code, ID, Length (will set later), Authenticator
 	packet = append(packet, RADIUSAcctRequest) // Code
-	packet = append(packet, 1)                  // ID
+	packet = append(packet, 1)                 // ID
 
 	// Placeholder for length
 	lenIdx := len(packet)
@@ -51,7 +51,6 @@ func TestRADIUSPacketParsing(t *testing.T) {
 
 	digest := md5.Sum(append(authPacket, []byte(secret)...))
 	copy(packet[authIdx:authIdx+16], digest[:])
-
 
 	// Parse the packet (simulating what radiusListenerLoop would do)
 	// Note: This test verifies packet structure, not full integration
@@ -90,11 +89,11 @@ func appendRADIUSAttribute(packet []byte, attrType uint8, value []byte) []byte {
 func TestMemberResolverUser(t *testing.T) {
 	// Create a mock module with test sessions
 	m := &Module{
-		sessions:    make(map[string]*Session),
-		userAddrs:   make(map[string]map[string]bool),
-		addrToUser:  make(map[string]string),
-		macToUser:   make(map[string]string),
-		ldapCache:   make(map[string]*ldapEntry),
+		sessions:   make(map[string]*Session),
+		userAddrs:  make(map[string]map[string]bool),
+		addrToUser: make(map[string]string),
+		macToUser:  make(map[string]string),
+		ldapCache:  make(map[string]*ldapEntry),
 	}
 
 	// Add a test session for user "alice"
@@ -144,11 +143,11 @@ func TestMemberResolverUser(t *testing.T) {
 // TestSessionKey tests the session key generation.
 func TestSessionKey(t *testing.T) {
 	m := &Module{
-		sessions:    make(map[string]*Session),
-		userAddrs:   make(map[string]map[string]bool),
-		addrToUser:  make(map[string]string),
-		macToUser:   make(map[string]string),
-		ldapCache:   make(map[string]*ldapEntry),
+		sessions:   make(map[string]*Session),
+		userAddrs:  make(map[string]map[string]bool),
+		addrToUser: make(map[string]string),
+		macToUser:  make(map[string]string),
+		ldapCache:  make(map[string]*ldapEntry),
 	}
 
 	// With acct_session_id
@@ -166,6 +165,67 @@ func TestSessionKey(t *testing.T) {
 	t.Logf("Session key test passed")
 }
 
+// TestLDAPFakeServer tests LDAP client against a fake in-process server.
+func TestLDAPFakeServer(t *testing.T) {
+	// Start fake LDAP server
+	srv, err := StartFakeLDAP()
+	if err != nil {
+		t.Fatalf("failed to start fake LDAP server: %v", err)
+	}
+	defer srv.Stop()
+
+	// Get server address
+	addr := srv.Addr()
+	if addr == "" {
+		t.Fatal("fake server address is empty")
+	}
+
+	// Create module with LDAP config pointing to fake server
+	m := &Module{
+		sessions:   make(map[string]*Session),
+		userAddrs:  make(map[string]map[string]bool),
+		addrToUser: make(map[string]string),
+		macToUser:  make(map[string]string),
+		ldapCache:  make(map[string]*ldapEntry),
+		ldapConfig: &LDAPConfig{
+			ServerURL:      "ldap://" + addr,
+			BindDN:         "cn=admin,dc=example,dc=com",
+			BindPassword:   "password",
+			BaseDN:         "dc=example,dc=com",
+			UserFilter:     "(&(uid={0}))",
+			GroupAttribute: "memberOf",
+			CacheTTL:       4 * time.Hour,
+		},
+	}
+
+	// Test lookup
+	groups, err := m.lookupUserGroupsLDAP("testuser")
+	if err != nil {
+		t.Fatalf("LDAP lookup failed: %v", err)
+	}
+
+	if len(groups) != 2 {
+		t.Fatalf("expected 2 groups, got %d", len(groups))
+	}
+
+	// Check group names (extracted from fake DN)
+	found_admins := false
+	found_users := false
+	for _, g := range groups {
+		if g == "admins" {
+			found_admins = true
+		} else if g == "users" {
+			found_users = true
+		}
+	}
+
+	if !found_admins || !found_users {
+		t.Fatalf("unexpected groups: %v", groups)
+	}
+
+	t.Logf("LDAP fake server test passed: groups=%v", groups)
+}
+
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
@@ -174,4 +234,3 @@ func contains(s, substr string) bool {
 	}
 	return false
 }
-

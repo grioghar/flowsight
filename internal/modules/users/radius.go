@@ -18,33 +18,33 @@ const (
 	RADIUSHeaderLen    = 20
 
 	// RADIUS attribute types (RFC 2866)
-	AttrUserName           = 1
-	AttrFramedIPAddress    = 8
-	AttrFramedIPv6Prefix   = 97
-	AttrFramedIPv6Address  = 168
-	AttrCallingStationID   = 31
-	AttrNASIPAddress       = 4
-	AttrNASIdentifier      = 32
-	AttrAcctSessionID      = 44
-	AttrAcctStartType      = 45
-	AttrAcctStatusType     = 40
-	AttrAcctInputOctets    = 42
-	AttrAcctOutputOctets   = 43
+	AttrUserName          = 1
+	AttrFramedIPAddress   = 8
+	AttrFramedIPv6Prefix  = 97
+	AttrFramedIPv6Address = 168
+	AttrCallingStationID  = 31
+	AttrNASIPAddress      = 4
+	AttrNASIdentifier     = 32
+	AttrAcctSessionID     = 44
+	AttrAcctStartType     = 45
+	AttrAcctStatusType    = 40
+	AttrAcctInputOctets   = 42
+	AttrAcctOutputOctets  = 43
 
 	// Accounting Status Type values
-	AcctStart     = 1
-	AcctInterim   = 3
-	AcctStop      = 2
-	AcctOn        = 7
-	AcctOff       = 8
+	AcctStart   = 1
+	AcctInterim = 3
+	AcctStop    = 2
+	AcctOn      = 7
+	AcctOff     = 8
 )
 
 type radiusPacket struct {
-	Code      uint8
-	ID        uint8
-	Length    uint16
-	Auth      [16]byte
-	Attrs     map[uint8][][]byte
+	Code   uint8
+	ID     uint8
+	Length uint16
+	Auth   [16]byte
+	Attrs  map[uint8][][]byte
 }
 
 // handleRADIUSAccounting processes incoming RADIUS Accounting-Request packets.
@@ -220,7 +220,7 @@ func (m *Module) sendRADIUSResponse(addr *net.UDPAddr, id uint8, requestAuth [16
 	// Create response packet
 	response := make([]byte, RADIUSHeaderLen)
 	response[0] = RADIUSAcctResponse // Code
-	response[1] = id                  // ID
+	response[1] = id                 // ID
 	binary.BigEndian.PutUint16(response[2:4], uint16(RADIUSHeaderLen))
 
 	// Response Authenticator = MD5(Code+ID+Length+RequestAuth+Attributes+Secret)

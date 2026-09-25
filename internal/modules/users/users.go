@@ -45,32 +45,32 @@ type Module struct {
 }
 
 type Session struct {
-	User           string    `json:"user"`
-	Source         string    `json:"source"` // "radius", "ldap", "manual"
-	IPv4           string    `json:"ipv4,omitempty"`
-	IPv6           string    `json:"ipv6,omitempty"`
-	MAC            string    `json:"mac,omitempty"`
-	NasIP          string    `json:"nas_ip,omitempty"`
-	NasID          string    `json:"nas_id,omitempty"`
-	AcctSessionID  string    `json:"acct_session_id,omitempty"`
-	StartTime      int64     `json:"start_ts"`
-	LastSeen       int64     `json:"last_seen"`
-	StopTime       int64     `json:"stop_ts,omitempty"`
-	BytesIn        uint64    `json:"bytes_in"`
-	BytesOut       uint64    `json:"bytes_out"`
-	Active         bool      `json:"active"`
-	DeviceName     string    `json:"device_name,omitempty"` // From identity module
+	User          string `json:"user"`
+	Source        string `json:"source"` // "radius", "ldap", "manual"
+	IPv4          string `json:"ipv4,omitempty"`
+	IPv6          string `json:"ipv6,omitempty"`
+	MAC           string `json:"mac,omitempty"`
+	NasIP         string `json:"nas_ip,omitempty"`
+	NasID         string `json:"nas_id,omitempty"`
+	AcctSessionID string `json:"acct_session_id,omitempty"`
+	StartTime     int64  `json:"start_ts"`
+	LastSeen      int64  `json:"last_seen"`
+	StopTime      int64  `json:"stop_ts,omitempty"`
+	BytesIn       uint64 `json:"bytes_in"`
+	BytesOut      uint64 `json:"bytes_out"`
+	Active        bool   `json:"active"`
+	DeviceName    string `json:"device_name,omitempty"` // From identity module
 }
 
 type LDAPConfig struct {
-	ServerURL       string
-	BindDN          string
-	BindPassword    string
-	BaseDN          string
-	UserFilter      string
-	GroupAttribute  string
-	CacheTTL        time.Duration
-	StartTLS        bool
+	ServerURL      string
+	BindDN         string
+	BindPassword   string
+	BaseDN         string
+	UserFilter     string
+	GroupAttribute string
+	CacheTTL       time.Duration
+	StartTLS       bool
 }
 
 type SettingRADIUS struct {
@@ -81,15 +81,15 @@ type SettingRADIUS struct {
 }
 
 type SettingLDAP struct {
-	Enabled       bool   `json:"enabled"`
-	ServerURL     string `json:"server_url"`
-	BindDN        string `json:"bind_dn"`
-	BindPassword  string `json:"bind_password"`
-	BaseDN        string `json:"base_dn"`
-	UserFilter    string `json:"user_filter"`
+	Enabled        bool   `json:"enabled"`
+	ServerURL      string `json:"server_url"`
+	BindDN         string `json:"bind_dn"`
+	BindPassword   string `json:"bind_password"`
+	BaseDN         string `json:"base_dn"`
+	UserFilter     string `json:"user_filter"`
 	GroupAttribute string `json:"group_attribute"`
-	CacheTTLHours int    `json:"cache_ttl_hours"`
-	StartTLS      bool   `json:"start_tls"`
+	CacheTTLHours  int    `json:"cache_ttl_hours"`
+	StartTLS       bool   `json:"start_tls"`
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -395,16 +395,16 @@ func (m *Module) apiAddSession(r *core.Req) (any, error) {
 
 	now := time.Now().Unix()
 	s := &Session{
-		User:       user,
-		Source:     "manual",
-		IPv4:       ipv4,
-		IPv6:       ipv6,
-		MAC:        mac,
-		NasIP:      nasIP,
-		NasID:      nasID,
-		StartTime:  now,
-		LastSeen:   now,
-		Active:     true,
+		User:      user,
+		Source:    "manual",
+		IPv4:      ipv4,
+		IPv6:      ipv6,
+		MAC:       mac,
+		NasIP:     nasIP,
+		NasID:     nasID,
+		StartTime: now,
+		LastSeen:  now,
+		Active:    true,
 	}
 
 	m.mu.Lock()
