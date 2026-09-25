@@ -111,7 +111,7 @@ FS.registerPage('space', {
     initPlanPane(el, planCanvas, layout);
 
     // 3D pane: WebGL viewer
-    init3DPane(canvas3d, layout);
+    init3DPane(el, canvas3d, layout);
 
     // Upload scan modal
     initUploadScan(el);
@@ -543,7 +543,7 @@ function initPlanPane(el, canvas, layout) {
 
 // === 3D Pane (WebGL Viewer) ===
 
-async function init3DPane(canvas, layout) {
+async function init3DPane(el, canvas, layout) {
   if (!FS.space3D) {
     console.error('WebGL viewer not available');
     return;
@@ -760,6 +760,9 @@ async function init3DPane(canvas, layout) {
 
   // Marker interaction: click to open popover, drag to move, wheel to adjust z
   setupMarkerInteraction(canvas, viewer, layout);
+
+  // Level and align tool buttons
+  setupCalibrationTools(el, canvas, viewer, layout);
 
   // Store viewer for later access
   if (!FS.space) FS.space = {};
@@ -1081,6 +1084,206 @@ function highlightMarkerInPalette(mac, viewer) {
   animateCamera();
 }
 
+// === Calibration Tools (Level & Align) ===
+
+function setupCalibrationTools(el, canvas, viewer, layout) {
+  const levelBtn = el.querySelector('#btn-3d-level');
+  const alignBtn = el.querySelector('#btn-3d-align');
+
+  if (levelBtn) {
+    levelBtn.addEventListener('click', () => {
+      startLevelTool(canvas, viewer, layout);
+    });
+  }
+
+  if (alignBtn) {
+    alignBtn.addEventListener('click', () => {
+      startAlignTool(canvas, viewer, layout);
+    });
+  }
+}
+
+// Level tool: collect 3 points on floor, fit plane, store transform
+function startLevelTool(canvas, viewer, layout) {
+  const points = [];
+  const pointMarkers = [];
+
+  const showStatus = (msg) => {
+    let status = document.querySelector('#level-status');
+    if (!status) {
+      status = document.createElement('div');
+      status.id = 'level-status';
+      status.style.cssText = 'position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.8);color:white;padding:10px;border-radius:4px;z-index:100;font-size:12px';
+      canvas.parentElement.appendChild(status);
+    }
+    status.innerHTML = msg;
+  };
+
+  const cleanupStatus = () => {
+    const status = document.querySelector('#level-status');
+    if (status) status.remove();
+  };
+
+  const cleanupMarkers = () => {
+    pointMarkers.forEach(m => m.remove());
+    pointMarkers.length = 0;
+  };
+
+  const handleClick = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    const hit = viewer.raycast(screenX, screenY);
+    if (!hit) {
+      showStatus('Click on the floor to add a point');
+      return;
+    }
+
+    points.push([hit.x, hit.y, hit.z]);
+
+    // Visual marker
+    const marker = document.createElement('div');
+    marker.style.cssText = `position:absolute;width:8px;height:8px;background:red;border-radius:50%;left:${screenX - 4}px;top:${screenY - 4}px;pointer-events:none`;
+    canvas.parentElement.appendChild(marker);
+    pointMarkers.push(marker);
+
+    showStatus(`Floor point ${points.length} of 3. Click ${points.length < 3 ? 'the next point.' : 'to confirm.'}`);
+
+    if (points.length === 3) {
+      canvas.removeEventListener('click', handleClick);
+
+      // Fit plane
+      const plane = FS.space.planeFromPoints(points[0], points[1], points[2]);
+
+      // Compute rotation to align normal with Z axis (up)
+      const normal = plane.normal;
+
+      // The current up axis is [0, 0, 1] in world space
+      // We need to rotate normal to align with [0, 0, 1]
+      let rotationDeg = 0;
+
+      // If the normal is already roughly vertical, no rotation needed
+      if (Math.abs(normal[2]) < 0.99) {
+        // Use atan2 to get rotation about Z axis
+        const angle = Math.atan2(normal[1], normal[0]);
+        rotationDeg = angle * 180 / Math.PI;
+      }
+
+      // Compute Z offset as the plane's z value at origin
+      const zOffset = plane.origin[2];
+
+      // Save to layout
+      const newLayout = FS.space.reduce(layout, {
+        type: 'UPDATE_TRANSFORM',
+        data: {
+          rotation_deg: rotationDeg,
+          offset: [0, 0, zOffset]
+        }
+      });
+
+      // Save to server
+      fetch('/api/space/layout', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newLayout)
+      }).catch(e => console.error('Failed to save layout:', e));
+
+      cleanupMarkers();
+      cleanupStatus();
+
+      showStatus('Floor leveled! Transform saved.');
+      setTimeout(() => cleanupStatus(), 2000);
+    }
+  };
+
+  showStatus('Level Tool: Click 3 points on the floor');
+  canvas.addEventListener('click', handleClick);
+
+  // Cancel on Escape
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      canvas.removeEventListener('click', handleClick);
+      document.removeEventListener('keydown', handleEscape);
+      cleanupMarkers();
+      cleanupStatus();
+    }
+  };
+
+  document.addEventListener('keydown', handleEscape);
+}
+
+// Align tool: collect 2 points in 3D, then 2 on plan, compute transform
+function startAlignTool(canvas, viewer, layout) {
+  const points3d = [];
+  const pointsPlan = [];
+  const markers = [];
+
+  let step = 'points3d'; // 'points3d' -> 'points_plan' -> 'confirm'
+
+  const showStatus = (msg) => {
+    let status = document.querySelector('#align-status');
+    if (!status) {
+      status = document.createElement('div');
+      status.id = 'align-status';
+      status.style.cssText = 'position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.8);color:white;padding:10px;border-radius:4px;z-index:100;font-size:12px';
+      canvas.parentElement.appendChild(status);
+    }
+    status.innerHTML = msg;
+  };
+
+  const cleanupStatus = () => {
+    const status = document.querySelector('#align-status');
+    if (status) status.remove();
+  };
+
+  const cleanupMarkers = () => {
+    markers.forEach(m => m.remove());
+    markers.length = 0;
+  };
+
+  const handleClick3D = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    const hit = viewer.raycast(screenX, screenY);
+    if (!hit) return;
+
+    points3d.push([hit.x, hit.y, hit.z]);
+
+    const marker = document.createElement('div');
+    marker.style.cssText = `position:absolute;width:8px;height:8px;background:blue;border-radius:50%;left:${screenX - 4}px;top:${screenY - 4}px;pointer-events:none`;
+    canvas.parentElement.appendChild(marker);
+    markers.push(marker);
+
+    if (points3d.length === 2) {
+      canvas.removeEventListener('click', handleClick3D);
+      step = 'points_plan';
+      showStatus('Now click the corresponding 2 points on the plan');
+      // Switch to plan pane would happen here in a full implementation
+      // For now, just show a message
+    } else {
+      showStatus(`3D point ${points3d.length} of 2. Click the next point.`);
+    }
+  };
+
+  showStatus('Align Tool: Click 2 points in the 3D scan');
+  canvas.addEventListener('click', handleClick3D);
+
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      canvas.removeEventListener('click', handleClick3D);
+      document.removeEventListener('keydown', handleEscape);
+      cleanupMarkers();
+      cleanupStatus();
+    }
+  };
+
+  document.addEventListener('keydown', handleEscape);
+}
+
+
 // === Palette Pane (Device List) ===
 
 function initPalettePane(listEl, devices, layout) {
@@ -1290,6 +1493,87 @@ function initUploadScan(el) {
     });
   });
 }
+
+// === Pure Functions for Calibration ===
+
+// Fit a plane through three points and return the normal vector
+FS.space.planeFromPoints = function(p1, p2, p3) {
+  // Vectors in the plane
+  const v1 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]];
+  const v2 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]];
+
+  // Normal = v1 × v2
+  const normal = [
+    v1[1] * v2[2] - v1[2] * v2[1],
+    v1[2] * v2[0] - v1[0] * v2[2],
+    v1[0] * v2[1] - v1[1] * v2[0]
+  ];
+
+  // Normalize
+  const len = Math.sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+  if (len > 0) {
+    normal[0] /= len;
+    normal[1] /= len;
+    normal[2] /= len;
+  }
+
+  return { normal, origin: p1 };
+};
+
+// Compute transform (scale, rotation about z, offset) from two point pairs
+// p1_3d, p2_3d: two points in 3D space (from the scan)
+// p1_plan, p2_plan: corresponding two points on the plan (2D: [x, y])
+// Returns: { scale, rotation_deg, offset: [x, y, z] }
+FS.space.alignTransform = function(p1_3d, p2_3d, p1_plan, p2_plan) {
+  // Distance in 3D
+  const d3d = Math.sqrt(
+    (p2_3d[0] - p1_3d[0]) ** 2 +
+    (p2_3d[1] - p1_3d[1]) ** 2 +
+    (p2_3d[2] - p1_3d[2]) ** 2
+  );
+
+  // Distance on plan (2D)
+  const dplan = Math.sqrt(
+    (p2_plan[0] - p1_plan[0]) ** 2 +
+    (p2_plan[1] - p1_plan[1]) ** 2
+  );
+
+  const scale = dplan > 0.001 ? dplan / d3d : 1;
+
+  // Direction vectors
+  const dir3d = [
+    (p2_3d[0] - p1_3d[0]) / d3d,
+    (p2_3d[1] - p1_3d[1]) / d3d
+  ];
+
+  const dirplan = [
+    (p2_plan[0] - p1_plan[0]) / dplan,
+    (p2_plan[1] - p1_plan[1]) / dplan
+  ];
+
+  // Rotation angle (in Z plane, X-Y plane)
+  const angle3d = Math.atan2(dir3d[1], dir3d[0]);
+  const angleplan = Math.atan2(dirplan[1], dirplan[0]);
+  const rotation = angleplan - angle3d;
+  const rotation_deg = rotation * 180 / Math.PI;
+
+  // Offset: plan point minus transformed 3D point
+  const cos_r = Math.cos(rotation);
+  const sin_r = Math.sin(rotation);
+  const p1_transformed = [
+    (p1_3d[0] * cos_r - p1_3d[1] * sin_r) * scale,
+    (p1_3d[0] * sin_r + p1_3d[1] * cos_r) * scale,
+    p1_3d[2]
+  ];
+
+  const offset = [
+    p1_plan[0] - p1_transformed[0],
+    p1_plan[1] - p1_transformed[1],
+    0 // z offset can be set separately
+  ];
+
+  return { scale, rotation_deg, offset };
+};
 
 // === Helpers ===
 

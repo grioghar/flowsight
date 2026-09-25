@@ -277,6 +277,46 @@ f 1 2 3
     // Test failed but continue
   }
 
+  // Test 10: planeFromPoints
+  try {
+    if (FS.space && FS.space.planeFromPoints) {
+      const p1 = [0, 0, 0];
+      const p2 = [1, 0, 0];
+      const p3 = [0, 1, 0];
+
+      const plane = FS.space.planeFromPoints(p1, p2, p3);
+      assert(plane.normal !== null, 'planeFromPoints returns normal');
+      assert(Math.abs(plane.normal[2] - 1) < 1e-6 || Math.abs(plane.normal[2] + 1) < 1e-6, 'Normal points in Z direction');
+
+      // Verify plane equation: normal · (p - origin) = 0
+      const p = [0.5, 0.5, 0];
+      const dot = plane.normal[0] * (p[0] - plane.origin[0]) +
+                  plane.normal[1] * (p[1] - plane.origin[1]) +
+                  plane.normal[2] * (p[2] - plane.origin[2]);
+      assert(Math.abs(dot) < 1e-6, 'Plane equation satisfied for point on plane');
+    }
+  } catch (e) {
+    // Test failed but continue
+  }
+
+  // Test 11: alignTransform
+  try {
+    if (FS.space && FS.space.alignTransform) {
+      const p1_3d = [0, 0, 0];
+      const p2_3d = [2, 0, 0];
+      const p1_plan = [0, 0];
+      const p2_plan = [1, 0];
+
+      const transform = FS.space.alignTransform(p1_3d, p2_3d, p1_plan, p2_plan);
+      assert(transform.scale > 0, 'Scale is positive');
+      assert(Math.abs(transform.scale - 0.5) < 1e-6, 'Scale is 0.5 (1m / 2m)');
+      assert(Math.abs(transform.rotation_deg) < 1e-6, 'Rotation is ~0 when aligned');
+      assert(Array.isArray(transform.offset) && transform.offset.length === 3, 'Offset is [x, y, z]');
+    }
+  } catch (e) {
+    // Test failed but continue
+  }
+
   // Summary
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) {
