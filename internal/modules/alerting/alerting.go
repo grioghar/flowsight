@@ -7,6 +7,7 @@ package alerting
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -120,14 +121,45 @@ type notifierService struct {
 }
 
 // Notify sends a notification to all enabled channels for a given subject and severity.
+// This is the legacy interface; use RaiseAlert() for the new framework.
 func (s *notifierService) Notify(subject, body string, severity string) error {
+	// Check if maintenance mode is active
+	var maintenance struct {
+		Enabled bool `json:"enabled"`
+		Until   int64
+	}
+	s.m.ctx.Store.KVGet("alerting.maintenance", &maintenance)
+	if maintenance.Enabled && (maintenance.Until == 0 || time.Now().Unix() < maintenance.Until) {
+		return nil // Maintenance mode, suppress all alerts
+	}
+
+	// Create a message using the new framework
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     subject,
+		Severity:  severity,
+		Body:      body,
+		AlertKey:  fmt.Sprintf("legacy-%s-%d", subject, time.Now().UnixNano()),
+		Module:    "system",
+		Category:  "notification",
+	}
+
+	// Route through new RuleConfig-based rules if they exist
+	newRules := make(map[string]RuleConfig)
+	s.m.ctx.Store.KVGet("alerting.rules", &newRules)
+
+	if len(newRules) > 0 {
+		return s.m.raiseAlert(msg)
+	}
+
+	// Fall back to legacy rule handling for backward compatibility
 	ch := make([]Channel, 0)
 	s.m.ctx.Store.KVGet("alerting.channels", &ch)
 
 	rules := make(map[string]Rule)
 	s.m.ctx.Store.KVGet("alerting.rules", &rules)
 
-	// Find matching rules
+	// Find matching rules (old type)
 	for _, rule := range rules {
 		if !rule.Enabled || rule.Severity != severity {
 			continue
@@ -142,7 +174,7 @@ func (s *notifierService) Notify(subject, body string, severity string) error {
 			continue
 		}
 
-		// Send via enabled channels
+		// Send via enabled channels using legacy method
 		for _, chName := range rule.Channels {
 			for _, c := range ch {
 				if c.Name == chName && c.Enabled {
@@ -156,6 +188,122 @@ func (s *notifierService) Notify(subject, body string, severity string) error {
 	}
 
 	return nil
+}
+
+// raiseAlert routes an alert through the new framework rules and channels
+func (m *Module) raiseAlert(msg *Message) error {
+	// Check if maintenance mode is active
+	var maintenance struct {
+		Enabled bool `json:"enabled"`
+		Until   int64
+	}
+	m.ctx.Store.KVGet("alerting.maintenance", &maintenance)
+	if maintenance.Enabled && (maintenance.Until == 0 || time.Now().Unix() < maintenance.Until) {
+		return nil // Maintenance mode, suppress all alerts
+	}
+
+	// Get all rules
+	rules := make(map[string]RuleConfig)
+	m.ctx.Store.KVGet("alerting.rules", &rules)
+
+	// Get all channels
+	channels := make([]Channel, 0)
+	m.ctx.Store.KVGet("alerting.channels", &channels)
+
+	// Match rules
+	for ruleID, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
+
+		// Check severity match
+		if len(rule.SeverityOnly) > 0 {
+			match := false
+			for _, sev := range rule.SeverityOnly {
+				if sev == msg.Severity {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		} else if rule.Severity != "" && !matchSeverity(msg.Severity, rule.Severity) {
+			continue
+		}
+
+		// Check module match
+		if rule.Module != "" && rule.Module != msg.Module {
+			continue
+		}
+
+		// Check category match
+		if rule.Category != "" && rule.Category != msg.Category {
+			continue
+		}
+
+		// Check device match
+		if rule.Device != "" && msg.Device != nil {
+			if rule.Device != msg.Device.IP && rule.Device != msg.Device.MAC {
+				continue
+			}
+		}
+
+		// Check zone match
+		if rule.Zone != "" && rule.Zone != msg.Zone {
+			continue
+		}
+
+		// Check cooldown
+		cooldownKey := "alerting.cooldown." + ruleID + "." + msg.AlertKey
+		var lastSent int64
+		m.ctx.Store.KVGet(cooldownKey, &lastSent)
+		now := time.Now().Unix()
+		if lastSent > 0 && now-lastSent < int64(rule.Cooldown) {
+			continue // Still in cooldown
+		}
+
+		// Send to configured channels
+		for _, chID := range rule.Channels {
+			var ch *Channel
+			for i := range channels {
+				if channels[i].Name == chID {
+					ch = &channels[i]
+					break
+				}
+			}
+			if ch == nil || !ch.Enabled {
+				continue
+			}
+
+			ct, err := Get(ch.Type)
+			if err != nil {
+				m.mu.Lock()
+				m.lastErr = fmt.Sprintf("unknown channel type %s: %v", ch.Type, err)
+				m.mu.Unlock()
+				continue
+			}
+
+			// Send via delivery engine
+			attempt := m.deliveryEngine.Deliver(context.Background(), ch, msg, ct)
+			if !attempt.Success {
+				m.mu.Lock()
+				m.lastErr = attempt.Error
+				m.mu.Unlock()
+			}
+		}
+
+		// Update cooldown
+		_ = m.ctx.Store.KVSet(cooldownKey, now)
+	}
+
+	return nil
+}
+
+// matchSeverity checks if a message severity meets the minimum required severity
+func matchSeverity(msgSev, minSev string) bool {
+	severityOrder := map[string]int{"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+	return severityOrder[msgSev] >= severityOrder[minSev]
 }
 
 // SendEmail sends an HTML email via the configured email channel.
