@@ -1,0 +1,2 @@
+[{"privs":"VM.Audit,VM.Clone","roleid":"PVETemplateUser","special":1},{"privs":"VM.Audit,VM.Backup,VM.Config.CDROM,VM.Config.Cloudinit,VM.Console,VM.GuestAgent.Audit,VM.GuestAgent.FileRead,VM.GuestAgent.FileSystemMgmt,VM.GuestAgent.FileWrite,VM.PowerMgmt","roleid":"PVEVMUser","special":1},{"privs":"Mapping.Audit,Mapping.Use","roleid":"PVEMappingUser","special":1},{"privs":"Datastore.Allocate,Datas
+pve-manager/9.2.20/49318c671b82f31e (running kernel: 7.0.14-17-pve)

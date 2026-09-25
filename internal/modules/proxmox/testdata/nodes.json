@@ -1,0 +1,1 @@
+[{"cpu":0.489580585597468,"disk":56777314304,"id":"node/proxmox","level":"","maxcpu":16,"maxdisk":100861726720,"maxmem":63092060160,"mem":34139971584,"node":"proxmox","ssl_fingerprint":"4C:9E:F6:8A:C2:B2:7D:FB:37:7F:F5:07:76:E1:AF:1F:F7:95:29:D4:3A:8E:4C:89:91:5B:A3:F4:97:D7:95:45","status":"online","type":"node","uptime":278424}]
