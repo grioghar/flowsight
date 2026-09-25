@@ -482,9 +482,9 @@ func (p *PostmarkChannel) Send(ctx context.Context, ch *Channel, msg *Message) (
 	}
 
 	payload := map[string]interface{}{
-		"From":    ch.Config["from"],
-		"To":      strings.TrimSpace(ch.Config["to"]),
-		"Subject": "[" + strings.ToUpper(msg.Severity[:1]) + "] " + msg.Title,
+		"From":     ch.Config["from"],
+		"To":       strings.TrimSpace(ch.Config["to"]),
+		"Subject":  "[" + strings.ToUpper(msg.Severity[:1]) + "] " + msg.Title,
 		"TextBody": body,
 	}
 
@@ -595,8 +595,8 @@ func (t *TwilioChannel) sendVoice(ctx context.Context, client *http.Client, ch *
 
 	// URL-encode TwiML payload for form submission
 	params := url.Values{
-		"From": {ch.Config["from_number"]},
-		"To":   {ch.Config["to_number"]},
+		"From":  {ch.Config["from_number"]},
+		"To":    {ch.Config["to_number"]},
 		"Twiml": {twiml},
 	}
 
@@ -718,9 +718,9 @@ func (t *TelnyxChannel) Send(ctx context.Context, ch *Channel, msg *Message) (in
 	body, _ := formatter.Format(msg)
 
 	payload := map[string]interface{}{
-		"from":   ch.Config["from_number"],
-		"to":     ch.Config["to_number"],
-		"text":   body,
+		"from": ch.Config["from_number"],
+		"to":   ch.Config["to_number"],
+		"text": body,
 	}
 
 	jsonPayload, _ := json.Marshal(payload)
@@ -1140,11 +1140,11 @@ func (o *OpsgenieChannel) Send(ctx context.Context, ch *Channel, msg *Message) (
 	priority := severityToOpsgeniePriority(msg.Severity)
 
 	payload := map[string]interface{}{
-		"message":    msg.Title,
+		"message":     msg.Title,
 		"description": msg.Body,
-		"priority":   priority,
-		"source":     msg.Module,
-		"tags":       []string{msg.Category, msg.Severity},
+		"priority":    priority,
+		"source":      msg.Module,
+		"tags":        []string{msg.Category, msg.Severity},
 	}
 
 	if msg.Device != nil && msg.Device.IP != "" {
@@ -1438,10 +1438,10 @@ func (x *XMattersChannel) Send(ctx context.Context, ch *Channel, msg *Message) (
 
 	payload := map[string]interface{}{
 		"properties": map[string]interface{}{
-			"severity": msg.Severity,
-			"title":    msg.Title,
-			"body":     msg.Body,
-			"source":   msg.Module,
+			"severity":  msg.Severity,
+			"title":     msg.Title,
+			"body":      msg.Body,
+			"source":    msg.Module,
 			"alert_key": msg.AlertKey,
 		},
 	}

@@ -179,7 +179,7 @@ func TestSentinelChannel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check authorization header
 		auth := r.Header.Get("Authorization")
-		if !contains(auth, "SharedKey") {
+		if !siemContains(auth, "SharedKey") {
 			t.Error("missing SharedKey authorization")
 		}
 
@@ -425,7 +425,7 @@ func TestSentryChannel(t *testing.T) {
 }
 
 // Helper function
-func contains(s, substr string) bool {
+func siemContains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 && s != "" && substr != ""
 }
 
