@@ -28,7 +28,7 @@ fmt:
 	gofmt -w ./cmd ./internal ./web
 
 e2e:
-	python3 test/e2e/run.py
+	bash test/e2e/run.sh
 
 measure:
 	sh test/e2e/measure.sh
