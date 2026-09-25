@@ -374,6 +374,7 @@ The Proxmox module maps Proxmox VE cluster inventory into FlowSight: nodes, QEMU
 | `notes_targets` | string | guests | Scope: `guests` or `guests+nodes`. |
 | `exclude_vmids` | list | empty | VMID list to skip during polling. |
 | `name_guests` | bool | true | Use guest names when no DHCP lease hostname. |
+| `probe_sockets` | bool | false | For running QEMU guests with agent: query socket connections via `ss`. Requires VM.Monitor privilege. |
 
 **Least-Privilege Token Setup**
 
