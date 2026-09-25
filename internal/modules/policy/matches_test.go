@@ -16,13 +16,14 @@ func TestApiMatchesEquivalence(t *testing.T) {
 	policy := &core.Policy{
 		Name:   "test_deny_country",
 		Action: "deny",
-		Deny: core.PolicyDeny{
+		Deny: core.Deny{
 			Countries: []string{"CN", "RU"},
 		},
-		Match: core.PolicyMatch{
+		Match: core.Match{
 			Members: []string{"192.168.1.0/24"},
 		},
 	}
+	_ = policy // fixture for potential future use
 
 	// Test cases: various flow combinations
 	tests := []struct {

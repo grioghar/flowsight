@@ -12,6 +12,18 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252354
+
+**IPv6 zone membership:** Zones now support IPv6 subnets. The `subnet6` field 
+specifies an IPv6 CIDR (e.g. `fd00::0/64`) that is returned alongside IPv4 when 
+resolving `zone:<id>` members in policies. The zone resolver also returns every 
+IPv6 address each device in the zone holds, so firewall and DNS rules cover both 
+address families without requiring separate IPv6-specific policies. A policy 
+warning alerts when zone members resolve to IPv4 only but at least one device 
+uses IPv6: add the zone's IPv6 subnet or explicitly target devices by MAC or name. 
+The Zones page shows the IPv6 subnet in the zone list and accepts it in the 
+zones.json editor.
+
 ## 0.9.8rPENDING
 
 **Encrypted traffic: visibility shows what FlowSight can and cannot see.**

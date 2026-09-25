@@ -276,6 +276,7 @@ func (m *Module) plan(apply bool) (*Plan, error) {
 		}
 	}
 	res, _ := m.ctx.Service("member_resolver").(core.MemberResolver)
+	ab, _ := m.ctx.Service("identity").(core.AddressBook)
 	now := time.Now()
 	unmet := map[string]bool{}
 	excl := map[string]bool{}
@@ -296,6 +297,43 @@ func (m *Module) plan(apply bool) (*Plan, error) {
 		if pol.Enabled && len(mems) > 0 && ps.Excluded == len(mems) && !pol.Match.EvenExcluded {
 			ps.Warning = "every member is in the exclusions list, so the firewall and DNS enforce nothing for this policy; tick \"even excluded hosts\" on it or change the exclusions"
 			p.Warnings = append(p.Warnings, pol.Name+": "+ps.Warning)
+		}
+
+		// Check for IPv6 devices without IPv6 subnet resolution
+		if pol.Enabled && len(mems) > 0 && ps.Warning == "" {
+			hasIPv6Member := false
+			for _, mem := range mems {
+				if strings.HasSuffix(mem, "/128") {
+					hasIPv6Member = true
+					break
+				}
+			}
+			if !hasIPv6Member && ab != nil {
+				// Check if any zone member has devices with IPv6 addresses
+				var zoneIDs []string
+				for _, member := range pol.Match.Members {
+					if strings.HasPrefix(member, "zone:") {
+						zoneIDs = append(zoneIDs, strings.TrimPrefix(member, "zone:"))
+					}
+				}
+				if len(zoneIDs) > 0 {
+					// Check device IPv6 addresses for each zone
+					ipv6DeviceCount := 0
+					for _, zoneID := range zoneIDs {
+						enrollChecker, ok := m.ctx.Service("enroll").(interface {
+							CheckZoneIPv6Devices(zoneID string) int
+						})
+						if ok && enrollChecker != nil {
+							count := enrollChecker.CheckZoneIPv6Devices(zoneID)
+							ipv6DeviceCount += count
+						}
+					}
+					if ipv6DeviceCount > 0 {
+						ps.Warning = fmt.Sprintf("members resolve to IPv4 only; %d device(s) also use IPv6 (add the zone's IPv6 subnet or use device:/mac: members)", ipv6DeviceCount)
+						p.Warnings = append(p.Warnings, pol.Name+": "+ps.Warning)
+					}
+				}
+			}
 		}
 		for _, c := range ps.Requires {
 			if !have[c] {

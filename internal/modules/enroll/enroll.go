@@ -136,9 +136,12 @@ type Zone struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
-	Subnet      string    `json:"subnet"`  // CIDR
-	Gateway     string    `json:"gateway"` // IP
-	Range       [2]string `json:"range"`   // start, end IPs
+	Subnet      string    `json:"subnet"`             // CIDR
+	Subnet6     string    `json:"subnet6,omitempty"`  // IPv6 CIDR
+	Gateway     string    `json:"gateway"`            // IP
+	Gateway6    string    `json:"gateway6,omitempty"` // IPv6 address
+	Range       [2]string `json:"range"`              // start, end IPs
+	Range6      [2]string `json:"range6,omitempty"`   // start, end IPv6 addresses
 	DNS         []string  `json:"dns"`
 	Internet    bool      `json:"internet"`
 	Captive     bool      `json:"captive"`
@@ -1174,6 +1177,16 @@ func (m *Module) apiSetZones(r *core.Req) (any, error) {
 		return nil, err
 	}
 
+	// Validate Subnet6 for each zone
+	for _, z := range zones.Zones {
+		if z.Subnet6 != "" {
+			_, _, err := net.ParseCIDR(z.Subnet6)
+			if err != nil {
+				return nil, core.BadRequest("zone %q: subnet6 must be a valid IPv6 CIDR: %v", z.ID, err)
+			}
+		}
+	}
+
 	m.mu.Lock()
 	m.zones = &zones
 	m.mu.Unlock()
@@ -1741,11 +1754,16 @@ func (zr *zoneResolver) Resolve(member string) []string {
 				out = append(out, c)
 			}
 		}
+
+		// Add IPv4 and IPv6 subnets
 		for _, zone := range zr.m.zones.Zones {
 			if zone.ID == zoneID {
 				add(zone.Subnet)
+				add(zone.Subnet6)
 			}
 		}
+
+		// Get all device MACs in the zone
 		zr.m.mu.RLock()
 		var macs []string
 		for _, d := range zr.m.devices {
@@ -1755,10 +1773,30 @@ func (zr *zoneResolver) Resolve(member string) []string {
 		}
 		zr.m.mu.RUnlock()
 		sort.Strings(macs)
+
+		// For each device, get all addresses (v4 and v6)
+		ab, ok := zr.m.ctx.Service("identity").(core.AddressBook)
 		for _, mac := range macs {
+			// Get one IP address for this MAC from the delegate resolver
 			if zr.delegate != nil {
-				for _, c := range zr.delegate.Resolve("mac:" + strings.ToLower(mac)) {
-					add(c)
+				cidrs := zr.delegate.Resolve("mac:" + strings.ToLower(mac))
+				for _, cidr := range cidrs {
+					// Extract IP from CIDR notation
+					ip := strings.Split(cidr, "/")[0]
+					// If we have AddressBook, use it to get all addresses for this device
+					if ok && ab != nil {
+						for _, addr := range ab.Addresses(ip) {
+							// Convert to CIDR format
+							if strings.Contains(addr, ":") {
+								add(addr + "/128")
+							} else {
+								add(addr + "/32")
+							}
+						}
+					} else {
+						// Fallback: just use the CIDR from delegate
+						add(cidr)
+					}
 				}
 			}
 		}
@@ -1769,6 +1807,63 @@ func (zr *zoneResolver) Resolve(member string) []string {
 		return zr.delegate.Resolve(member)
 	}
 	return nil
+}
+
+// CheckZoneIPv6Devices returns the count of devices in a zone that have IPv6 addresses
+// but the zone doesn't have subnet6 defined.
+func (m *Module) CheckZoneIPv6Devices(zoneID string) int {
+	// Find the zone
+	m.mu.RLock()
+	var zone *Zone
+	for _, z := range m.zones.Zones {
+		if z.ID == zoneID {
+			zone = z
+			break
+		}
+	}
+
+	// If zone doesn't exist or already has subnet6, return 0
+	if zone == nil || zone.Subnet6 != "" {
+		m.mu.RUnlock()
+		return 0
+	}
+
+	// Get device MACs in this zone
+	var macs []string
+	for _, d := range m.devices {
+		if d.Zone == zoneID && d.MAC != "" {
+			macs = append(macs, d.MAC)
+		}
+	}
+	m.mu.RUnlock()
+
+	// Check if any device has IPv6 addresses
+	ab, ok := m.ctx.Service("identity").(core.AddressBook)
+	if !ok || ab == nil {
+		return 0
+	}
+
+	ipv6Devices := 0
+	for _, mac := range macs {
+		m.mu.RLock()
+		ips := []string{}
+		if d, exists := m.devices[mac]; exists && d.IP != "" {
+			ips = append(ips, d.IP)
+		}
+		m.mu.RUnlock()
+
+		// Get all addresses for this device
+		for _, ip := range ips {
+			for _, addr := range ab.Addresses(ip) {
+				if strings.Contains(addr, ":") {
+					ipv6Devices++
+					break
+				}
+			}
+		}
+	}
+
+	return ipv6Devices
 }
 
 // ============================================================================
