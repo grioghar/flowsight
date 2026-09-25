@@ -107,8 +107,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 		every = 10 * time.Second
 	}
 	ctx.Every("pull", every, m.pull)
-	ctx.Route("GET", "/api/pihole/status", m.apiStatus, core.Doc("Per-server state: version, last pull, records imported, last error"))
-	ctx.Route("POST", "/api/pihole/pull", m.apiPull, core.Write(), core.Doc("Pull from every server now"))
+	ctx.Route("GET", "/api/pihole/status", m.apiStatus, core.Doc("Per-server state: version, last pull, records imported, last error"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/pihole/pull", m.apiPull, core.Write(), core.Doc("Pull from every server now"), core.Returns("Success", map[string]any{"ok": true}))
 	return nil
 }
 

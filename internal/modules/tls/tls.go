@@ -77,16 +77,16 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Publish("ca", m)
 	ctx.Every("findings", 15*time.Minute, m.findings, core.Delayed())
 	ctx.Every("probe", 15*time.Minute, m.probeCerts, core.Delayed())
-	ctx.Route("GET", "/api/tls/ca", m.apiCA, core.Doc("The inspection CA: subject, fingerprint, validity, whether it exists"))
-	ctx.Route("POST", "/api/tls/ca/create", m.apiCreate, core.Write(), core.Needs("tls.inspect"), core.Doc("Create (or replace) the inspection CA"))
-	ctx.Route("POST", "/api/tls/ca/delete", m.apiDelete, core.Write(), core.Doc("Delete the inspection CA; inspection stops"))
-	ctx.Route("GET", "/api/tls/ca/download", m.apiDownload, core.Doc("The CA certificate in PEM (or DER with ?format=der) for installing on devices"))
+	ctx.Route("GET", "/api/tls/ca", m.apiCA, core.Doc("The inspection CA: subject, fingerprint, validity, whether it exists"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/tls/ca/create", m.apiCreate, core.Write(), core.Needs("tls.inspect"), core.Doc("Create (or replace) the inspection CA"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/tls/ca/delete", m.apiDelete, core.Write(), core.Doc("Delete the inspection CA; inspection stops"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/tls/ca/download", m.apiDownload, core.Doc("The CA certificate in PEM (or DER with ?format=der) for installing on devices"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/tls/certs", m.apiCerts, core.Doc("Certificates seen on the network"),
-		core.Params("hours", "window", "q", "search subject/issuer/sni", "limit", "rows", "problem", "only problematic"))
+		core.Params("hours", "window", "q", "search subject/issuer/sni", "limit", "rows", "problem", "only problematic"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/tls/summary", m.apiSummary, core.Doc("TLS versions, bump modes, issuers, problems"),
-		core.Params("hours", "window"))
+		core.Params("hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/tls/sessions", m.apiSessions, core.Doc("Recent TLS sessions"),
-		core.Params("ip", "client", "sni", "substring", "limit", "rows"))
+		core.Params("ip", "client", "sni", "substring", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "tls", Title: "TLS", Group: "Protect", Order: 70, Icon: "tls"})
 	return nil
 }

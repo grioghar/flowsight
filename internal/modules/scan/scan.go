@@ -161,18 +161,17 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// Routes
 	ctx.Route("POST", "/api/scan/start", m.apiStart, core.Write(),
-		core.Doc("Start a scan on an IP or MAC"))
+		core.Doc("Start a scan on an IP or MAC"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/scan/status", m.apiStatus,
-		core.Doc("Queue status, running jobs, last sweep"))
+		core.Doc("Queue status, running jobs, last sweep"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/scan/result", m.apiResult,
-		core.Doc("Latest result for an IP"))
+		core.Doc("Latest result for an IP"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/scan/results", m.apiResults,
-		core.Doc("Latest results for all IPs scanned recently"))
+		core.Doc("Latest results for all IPs scanned recently"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/scan/cancel", m.apiCancel, core.Write(),
-		core.Doc("Cancel a scan job"))
+		core.Doc("Cancel a scan job"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/scan/sweep", m.apiSweep, core.Write(),
-		core.Doc("Start a sweep of all local devices"))
-
+		core.Doc("Start a sweep of all local devices"), core.Returns("Success", map[string]any{"ok": true}))
 	// Panel
 	ctx.Panel(core.Panel{
 		ID:    "scan",

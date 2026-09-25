@@ -89,13 +89,13 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 	ctx.Provider(&provider{m: m})
 	ctx.Route("GET", "/api/dns/summary", m.apiSummary, core.Doc("Query volumes, block rate, top domains and clients"),
-		core.Params("hours", "window"))
+		core.Params("hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/dns/log", m.apiLog, core.Doc("Recent queries"),
-		core.Params("client", "filter", "domain", "substring", "blocked", "only blocked", "limit", "rows"))
+		core.Params("client", "filter", "domain", "substring", "blocked", "only blocked", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/dns/lookup", m.apiLookup, core.Doc("Names the resolver handed out for an address"),
-		core.Params("ip", "address"))
+		core.Params("ip", "address"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/dns/timeseries", m.apiTimeseries, core.Doc("Queries and blocks over time"),
-		core.Params("hours", "window"))
+		core.Params("hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "dns", Title: "DNS", Group: "Monitor", Order: 50, Icon: "dns"})
 	return nil
 }

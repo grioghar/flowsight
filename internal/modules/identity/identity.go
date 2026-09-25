@@ -84,12 +84,12 @@ func (m *Module) Setup(ctx *core.Context) error {
 	every := time.Duration(core.Int(ctx.Settings(), "refresh_seconds", 30)) * time.Second
 	ctx.Every("refresh", every, m.refresh)
 	ctx.Route("GET", "/api/identity/hosts", m.apiHosts, core.Doc("Known hosts with names, MACs, vendors and last activity"),
-		core.Params("hours", "activity window", "all", "include inactive"))
+		core.Params("hours", "activity window", "all", "include inactive"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/identity/lookup", m.apiLookup, core.Doc("Name, MAC and vendor for one address"),
-		core.Params("ip", "address"))
-	ctx.Route("GET", "/api/identity/leases", m.apiLeases, core.Doc("Current DHCP leases"))
-	ctx.Route("POST", "/api/identity/name", m.apiSetName, core.Write(), core.Doc("Assign a display name to an address"))
-	ctx.Route("DELETE", "/api/identity/name/{ip}", m.apiDeleteNameByIP, core.Write(), core.Doc("Delete a name override by IP"))
+		core.Params("ip", "address"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/identity/leases", m.apiLeases, core.Doc("Current DHCP leases"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/identity/name", m.apiSetName, core.Write(), core.Doc("Assign a display name to an address"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/identity/name/{ip}", m.apiDeleteNameByIP, core.Write(), core.Doc("Delete a name override by IP"), core.PathParam("ip", "string", "IP address", "192.168.1.10"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "hosts", Title: "IP Addresses", Group: "Inventory", Order: 20, Icon: "hosts"})
 	ctx.Panel(core.Panel{ID: "host", Title: "IP address", Group: "Inventory", Order: 21, Detail: true})
 	return nil

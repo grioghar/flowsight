@@ -118,14 +118,13 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// API routes
 	ctx.Route("GET", "/api/updater/status", m.apiStatus,
-		core.Doc("Current version, latest version, and update status"))
+		core.Doc("Current version, latest version, and update status"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/updater/check", m.apiCheck, core.Write(),
-		core.Doc("Check for updates now"))
+		core.Doc("Check for updates now"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/updater/apply", m.apiApply, core.Write(),
-		core.Doc("Apply the available update"))
+		core.Doc("Apply the available update"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/updater/rollback", m.apiRollback, core.Write(),
-		core.Doc("Rollback to the previous binary"))
-
+		core.Doc("Rollback to the previous binary"), core.Returns("Success", map[string]any{"ok": true}))
 	// Panel
 	ctx.Panel(core.Panel{
 		ID:    "updates",

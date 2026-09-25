@@ -252,21 +252,21 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 
 	// Register API routes
-	ctx.Route("GET", "/api/inspect/states", m.apiStates, core.Doc("Get firewall states summary"))
-	ctx.Route("GET", "/api/inspect/states/summary", m.apiStatesSummary, core.Doc("Get states statistics"))
-	ctx.Route("GET", "/api/inspect/rules", m.apiRules, core.Doc("Get rule counters"))
-	ctx.Route("POST", "/api/inspect/capture/start", m.apiCaptureStart, core.Write(), core.Doc("Start packet capture"))
-	ctx.Route("POST", "/api/inspect/capture/stop", m.apiCaptureStop, core.Write(), core.Doc("Stop running capture"))
-	ctx.Route("GET", "/api/inspect/captures", m.apiCaptures, core.Doc("List all captures"))
-	ctx.Route("GET", "/api/inspect/capture/{id}", m.apiCaptureDetail, core.Doc("Get capture analysis"))
-	ctx.Route("GET", "/api/inspect/capture/{id}/conversations", m.apiCaptureConversations, core.Doc("Get capture conversations"))
-	ctx.Route("GET", "/api/inspect/capture/{id}/dns", m.apiCaptureDNS, core.Doc("Get DNS records from capture"))
-	ctx.Route("GET", "/api/inspect/capture/{id}/tls", m.apiCaptureTLS, core.Doc("Get TLS handshakes from capture"))
-	ctx.Route("GET", "/api/inspect/capture/{id}/http", m.apiCaptureHTTP, core.Doc("Get HTTP requests from capture"))
-	ctx.Route("GET", "/api/inspect/capture/{id}/expert", m.apiCaptureExpert, core.Doc("Get expert notes from capture"))
-	ctx.Route("GET", "/api/inspect/capture/{id}/download", m.apiCaptureDownload, core.Doc("Download capture as pcap"))
-	ctx.Route("DELETE", "/api/inspect/capture/{id}", m.apiCaptureDelete, core.Write(), core.Doc("Delete capture"))
-	ctx.Route("GET", "/api/inspect/live", m.apiLiveStream, core.Doc("Stream live packet summaries"))
+	ctx.Route("GET", "/api/inspect/states", m.apiStates, core.Doc("Get firewall states summary"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/states/summary", m.apiStatesSummary, core.Doc("Get states statistics"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/rules", m.apiRules, core.Doc("Get rule counters"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/inspect/capture/start", m.apiCaptureStart, core.Write(), core.Doc("Start packet capture"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/inspect/capture/stop", m.apiCaptureStop, core.Write(), core.Doc("Stop running capture"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/captures", m.apiCaptures, core.Doc("List all captures"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/capture/{id}", m.apiCaptureDetail, core.Doc("Get capture analysis"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/conversations", m.apiCaptureConversations, core.Doc("Get capture conversations"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/dns", m.apiCaptureDNS, core.Doc("Get DNS records from capture"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/tls", m.apiCaptureTLS, core.Doc("Get TLS handshakes from capture"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/http", m.apiCaptureHTTP, core.Doc("Get HTTP requests from capture"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/expert", m.apiCaptureExpert, core.Doc("Get expert notes from capture"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/download", m.apiCaptureDownload, core.Doc("Download capture as pcap"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/inspect/capture/{id}", m.apiCaptureDelete, core.Write(), core.Doc("Delete capture"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/live", m.apiLiveStream, core.Doc("Stream live packet summaries"), core.Returns("Success", map[string]any{"ok": true}))
 
 	// Register panel
 	ctx.Panel(core.Panel{

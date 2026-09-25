@@ -93,8 +93,7 @@ func (m *Module) registerRoutes() {
 
 	// Channel type information
 	ctx.Route("GET", "/api/alerting/channel-types", m.apiChannelTypes,
-		core.Doc("List all notification channel types grouped by family, with configuration schemas"))
-
+		core.Doc("List all notification channel types grouped by family, with configuration schemas"), core.Returns("Success", map[string]any{"ok": true}))
 	// Channel CRUD operations
 	ctx.Route("GET", "/api/alerting/channels", m.apiGetChannels,
 		core.Doc("List all configured notification channels"),
@@ -118,7 +117,7 @@ func (m *Module) registerRoutes() {
 		}))
 
 	ctx.Route("GET", "/api/alerting/channels/{id}", m.apiGetChannel,
-		core.Doc("Get a specific notification channel"),
+		core.Doc("Get a specific notification channel"), core.PathParam("id", "string", "Resource ID", "123"),
 		core.PathParam("id", "string", "Channel ID", "ch-1"),
 		core.Returns("Notification channel", map[string]any{
 			"id": "ch-1", "type": "slack", "name": "alerts", "enabled": true,
@@ -126,22 +125,20 @@ func (m *Module) registerRoutes() {
 
 	ctx.Route("PUT", "/api/alerting/channels/{id}", m.apiUpdateChannel,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Update a notification channel"),
+		core.Doc("Update a notification channel"), core.PathParam("id", "string", "Resource ID", "123"),
 		core.PathParam("id", "string", "Channel ID", "ch-1"),
 		core.Body(
 			core.Fld("name", "string", false, "Display name", "alerts"),
 			core.Fld("enabled", "boolean", false, "Whether enabled", true),
 			core.Fld("config", "object", false, "Updated configuration", map[string]any{}),
-		))
-
+		), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("DELETE", "/api/alerting/channels/{id}", m.apiDeleteChannel,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Delete a notification channel"),
-		core.PathParam("id", "string", "Channel ID", "ch-1"))
-
+		core.Doc("Delete a notification channel"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("id", "string", "Channel ID", "ch-1"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/alerting/channels/{id}/test", m.apiTestChannel,
 		core.Write(),
-		core.Doc("Send a test message to a channel"),
+		core.Doc("Send a test message to a channel"), core.PathParam("id", "string", "Resource ID", "123"),
 		core.PathParam("id", "string", "Channel ID", "ch-1"),
 		core.Returns("Test result", map[string]any{
 			"success": true, "message": "Test message sent",
@@ -164,22 +161,18 @@ func (m *Module) registerRoutes() {
 			core.Fld("condition", "string", true, "Alert condition", "cpu > 80"),
 			core.Fld("channels", "array", true, "Channel IDs to notify", []string{"ch-1"}),
 			core.Fld("enabled", "boolean", false, "Whether rule is enabled", true),
-		))
-
+		), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/alerting/rules/{id}", m.apiGetRule,
-		core.Doc("Get a specific alert rule"),
-		core.PathParam("id", "string", "Rule ID", "rule-1"))
-
+		core.Doc("Get a specific alert rule"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("id", "string", "Rule ID", "rule-1"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("PUT", "/api/alerting/rules/{id}", m.apiUpdateRule,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Update an alert rule"),
-		core.PathParam("id", "string", "Rule ID", "rule-1"))
-
+		core.Doc("Update an alert rule"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("id", "string", "Rule ID", "rule-1"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("DELETE", "/api/alerting/rules/{id}", m.apiDeleteRule,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Delete an alert rule"),
-		core.PathParam("id", "string", "Rule ID", "rule-1"))
-
+		core.Doc("Delete an alert rule"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("id", "string", "Rule ID", "rule-1"), core.Returns("Success", map[string]any{"ok": true}))
 	// Delivery log
 	ctx.Route("GET", "/api/alerting/deliveries", m.apiGetDeliveries,
 		core.Doc("Get notification delivery history"),
@@ -194,20 +187,18 @@ func (m *Module) registerRoutes() {
 	// Alert acknowledgment and resolution
 	ctx.Route("POST", "/api/alerting/ack/{alert_key}", m.apiAckAlert,
 		core.Write(),
-		core.Doc("Acknowledge an active alert"),
+		core.Doc("Acknowledge an active alert"), core.PathParam("id", "string", "Resource ID", "123"),
 		core.PathParam("alert_key", "string", "Alert key", "alert-123"),
 		core.Body(
 			core.Fld("comment", "string", false, "Acknowledgment comment", "investigating"),
-		))
-
+		), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/alerting/resolve/{alert_key}", m.apiResolveAlert,
 		core.Write(),
-		core.Doc("Resolve an acknowledged alert"),
+		core.Doc("Resolve an acknowledged alert"), core.PathParam("id", "string", "Resource ID", "123"),
 		core.PathParam("alert_key", "string", "Alert key", "alert-123"),
 		core.Body(
 			core.Fld("comment", "string", false, "Resolution comment", "issue fixed"),
-		))
-
+		), core.Returns("Success", map[string]any{"ok": true}))
 	// Maintenance mode
 	ctx.Route("GET", "/api/alerting/maintenance", m.apiGetMaintenance,
 		core.Doc("Get current maintenance mode status"),
@@ -222,8 +213,7 @@ func (m *Module) registerRoutes() {
 			core.Fld("enabled", "boolean", true, "Enable maintenance mode", true),
 			core.Fld("duration", "integer", false, "Minutes to maintain mode (0 = indefinite)", 60),
 			core.Fld("reason", "string", false, "Reason for maintenance", "scheduled maintenance"),
-		))
-
+		), core.Returns("Success", map[string]any{"ok": true}))
 	// Simulation
 	ctx.Route("POST", "/api/alerting/simulate", m.apiSimulateAlert,
 		core.Write(),
@@ -231,12 +221,10 @@ func (m *Module) registerRoutes() {
 		core.Body(
 			core.Fld("name", "string", true, "Alert name", "Test Alert"),
 			core.Fld("severity", "string", false, "Severity level", "high"),
-		))
-
+		), core.Returns("Success", map[string]any{"ok": true}))
 	// RSS feed (token-protected)
 	ctx.Route("GET", "/api/alerting/feed.xml", m.apiAlertFeed,
-		core.Doc("RSS feed of recent alerts (requires token in Authorization header)"))
-
+		core.Doc("RSS feed of recent alerts (requires token in Authorization header)"), core.Returns("Success", map[string]any{"ok": true}))
 	// Apprise URL import
 	ctx.Route("POST", "/api/alerting/import-apprise", m.apiImportApprise,
 		core.Write(), core.Needs("alerting.notify"),
@@ -244,7 +232,7 @@ func (m *Module) registerRoutes() {
 		core.Body(
 			core.Fld("name", "string", true, "Display name", "My Channel"),
 			core.Fld("url", "string", true, "Apprise URL", "slack://token@webhook"),
-		))
+		), core.Returns("Success", map[string]any{"ok": true}))
 }
 
 // apiChannelTypes returns all channel types grouped by family with their schemas

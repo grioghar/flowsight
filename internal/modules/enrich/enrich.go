@@ -144,9 +144,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("geoip", 6*time.Hour, m.refreshGeo)
 	ctx.Every("prune", 1*time.Hour, m.prune, core.Delayed())
 	ctx.Route("POST", "/api/enrich/lookup", m.apiLookup, core.Write(),
-		core.Doc("Names and countries for a list of addresses (up to 500); unknown names are resolved in the background and answered on the next call"))
-	ctx.Route("GET", "/api/enrich/status", m.apiStatus, core.Doc("What is enabled, cache size, country database state"))
-	ctx.Route("GET", "/api/enrich/countries", m.apiCountries, core.Doc("Countries available in the GeoIP database"))
+		core.Doc("Names and countries for a list of addresses (up to 500); unknown names are resolved in the background and answered on the next call"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/enrich/status", m.apiStatus, core.Doc("What is enabled, cache size, country database state"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/enrich/countries", m.apiCountries, core.Doc("Countries available in the GeoIP database"), core.Returns("Success", map[string]any{"ok": true}))
 	return nil
 }
 

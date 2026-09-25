@@ -625,6 +625,25 @@ Use X-Requested-With: Flowsight header for security when calling from browsers, 
 	}
 }
 
+// IterateRoutes calls fn for each registered route.
+func (a *API) IterateRoutes(fn func(method, path string, route *Route)) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	keys := make([]string, 0, len(a.routes))
+	for k := range a.routes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		parts := strings.Fields(k)
+		if len(parts) != 2 {
+			continue
+		}
+		method, path := parts[0], parts[1]
+		fn(method, path, a.routes[k])
+	}
+}
+
 // Auth ----------------------------------------------------------------------
 
 func (a *API) token() string { return a.core.Config.Core().APIToken }

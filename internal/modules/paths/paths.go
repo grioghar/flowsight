@@ -269,44 +269,44 @@ func (m *Module) Setup(ctx *core.Context) error {
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/fcc/files", m.apiFCCFiles, core.Needs("paths.map"),
-		core.Doc("The FCC release's file catalogue from the last check"), core.Params("filter", "substring", "limit", "rows"))
+		core.Doc("The FCC release's file catalogue from the last check"), core.Params("filter", "substring", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/fcc/summary", m.apiFCCSummary, core.Needs("paths.map"),
-		core.Doc("What was kept from the FCC release: national fixed-broadband providers and the origin state's census places"), core.Params("full", "1 for every provider"))
+		core.Doc("What was kept from the FCC release: national fixed-broadband providers and the origin state's census places"), core.Params("full", "1 for every provider"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/paths/fcc/pull", m.apiFCCPull, core.Write(), core.Needs("paths.map"),
-		core.Doc("Run the monthly FCC pull now"))
+		core.Doc("Run the monthly FCC pull now"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/paths/fcc/check", m.apiFCCCheck, core.Write(), core.Needs("paths.map"),
-		core.Doc("Test the FCC broadband map credentials and record the current release"))
+		core.Doc("Test the FCC broadband map credentials and record the current release"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/shodan", m.apiShodan, core.Needs("paths.map"),
 		core.Doc("Shodan record for a hop: InternetDB always, the keyed host record when a key is set; fetched now with now=1"),
-		core.Params("ip", "the address", "now", "1 to fetch if not cached"))
+		core.Params("ip", "the address", "now", "1 to fetch if not cached"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/geofeeds", m.apiGeofeeds, core.Needs("paths.map"),
-		core.Doc("RFC 8805 geofeeds discovered in registry objects, with fetch state"))
+		core.Doc("RFC 8805 geofeeds discovered in registry objects, with fetch state"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/talkers", m.apiTalkers, core.Needs("paths.map"),
 		core.Doc("Which devices talked to an endpoint and over which services (application, name, port)"),
-		core.Params("dst", "the endpoint", "hours", "window, default 24"))
+		core.Params("dst", "the endpoint", "hours", "window, default 24"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/corrections", m.apiCorrections, core.Needs("paths.map"),
-		core.Doc("What the address database has been shown to get wrong: corrected prefixes and distrusted registrant coordinates"))
+		core.Doc("What the address database has been shown to get wrong: corrected prefixes and distrusted registrant coordinates"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/paths/corrections/forget", m.apiForgetFix, core.Write(), core.Needs("paths.map"),
-		core.Doc("Forget one learned correction (prefix) or distrusted coordinate (key)"))
+		core.Doc("Forget one learned correction (prefix) or distrusted coordinate (key)"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/status", m.apiStatus, core.Needs("paths.map"),
-		core.Doc("Whether tracing is on, how many destinations have a route, and when"))
+		core.Doc("Whether tracing is on, how many destinations have a route, and when"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/destinations", m.apiDestinations, core.Needs("paths.map"),
-		core.Doc("Destinations with a measured route"), core.Params("limit", "rows"))
+		core.Doc("Destinations with a measured route"), core.Params("limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/path", m.apiPath, core.Needs("paths.map"),
-		core.Doc("Every hop to one destination, with names and locations"), core.Params("dst", "destination"))
+		core.Doc("Every hop to one destination, with names and locations"), core.Params("dst", "destination"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/who", m.apiWho, core.Needs("paths.map"), core.Params("dsts", "comma-separated destination addresses", "hours", "window, default 24"),
-		core.Doc("The devices whose traffic reached any of the given destinations: what a hop click on the map sets its device filter to"))
+		core.Doc("The devices whose traffic reached any of the given destinations: what a hop click on the map sets its device filter to"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/devices", m.apiDevices, core.Needs("paths.map"),
-		core.Doc("Devices whose traffic has a measured route, one entry per device"))
+		core.Doc("Devices whose traffic has a measured route, one entry per device"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/graph", m.apiGraph, core.Needs("paths.map"),
 		core.Doc("The whole picture as nodes and legs, with shared legs collapsed"),
-		core.Params("device", "source address", "country", "filter", "max_latency", "ms"))
+		core.Params("device", "source address", "country", "filter", "max_latency", "ms"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/cables", m.apiCables, core.Needs("paths.map"),
-		core.Doc("The submarine cable map, simplified for drawing"), core.Params("detail", "points per cable"))
+		core.Doc("The submarine cable map, simplified for drawing"), core.Params("detail", "points per cable"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/home", m.apiGetHome, core.Needs("paths.map"),
-		core.Doc("The origin the map is drawn from, and what could be detected for it"))
+		core.Doc("The origin the map is drawn from, and what could be detected for it"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/paths/home", m.apiSetHome, core.Write(), core.Needs("paths.map"),
-		core.Doc("Declare your location ({lat, lon}), or {clear:true} to go back to detecting it"))
+		core.Doc("Declare your location ({lat, lon}), or {clear:true} to go back to detecting it"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "paths", Title: "Map", Group: "Monitor", Order: 50, Icon: "paths", Feature: "paths.map"})
 	return nil
 }

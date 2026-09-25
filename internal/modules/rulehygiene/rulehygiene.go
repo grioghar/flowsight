@@ -80,16 +80,15 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// Routes.
 	ctx.Route("GET", "/api/rulehygiene/summary", m.apiSummary, core.Needs("firewall.analyse"),
-		core.Doc("Risk score, finding counts, rules analysed, ruleset loaded since"))
+		core.Doc("Risk score, finding counts, rules analysed, ruleset loaded since"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/rulehygiene/rules", m.apiRules, core.Needs("firewall.analyse"),
-		core.Doc("Every rule with counters, description, interface and findings"))
+		core.Doc("Every rule with counters, description, interface and findings"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/rulehygiene/findings", m.apiFindings, core.Needs("firewall.analyse"),
-		core.Doc("Open findings"))
+		core.Doc("Open findings"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/rulehygiene/changes", m.apiChanges, core.Needs("firewall.analyse"),
-		core.Doc("Configuration changes from the changes table"))
+		core.Doc("Configuration changes from the changes table"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/rulehygiene/run", m.apiRun, core.Needs("firewall.analyse"),
-		core.Write(), core.Doc("Run analysis now"))
-
+		core.Write(), core.Doc("Run analysis now"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{
 		ID:      "firewall",
 		Title:   "Firewall Analysis Engine (FAE)",

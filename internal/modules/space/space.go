@@ -149,22 +149,22 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 
 	// API routes for address records
-	ctx.Route("POST", "/api/space/locate", m.apiLocate, core.Write(), core.Doc("Geocode an address using US Census Geocoder"))
-	ctx.Route("GET", "/api/space/records", m.apiRecords, core.Doc("Get address records: geocode, buildings, elevation, broadband"))
+	ctx.Route("POST", "/api/space/locate", m.apiLocate, core.Write(), core.Doc("Geocode an address using US Census Geocoder"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/space/records", m.apiRecords, core.Doc("Get address records: geocode, buildings, elevation, broadband"), core.Returns("Success", map[string]any{"ok": true}))
 
 	// API routes for layout
-	ctx.Route("GET", "/api/space/layout", m.apiGetLayout, core.Doc("Get the current space layout"))
-	ctx.Route("PUT", "/api/space/layout", m.apiPutLayout, core.Write(), core.Doc("Update the layout"))
+	ctx.Route("GET", "/api/space/layout", m.apiGetLayout, core.Doc("Get the current space layout"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("PUT", "/api/space/layout", m.apiPutLayout, core.Write(), core.Doc("Update the layout"), core.Returns("Success", map[string]any{"ok": true}))
 
 	// API routes for scans
-	ctx.Route("POST", "/api/space/scan", m.apiPostScan, core.Write(), core.Doc("Upload a scan file (GLB, OBJ, PLY, or RoomPlan JSON)"))
-	ctx.Route("GET", "/api/space/scan", m.apiGetScan, core.Doc("Get the uploaded scan file"))
-	ctx.Route("DELETE", "/api/space/scan", m.apiDeleteScan, core.Write(), core.Doc("Delete the scan file"))
+	ctx.Route("POST", "/api/space/scan", m.apiPostScan, core.Write(), core.Doc("Upload a scan file (GLB, OBJ, PLY, or RoomPlan JSON)"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/space/scan", m.apiGetScan, core.Doc("Get the uploaded scan file"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/space/scan", m.apiDeleteScan, core.Write(), core.Doc("Delete the scan file"), core.Returns("Success", map[string]any{"ok": true}))
 
 	// API routes for devices and placements
-	ctx.Route("GET", "/api/space/devices", m.apiGetDevices, core.Doc("List all devices with placement status"))
-	ctx.Route("POST", "/api/space/place", m.apiPlace, core.Write(), core.Doc("Place a device in space ({mac,x,y,z,floor,room})"))
-	ctx.Route("DELETE", "/api/space/place/{mac}", m.apiDeletePlace, core.Write(), core.Doc("Unplace a device"))
+	ctx.Route("GET", "/api/space/devices", m.apiGetDevices, core.Doc("List all devices with placement status"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/space/place", m.apiPlace, core.Write(), core.Doc("Place a device in space ({mac,x,y,z,floor,room})"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/space/place/{mac}", m.apiDeletePlace, core.Write(), core.Doc("Unplace a device"), core.Returns("Success", map[string]any{"ok": true}))
 
 	// Panel
 	ctx.Panel(core.Panel{ID: "space", Title: "Space", Group: "Inventory", Order: 150, Icon: "space"})

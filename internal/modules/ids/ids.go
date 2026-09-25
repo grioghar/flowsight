@@ -61,10 +61,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 	every := time.Duration(core.Int(ctx.Settings(), "poll_seconds", 5)) * time.Second
 	ctx.Every("tail", every, m.poll)
 	ctx.Route("GET", "/api/ids/summary", m.apiSummary, core.Doc("Alert counts by severity, category, signature and host"),
-		core.Params("hours", "window"))
+		core.Params("hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/ids/alerts", m.apiAlerts, core.Doc("Recent alerts"),
-		core.Params("hours", "window", "severity", "filter", "ip", "either end", "limit", "rows"))
-	ctx.Route("POST", "/api/ids/alerts/ack", m.apiAck, core.Write(), core.Doc("Acknowledge alerts"))
+		core.Params("hours", "window", "severity", "filter", "ip", "either end", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/ids/alerts/ack", m.apiAck, core.Write(), core.Doc("Acknowledge alerts"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "threats", Title: "Threats", Group: "Protect", Order: 60, Icon: "threats"})
 	return nil
 }

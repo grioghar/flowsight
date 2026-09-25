@@ -88,8 +88,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("export", interval, m.export, core.NeedsJob("telemetry.export"), core.Delayed())
 
 	ctx.Route("GET", "/api/telemetry/status", m.apiStatus,
-		core.Doc("Last telemetry export status"))
-
+		core.Doc("Last telemetry export status"), core.Returns("Success", map[string]any{"ok": true}))
 	return nil
 }
 

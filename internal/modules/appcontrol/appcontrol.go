@@ -85,9 +85,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 	ctx.Every("refresh-rules", 30*time.Second, m.refresh)
 	ctx.Every("expire", 10*time.Minute, m.expire, core.Delayed())
-	ctx.Route("GET", "/api/appcontrol/status", m.apiStatus, core.Doc("Active application rules and what they have blocked"))
+	ctx.Route("GET", "/api/appcontrol/status", m.apiStatus, core.Doc("Active application rules and what they have blocked"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/appcontrol/blocked", m.apiBlocked, core.Doc("Recent application blocks"),
-		core.Params("hours", "window", "limit", "rows"))
+		core.Params("hours", "window", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
 	return nil
 }
 

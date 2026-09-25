@@ -171,13 +171,13 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("watch", every, m.sweep)
 	ctx.Every("names", 60*time.Second, m.refreshNames)
 	ctx.Route("GET", "/api/egress/live", m.apiLive, core.Needs("egress.watch"),
-		core.Doc("Connections carrying data right now, newest sample"), core.Params("group", "filter", "min_kb", "floor"))
+		core.Doc("Connections carrying data right now, newest sample"), core.Params("group", "filter", "min_kb", "floor"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/egress/summary", m.apiSummary, core.Needs("egress.watch"),
-		core.Doc("What is leaving now, totalled by device and by destination group"))
+		core.Doc("What is leaving now, totalled by device and by destination group"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/egress/events", m.apiEvents, core.Needs("egress.watch"),
-		core.Doc("Transfers that crossed a threshold, most recent first"), core.Params("limit", "rows"))
+		core.Doc("Transfers that crossed a threshold, most recent first"), core.Params("limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/egress/stop", m.apiStop, core.Write(), core.Needs("egress.watch"),
-		core.Doc("Drop a transfer that is running ({local, peer, port}); the connection is killed at the firewall"))
+		core.Doc("Drop a transfer that is running ({local, peer, port}); the connection is killed at the firewall"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "egress", Title: "DLP", Group: "Protect", Order: 72, Icon: "egress", Feature: "egress.watch"})
 	ctx.Publish("egress", m)
 	return nil

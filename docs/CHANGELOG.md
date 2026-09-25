@@ -12,7 +12,7 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8r202609252255
+## 0.9.8r202609252301
 
 **OpenAPI 3.0 self-documenting API.** The API now supports full OpenAPI 3.0
 documentation metadata: every route can be annotated with request/response

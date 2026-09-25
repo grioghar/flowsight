@@ -115,16 +115,16 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 	ctx.Every("refresh", time.Duration(hours)*time.Hour, m.refreshJob, core.Delayed())
 
-	ctx.Route("GET", "/api/license", m.apiStatus, core.Doc("Current tier, license, features and limits"))
-	ctx.Route("GET", "/api/license/features", m.apiFeatures, core.Doc("The feature catalogue with what this installation has"))
+	ctx.Route("GET", "/api/license", m.apiStatus, core.Doc("Current tier, license, features and limits"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/license/features", m.apiFeatures, core.Doc("The feature catalogue with what this installation has"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/activate", m.apiActivate, core.Write(),
-		core.Doc("Activate an activation key against the license server"))
+		core.Doc("Activate an activation key against the license server"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/install", m.apiInstall, core.Write(),
-		core.Doc("Install a signed license file (offline)"))
+		core.Doc("Install a signed license file (offline)"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/refresh", m.apiRefresh, core.Write(),
-		core.Doc("Refresh the online lease now"))
+		core.Doc("Refresh the online lease now"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/remove", m.apiRemove, core.Write(),
-		core.Doc("Remove the license and return to Community (tells the server, when it was an online activation)"))
+		core.Doc("Remove the license and return to Community (tells the server, when it was an online activation)"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "license", Title: "License", Group: "Administration", Order: 250, Icon: "license"})
 	return nil
 }

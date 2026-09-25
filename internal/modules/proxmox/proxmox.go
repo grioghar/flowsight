@@ -169,14 +169,14 @@ func (m *Module) Setup(ctx *core.Context) error {
 	_ = m.ctx.Store.KVGet("proxmox.inventory", m.inventory)
 
 	// Register routes
-	ctx.Route("GET", "/api/proxmox/inventory", m.apiInventory, core.Doc("Nodes and guests"))
-	ctx.Route("GET", "/api/proxmox/status", m.apiStatus, core.Doc("Connection status and last poll"))
-	ctx.Route("POST", "/api/proxmox/poll", m.apiPoll, core.Write(), core.Doc("Poll now"))
-	ctx.Route("GET", "/api/proxmox/guest", m.apiGuest, core.Doc("Guest by VMID and node"))
-	ctx.Route("GET", "/api/proxmox/notes/preview", m.apiNotesPreview, core.Doc("Preview notes block"))
-	ctx.Route("POST", "/api/proxmox/notes/write", m.apiNotesWrite, core.Write(), core.Doc("Write notes"))
-	ctx.Route("GET", "/api/proxmox/map", m.apiMap, core.Doc("Dependency map"))
-	ctx.Route("GET", "/api/proxmox/requirements", m.apiRequirements, core.Doc("Guest requirements"))
+	ctx.Route("GET", "/api/proxmox/inventory", m.apiInventory, core.Doc("Nodes and guests"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/proxmox/status", m.apiStatus, core.Doc("Connection status and last poll"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/proxmox/poll", m.apiPoll, core.Write(), core.Doc("Poll now"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/proxmox/guest", m.apiGuest, core.Doc("Guest by VMID and node"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/proxmox/notes/preview", m.apiNotesPreview, core.Doc("Preview notes block"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/proxmox/notes/write", m.apiNotesWrite, core.Write(), core.Doc("Write notes"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/proxmox/map", m.apiMap, core.Doc("Dependency map"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/proxmox/requirements", m.apiRequirements, core.Doc("Guest requirements"), core.Returns("Success", map[string]any{"ok": true}))
 
 	// Register panel
 	ctx.Panel(core.Panel{

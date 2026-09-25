@@ -84,10 +84,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.registerRoutes()
 
 	// Also keep old /api/alerting/status for backward compatibility
-	ctx.Route("GET", "/api/alerting/status", m.apiStatus, core.Doc("Channel status and recent notifications"))
+	ctx.Route("GET", "/api/alerting/status", m.apiStatus, core.Doc("Channel status and recent notifications"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/alerting/notifications", m.apiNotifications, core.Doc("Recent notifications"),
-		core.Params("limit", "rows"))
-
+		core.Params("limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "alerts", Title: "Alerting", Group: "Administration", Order: 190, Icon: "alerts"})
 
 	return nil

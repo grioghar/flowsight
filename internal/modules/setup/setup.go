@@ -66,13 +66,13 @@ type License struct {
 
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
-	ctx.Route("GET", "/api/setup/state", m.apiState, core.Doc("Wizard state and detected facts"))
+	ctx.Route("GET", "/api/setup/state", m.apiState, core.Doc("Wizard state and detected facts"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/setup/apply", m.apiApply, core.Write(),
-		core.Doc("Apply one step's answers"))
+		core.Doc("Apply one step's answers"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/setup/test", m.apiTest, core.Write(),
-		core.Doc("Test a step's values"))
+		core.Doc("Test a step's values"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/setup/reset", m.apiReset, core.Write(),
-		core.Doc("Reset the wizard progress"))
+		core.Doc("Reset the wizard progress"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "setup", Title: "Setup wizard", Group: "Administration", Order: 195, Icon: "setup"})
 	return nil
 }

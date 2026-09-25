@@ -126,24 +126,24 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("poll", every, m.poll)
 	ctx.Every("catalog", time.Hour, m.loadCatalog)
 
-	ctx.Route("GET", "/api/visibility/summary", m.apiSummary, core.Doc("Throughput, active flows and hosts right now"))
+	ctx.Route("GET", "/api/visibility/summary", m.apiSummary, core.Doc("Throughput, active flows and hosts right now"), core.Returns("Success", map[string]any{"ok": true}))
 	// Flows recorded before country lookup was on, or before this release,
 	// have no country; fill them in behind the scenes, a few hundred a minute,
 	// so the "abroad" views cover the whole retention window.
 	ctx.Every("country_backfill", time.Minute, m.backfillCountries, core.Delayed())
 	ctx.Route("GET", "/api/visibility/abroad", m.apiAbroad, core.Doc("Per local device, the foreign countries it reached, sessions and bytes per country, and the destinations behind them"),
-		core.Params("hours", "window, default 24", "ip", "one device only"))
+		core.Params("hours", "window, default 24", "ip", "one device only"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/visibility/flows", m.apiFlows, core.Doc("Recent flows"),
-		core.Params("minutes", "window", "ip", "filter by either end", "app", "filter", "limit", "rows", "country", "far end in this country (ISO code)", "abroad", "1 = far end outside this gateway's country", "blocked", "1 = blocked only"))
+		core.Params("minutes", "window", "ip", "filter by either end", "app", "filter", "limit", "rows", "country", "far end in this country (ISO code)", "abroad", "1 = far end outside this gateway's country", "blocked", "1 = blocked only"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/visibility/apps", m.apiApps, core.Doc("Application breakdown over a window"),
-		core.Params("hours", "window", "ip", "one host"))
+		core.Params("hours", "window", "ip", "one host"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/visibility/top", m.apiTop, core.Doc("Top hosts, applications, categories, destinations"),
-		core.Params("hours", "window", "limit", "rows"))
+		core.Params("hours", "window", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/visibility/timeseries", m.apiTimeseries, core.Doc("Metric series for charts"),
-		core.Params("hours", "window", "metric", "name", "step", "seconds"))
+		core.Params("hours", "window", "metric", "name", "step", "seconds"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/visibility/host", m.apiHost, core.Doc("Everything about one host"),
-		core.Params("ip", "address", "hours", "window"))
-	ctx.Route("GET", "/api/visibility/catalog", m.apiCatalog, core.Doc("Known applications and categories"))
+		core.Params("ip", "address", "hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/visibility/catalog", m.apiCatalog, core.Doc("Known applications and categories"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "overview", Title: "Overview", Group: "Monitor", Order: 1, Icon: "overview"})
 	ctx.Panel(core.Panel{ID: "flows", Title: "Sessions", Group: "Monitor", Order: 30, Icon: "flows"})
 	ctx.Panel(core.Panel{ID: "apps", Title: "Applications", Group: "Monitor", Order: 40, Icon: "apps"})

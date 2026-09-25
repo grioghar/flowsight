@@ -134,15 +134,15 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("tail", 3*time.Second, m.pollLog)
 	ctx.Every("supervise", 20*time.Second, m.supervise)
 	ctx.Route("GET", "/api/web/summary", m.apiSummary, core.Doc("Web activity: top sites, categories, blocked requests"),
-		core.Params("hours", "window"))
+		core.Params("hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/web/log", m.apiLog, core.Doc("Recent web requests"),
-		core.Params("ip", "client", "domain", "substring", "blocked", "only blocked", "limit", "rows"))
-	ctx.Route("GET", "/api/web/status", m.apiStatus, core.Doc("Proxy process state and configuration"))
-	ctx.Route("GET", "/api/web/pinned", m.apiPinned, core.Doc("Names whose clients pin their certificate and are therefore relayed without inspection"))
+		core.Params("ip", "client", "domain", "substring", "blocked", "only blocked", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/web/status", m.apiStatus, core.Doc("Proxy process state and configuration"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/web/pinned", m.apiPinned, core.Doc("Names whose clients pin their certificate and are therefore relayed without inspection"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/web/pinned", m.apiPinnedSet, core.Write(), core.Needs("tls.inspect"),
-		core.Doc("Add a name to the pinned list, or remove one ({name, remove})"))
+		core.Doc("Add a name to the pinned list, or remove one ({name, remove})"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("DELETE", "/api/web/pinned/{name}", m.apiDeletePinnedName, core.Write(), core.Needs("tls.inspect"),
-		core.Doc("Delete a pinned TLS name"))
+		core.Doc("Delete a pinned TLS name"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "web", Title: "Web", Group: "Monitor", Order: 45, Icon: "web"})
 	m.startBlockPage()
 	return nil

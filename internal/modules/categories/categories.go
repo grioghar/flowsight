@@ -119,12 +119,12 @@ func (m *Module) Setup(ctx *core.Context) error {
 	hours := core.Int(ctx.Settings(), "update_hours", 24)
 	ctx.Every("update", time.Duration(hours)*time.Hour, m.updateAll, core.Delayed())
 	ctx.Every("bootstrap", 24*time.Hour, m.bootstrap)
-	ctx.Route("GET", "/api/categories", m.apiList, core.Doc("Categories, sizes and feed status"))
-	ctx.Route("POST", "/api/categories/update", m.apiUpdate, core.Write(), core.Doc("Refresh one or all feeds now"))
+	ctx.Route("GET", "/api/categories", m.apiList, core.Doc("Categories, sizes and feed status"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/categories/update", m.apiUpdate, core.Write(), core.Doc("Refresh one or all feeds now"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/categories/lookup", m.apiLookup, core.Doc("Categories a domain belongs to"),
-		core.Params("domain", "name"))
-	ctx.Route("POST", "/api/categories/custom", m.apiCustom, core.Write(), core.Doc("Create or replace a custom category"))
-	ctx.Route("DELETE", "/api/categories/{name}", m.apiDeleteCategoryByName, core.Write(), core.Doc("Delete a custom category"))
+		core.Params("domain", "name"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/categories/custom", m.apiCustom, core.Write(), core.Doc("Create or replace a custom category"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/categories/{name}", m.apiDeleteCategoryByName, core.Write(), core.Doc("Delete a custom category"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "categories", Title: "Categories", Group: "Protect", Order: 120, Icon: "categories"})
 	return nil
 }

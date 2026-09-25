@@ -94,29 +94,27 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// API routes
 	ctx.Route("GET", "/api/reports/definitions", m.apiGetDefinitions,
-		core.Doc("List all report definitions"))
+		core.Doc("List all report definitions"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/reports/definitions", m.apiCreateDefinition,
-		core.Write(), core.Doc("Create a custom report definition"))
-	ctx.Route("GET", "/api/reports/definitions/{id}", m.apiGetDefinition,
-		core.Doc("Get a report definition"))
-	ctx.Route("PUT", "/api/reports/definitions/{id}", m.apiUpdateDefinition,
-		core.Write(), core.Doc("Update a report definition"))
-	ctx.Route("DELETE", "/api/reports/definitions/{id}", m.apiDeleteDefinition,
-		core.Write(), core.Doc("Delete a report definition"))
-
+		core.Write(), core.Doc("Create a custom report definition"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/reports/definitions/{id}", m.apiGetDefinition, core.PathParam("id", "string", "Report definition ID", "def-1"),
+		core.Doc("Get a report definition"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("PUT", "/api/reports/definitions/{id}", m.apiUpdateDefinition, core.PathParam("id", "string", "Report definition ID", "def-1"),
+		core.Write(), core.Doc("Update a report definition"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/reports/definitions/{id}", m.apiDeleteDefinition, core.PathParam("id", "string", "Report definition ID", "def-1"),
+		core.Write(), core.Doc("Delete a report definition"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/reports/preview", m.apiPreview,
-		core.Write(), core.Doc("Generate and preview a report"))
-	ctx.Route("POST", "/api/reports/run/{id}", m.apiRunReport,
-		core.Write(), core.Doc("Execute a report definition"))
+		core.Write(), core.Doc("Generate and preview a report"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/reports/run/{id}", m.apiRunReport, core.PathParam("id", "string", "Report definition ID", "def-1"),
+		core.Write(), core.Doc("Execute a report definition"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/reports/runs", m.apiListRuns,
-		core.Doc("List recent report runs"))
-	ctx.Route("GET", "/api/reports/runs/{run}", m.apiGetRun,
-		core.Doc("Get report run details"))
-	ctx.Route("GET", "/api/reports/runs/{run}/download", m.apiDownloadRun,
-		core.Doc("Download report in specified format"))
-	ctx.Route("DELETE", "/api/reports/runs/{run}", m.apiDeleteRun,
-		core.Write(), core.Doc("Delete a report run"))
-
+		core.Doc("List recent report runs"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/reports/runs/{run}", m.apiGetRun, core.PathParam("run", "string", "Report run ID", "run-1"),
+		core.Doc("Get report run details"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/reports/runs/{run}/download", m.apiDownloadRun, core.PathParam("run", "string", "Report run ID", "run-1"),
+		core.Doc("Download report in specified format"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/reports/runs/{run}", m.apiDeleteRun, core.PathParam("run", "string", "Report run ID", "run-1"),
+		core.Write(), core.Doc("Delete a report run"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "reports", Title: "Reports", Group: "Administration", Order: 180, Icon: "reports"})
 
 	ctx.Log.Info("reports module ready", slog.String("data_dir", m.dataDir))
