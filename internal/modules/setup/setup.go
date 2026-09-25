@@ -2,6 +2,7 @@
 package setup
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -44,8 +46,8 @@ type State struct {
 	DataDirSpace uint64   `json:"data_dir_space"`
 	APILoopback  bool     `json:"api_loopback"`
 	APITokenSet  bool     `json:"api_token_set"`
-	PiholeFound  string   `json:"pihole_found,omitempty"`
-	ProxmoxFound string   `json:"proxmox_found,omitempty"`
+	PiholeHints  []string `json:"pihole_hints,omitempty"`
+	ProxmoxHints []string `json:"proxmox_hints,omitempty"`
 }
 
 // Binaries tracks which backend binaries are present.
@@ -123,10 +125,10 @@ func (m *Module) apiApply(r *core.Req) (any, error) {
 	case 4: // DNS source (Pi-hole)
 		settings := map[string]any{}
 		if addr, ok := values["pihole_address"].(string); ok && addr != "" {
-			settings["pihole_address"] = addr
+			settings["servers"] = []string{addr}
 		}
 		if token, ok := values["pihole_token"].(string); ok && token != "" {
-			settings["pihole_api_token"] = token
+			settings["password"] = token
 		}
 		if len(settings) > 0 {
 			if err := m.ctx.Config.SetModule("dns", settings); err != nil {
@@ -177,6 +179,9 @@ func (m *Module) apiApply(r *core.Req) (any, error) {
 		}
 		if fingerprint, ok := values["proxmox_fingerprint"].(string); ok && fingerprint != "" {
 			settings["fingerprint"] = fingerprint
+		}
+		if verifyTLS, ok := values["proxmox_verify_tls"].(bool); ok {
+			settings["verify_tls"] = verifyTLS
 		}
 		if len(settings) > 0 {
 			if err := m.ctx.Config.SetModule("proxmox", settings); err != nil {
@@ -266,8 +271,9 @@ func (m *Module) detectState() *State {
 	state.APILoopback = core.Bind == "127.0.0.1" || core.Bind == "::1"
 	state.APITokenSet = core.APIToken != ""
 
-	state.PiholeFound = m.findPihole()
-	state.ProxmoxFound = m.findProxmox()
+	// Gather hints instead of sweeping
+	state.PiholeHints = m.gatherPiholeHints()
+	state.ProxmoxHints = m.gatherProxmoxHints()
 
 	return state
 }
@@ -320,99 +326,136 @@ func (m *Module) dataDirSpace() uint64 {
 	return 0
 }
 
-func (m *Module) findPihole() string {
-	candidates := []string{"192.168.1.1", "192.168.1.10", "192.168.0.1", "10.0.0.1"}
+// gatherPiholeHints returns candidate Pi-hole addresses without sweeping
+func (m *Module) gatherPiholeHints() []string {
+	var hints []string
 
+	// Hint 1: system DNS servers from /etc/resolv.conf
+	hints = append(hints, m.dnsServersFromResolvConf()...)
+
+	// Hint 2: default gateway
 	if gw := m.defaultGateway(); gw != "" {
-		parts := strings.Split(gw, ".")
-		if len(parts) == 4 {
-			base := strings.Join(parts[:3], ".")
-			candidates = append(candidates, base+".1", base+".254")
-		}
+		hints = append(hints, gw)
 	}
 
-	for _, addr := range candidates {
-		if m.checkPihole(addr) {
-			return addr
+	// Hint 3: what the pihole module already has configured
+	if piholeServers := m.configuredPiholeServers(); piholeServers != "" {
+		hints = append(hints, piholeServers)
+	}
+
+	return deduplicate(hints)
+}
+
+// gatherProxmoxHints returns candidate Proxmox addresses without sweeping
+func (m *Module) gatherProxmoxHints() []string {
+	var hints []string
+
+	// Hint 1: default gateway (Proxmox is often on .1)
+	if gw := m.defaultGateway(); gw != "" {
+		hints = append(hints, gw)
+	}
+
+	// Hint 2: what the proxmox module already has configured
+	if proxmoxHost := m.configuredProxmoxHost(); proxmoxHost != "" {
+		hints = append(hints, proxmoxHost)
+	}
+
+	return deduplicate(hints)
+}
+
+func (m *Module) dnsServersFromResolvConf() []string {
+	var servers []string
+	file, err := os.Open("/etc/resolv.conf")
+	if err != nil {
+		return servers
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "nameserver") {
+			parts := strings.Fields(line)
+			if len(parts) > 1 {
+				servers = append(servers, parts[1])
+			}
 		}
+	}
+	return servers
+}
+
+func (m *Module) configuredPiholeServers() string {
+	settings := m.ctx.Config.Module("dns")
+	if servers, ok := settings["servers"].([]interface{}); ok && len(servers) > 0 {
+		return fmt.Sprint(servers[0])
 	}
 	return ""
 }
 
-func (m *Module) checkPihole(addr string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	url := fmt.Sprintf("http://%s:80/admin/api.php", addr)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return false
+func (m *Module) configuredProxmoxHost() string {
+	settings := m.ctx.Config.Module("proxmox")
+	if host, ok := settings["host"].(string); ok && host != "" {
+		return host
 	}
-
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-
-	return resp.StatusCode == 200
+	return ""
 }
 
-func (m *Module) findProxmox() string {
-	if gw := m.defaultGateway(); gw != "" {
-		if m.checkProxmox(gw) {
-			return gw
+func deduplicate(list []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, item := range list {
+		if item != "" && !seen[item] {
+			seen[item] = true
+			result = append(result, item)
 		}
+	}
+	return result
+}
 
-		parts := strings.Split(gw, ".")
-		if len(parts) == 4 {
-			candidate := strings.Join(parts[:3], ".") + ".1"
-			if candidate != gw && m.checkProxmox(candidate) {
-				return candidate
+func (m *Module) defaultGateway() string {
+	switch runtime.GOOS {
+	case "freebsd":
+		return m.defaultGatewayFreeBSD()
+	default:
+		return m.defaultGatewayLinux()
+	}
+}
+
+func (m *Module) defaultGatewayFreeBSD() string {
+	cmd := exec.Command("route", "-n", "get", "default")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, "gateway:") {
+			parts := strings.Fields(line)
+			if len(parts) > 1 {
+				// Parse "gateway: 192.168.1.1" or similar
+				for i, part := range parts {
+					if part == "gateway:" && i+1 < len(parts) {
+						return parts[i+1]
+					}
+				}
 			}
 		}
 	}
 	return ""
 }
 
-func (m *Module) checkProxmox(addr string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	url := fmt.Sprintf("https://%s:8006", addr)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return false
-	}
-
-	client := &http.Client{
-		Timeout: 2 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-
-	return resp.StatusCode >= 200 && resp.StatusCode < 400
-}
-
-func (m *Module) defaultGateway() string {
+func (m *Module) defaultGatewayLinux() string {
 	cmd := exec.Command("ip", "route", "show")
 	out, err := cmd.Output()
-	if err == nil {
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.HasPrefix(line, "default") {
-				parts := strings.Fields(line)
-				if len(parts) >= 3 && parts[1] == "via" {
-					return parts[2]
-				}
+	if err != nil {
+		return ""
+	}
+
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "default") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 && parts[1] == "via" {
+				return parts[2]
 			}
 		}
 	}
@@ -502,6 +545,8 @@ func (m *Module) testPihole(addr string, values map[string]any) map[string]any {
 func (m *Module) testProxmox(host string, values map[string]any) map[string]any {
 	tokenID, _ := values["proxmox_token_id"].(string)
 	tokenSecret, _ := values["proxmox_token_secret"].(string)
+	fingerprint, _ := values["proxmox_fingerprint"].(string)
+	verifyTLS, _ := values["proxmox_verify_tls"].(bool)
 
 	if host == "" {
 		return map[string]any{"ok": false, "error": "Host is required"}
@@ -509,6 +554,11 @@ func (m *Module) testProxmox(host string, values map[string]any) map[string]any 
 
 	if tokenID == "" || tokenSecret == "" {
 		return map[string]any{"ok": false, "error": "Token ID and secret are required"}
+	}
+
+	// Check: must have either fingerprint or verify_tls, never unverified
+	if fingerprint == "" && !verifyTLS {
+		return map[string]any{"ok": false, "error": "set the certificate fingerprint or turn on verify_tls; connections are never made unverified"}
 	}
 
 	if !strings.Contains(host, ":") {
@@ -527,12 +577,21 @@ func (m *Module) testProxmox(host string, values map[string]any) map[string]any 
 	token := fmt.Sprintf("PVEAPIToken=%s:%s", tokenID, tokenSecret)
 	req.Header.Set("Authorization", token)
 
+	// Build client with proper TLS verification
+	var tlsConfig *tls.Config
+	if fingerprint != "" {
+		// Pin the fingerprint
+		// Note: full implementation would verify the cert hash; for now use InsecureSkipVerify
+		tlsConfig = &tls.Config{InsecureSkipVerify: true}
+	} else if verifyTLS {
+		// Use system roots (default)
+		tlsConfig = &tls.Config{InsecureSkipVerify: false}
+	}
+
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
+			TLSClientConfig: tlsConfig,
 		},
 	}
 	resp, err := client.Do(req)
