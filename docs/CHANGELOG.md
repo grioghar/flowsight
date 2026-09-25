@@ -61,6 +61,9 @@ cleared once.
 **Overview: one row per device in Top hosts.** A device's IPv4 lease and its
 IPv6 addresses were separate rows; they fold into one, traffic summed, with
 the IPv4 address shown and the count of other addresses beside it.
+## 0.9.8r202609252311
+
+**How-to guides for every task.** A new section `docs/howto/` with 15 task-first guides covers: first hour after install, seeing device traffic, identifying unknowns, blocking by country, reading policy matches, tracing the Map, watching DLP transfers, scheduling policies, TLS inspection, packet capture, alerting, reports, Proxmox inventory, physical space, API automation, and understanding blocked traffic. Each guide names exact pages and buttons, shows prerequisites and limits, and walks through to a working result. The existing HOWTO-IOT-ABROAD.md moved to `howto/iot-abroad.md` with a stub at the old path pointing to it.
 
 ## 0.9.8r202609252300
 
