@@ -409,10 +409,234 @@ func toI(v any) int64 {
 	}
 }
 
+// BlockedActivity shows traffic that was blocked by policy or verdict.
+type BlockedActivityRow struct {
+	PolicyName string `json:"policy_name"`
+	Count      int64  `json:"count"`
+	TopIP      string `json:"top_ip"`
+	TopApp     string `json:"top_app"`
+}
+
+type BlockedActivity struct {
+	ByPolicy []BlockedActivityRow `json:"by_policy"`
+	ByApp    []BlockedActivityRow `json:"by_app"`
+}
+
+type blockedActivitySec struct{}
+
+func (s *blockedActivitySec) Key() string   { return "blocked_activity" }
+func (s *blockedActivitySec) Title() string { return "Blocked Activity" }
+func (s *blockedActivitySec) Notes() string {
+	return "Flows rejected by policy or verdict filter, grouped by policy and application."
+}
+
+func (s *blockedActivitySec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := BlockedActivity{
+		ByPolicy: []BlockedActivityRow{},
+		ByApp:    []BlockedActivityRow{},
+	}
+
+	whereClause := " WHERE ts>=? AND ts<? AND verdict='blocked'" + filters.whereClause()
+	args := []any{window.From, window.To}
+	args = append(args, filters.allArgs()...)
+
+	// By policy
+	rows, _ := st.Rows(`SELECT policy, COUNT(*) AS count FROM flows`+whereClause+` GROUP BY policy ORDER BY count DESC LIMIT 10`, args...)
+	for _, row := range rows {
+		policy, _ := row["policy"].(string)
+		count := toI(row["count"])
+		result.ByPolicy = append(result.ByPolicy, BlockedActivityRow{
+			PolicyName: policy,
+			Count:      count,
+		})
+	}
+
+	// By app
+	rows, _ = st.Rows(`SELECT app, COUNT(*) AS count FROM flows`+whereClause+` GROUP BY app ORDER BY count DESC LIMIT 10`, args...)
+	for _, row := range rows {
+		app, _ := row["app"].(string)
+		count := toI(row["count"])
+		result.ByApp = append(result.ByApp, BlockedActivityRow{
+			PolicyName: app,
+			Count:      count,
+		})
+	}
+
+	return result, nil
+}
+
+// DNSSummary shows DNS queries, blocks, and top domains.
+type DNSQueryRow struct {
+	Domain string `json:"domain"`
+	Count  int64  `json:"count"`
+	Action string `json:"action"`
+}
+
+type DNSSummary struct {
+	TotalQueries int64         `json:"total_queries"`
+	TotalBlocked int64         `json:"total_blocked"`
+	TopDomains   []DNSQueryRow `json:"top_domains"`
+	TopBlocked   []DNSQueryRow `json:"top_blocked"`
+}
+
+type dnsSummarySec struct{}
+
+func (s *dnsSummarySec) Key() string   { return "dns_summary" }
+func (s *dnsSummarySec) Title() string { return "DNS Summary" }
+func (s *dnsSummarySec) Notes() string {
+	return "DNS query counts and top domains, including blocked queries by policy."
+}
+
+func (s *dnsSummarySec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := DNSSummary{
+		TopDomains: []DNSQueryRow{},
+		TopBlocked: []DNSQueryRow{},
+	}
+
+	whereClause := " WHERE ts>=? AND ts<?"
+	args := []any{window.From, window.To}
+
+	result.TotalQueries = st.Int(`SELECT COUNT(*) FROM dns`+whereClause, args...)
+	result.TotalBlocked = st.Int(`SELECT COUNT(*) FROM dns`+whereClause+` AND action='block'`, args...)
+
+	// Top domains
+	rows, _ := st.Rows(`SELECT domain, COUNT(*) AS count FROM dns`+whereClause+` GROUP BY domain ORDER BY count DESC LIMIT 10`, args...)
+	for _, row := range rows {
+		domain, _ := row["domain"].(string)
+		count := toI(row["count"])
+		result.TopDomains = append(result.TopDomains, DNSQueryRow{
+			Domain: domain,
+			Count:  count,
+		})
+	}
+
+	// Top blocked
+	rows, _ = st.Rows(`SELECT domain, COUNT(*) AS count FROM dns`+whereClause+` AND action='block' GROUP BY domain ORDER BY count DESC LIMIT 10`, args...)
+	for _, row := range rows {
+		domain, _ := row["domain"].(string)
+		count := toI(row["count"])
+		result.TopBlocked = append(result.TopBlocked, DNSQueryRow{
+			Domain: domain,
+			Count:  count,
+			Action: "block",
+		})
+	}
+
+	return result, nil
+}
+
+// TLSPosture shows TLS versions, certificates, and interception coverage.
+type TLSVersion struct {
+	Version string `json:"version"`
+	Count   int64  `json:"count"`
+}
+
+type TLSPosture struct {
+	TotalConnections int64        `json:"total_connections"`
+	Versions         []TLSVersion `json:"versions"`
+	InterceptedCount int64        `json:"intercepted_count"`
+	UntrustedCerts   int64        `json:"untrusted_certs"`
+}
+
+type tlsPostureSec struct{}
+
+func (s *tlsPostureSec) Key() string   { return "tls_posture" }
+func (s *tlsPostureSec) Title() string { return "TLS Posture" }
+func (s *tlsPostureSec) Notes() string {
+	return "TLS protocol versions, certificate trust status, and interception coverage."
+}
+
+func (s *tlsPostureSec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := TLSPosture{
+		Versions: []TLSVersion{},
+	}
+
+	whereClause := " WHERE ts>=? AND ts<?"
+	args := []any{window.From, window.To}
+
+	result.TotalConnections = st.Int(`SELECT COUNT(*) FROM tls_sessions`+whereClause, args...)
+
+	// TLS versions
+	rows, _ := st.Rows(`SELECT tls_version, COUNT(*) AS count FROM tls_sessions`+whereClause+` GROUP BY tls_version ORDER BY count DESC`, args...)
+	for _, row := range rows {
+		version, _ := row["tls_version"].(string)
+		count := toI(row["count"])
+		result.Versions = append(result.Versions, TLSVersion{
+			Version: version,
+			Count:   count,
+		})
+	}
+
+	result.UntrustedCerts = st.Int(`SELECT COUNT(*) FROM tls_certs WHERE trusted=0`)
+
+	return result, nil
+}
+
+// Alerts shows security alerts and threats detected.
+type AlertRow struct {
+	Signature string `json:"signature"`
+	Severity  string `json:"severity"`
+	Count     int64  `json:"count"`
+	SourceIP  string `json:"source_ip"`
+}
+
+type Alerts struct {
+	TotalAlerts   int64      `json:"total_alerts"`
+	CriticalCount int64      `json:"critical_count"`
+	HighCount     int64      `json:"high_count"`
+	BySeverity    []AlertRow `json:"by_severity"`
+	TopSignatures []AlertRow `json:"top_signatures"`
+}
+
+type alertsSec struct{}
+
+func (s *alertsSec) Key() string   { return "alerts" }
+func (s *alertsSec) Title() string { return "Security Alerts" }
+func (s *alertsSec) Notes() string {
+	return "Alerts and threats detected by IDS/IPS, grouped by severity and signature."
+}
+
+func (s *alertsSec) Run(ctx *core.Context, window *TimeWindow, filters *Filters) (any, error) {
+	st := ctx.Store
+	result := Alerts{
+		BySeverity:    []AlertRow{},
+		TopSignatures: []AlertRow{},
+	}
+
+	whereClause := " WHERE ts>=? AND ts<?"
+	args := []any{window.From, window.To}
+
+	result.TotalAlerts = st.Int(`SELECT COUNT(*) FROM alerts`+whereClause, args...)
+	result.CriticalCount = st.Int(`SELECT COUNT(*) FROM alerts`+whereClause+` AND severity='critical'`, args...)
+	result.HighCount = st.Int(`SELECT COUNT(*) FROM alerts`+whereClause+` AND severity='high'`, args...)
+
+	// Top signatures
+	rows, _ := st.Rows(`SELECT signature, severity, COUNT(*) AS count FROM alerts`+whereClause+` GROUP BY signature ORDER BY count DESC LIMIT 15`, args...)
+	for _, row := range rows {
+		sig, _ := row["signature"].(string)
+		sev, _ := row["severity"].(string)
+		count := toI(row["count"])
+		result.TopSignatures = append(result.TopSignatures, AlertRow{
+			Signature: sig,
+			Severity:  sev,
+			Count:     count,
+		})
+	}
+
+	return result, nil
+}
+
 // Register all sections
 func registerSections() []Section {
 	return []Section{
 		&execSummarySec{},
 		&trafficByDeviceSec{},
+		&blockedActivitySec{},
+		&dnsSummarySec{},
+		&tlsPostureSec{},
+		&alertsSec{},
 	}
 }

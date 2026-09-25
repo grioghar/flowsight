@@ -148,6 +148,22 @@ func (e *Engine) renderSectionHTML(buf *bytes.Buffer, key string, data any) {
 		if tbd, ok := data.(TrafficByDevice); ok {
 			e.renderTrafficByDeviceHTML(buf, tbd)
 		}
+	case "blocked_activity":
+		if ba, ok := data.(BlockedActivity); ok {
+			e.renderBlockedActivityHTML(buf, ba)
+		}
+	case "dns_summary":
+		if dns, ok := data.(DNSSummary); ok {
+			e.renderDNSSummaryHTML(buf, dns)
+		}
+	case "tls_posture":
+		if tls, ok := data.(TLSPosture); ok {
+			e.renderTLSPostureHTML(buf, tls)
+		}
+	case "alerts":
+		if alerts, ok := data.(Alerts); ok {
+			e.renderAlertsHTML(buf, alerts)
+		}
 	default:
 		// Generic JSON rendering
 		buf.WriteString(`<pre>`)
@@ -155,6 +171,75 @@ func (e *Engine) renderSectionHTML(buf *bytes.Buffer, key string, data any) {
 			buf.WriteString(escapeHTML(string(b)))
 		}
 		buf.WriteString(`</pre>`)
+	}
+}
+
+func (e *Engine) renderBlockedActivityHTML(buf *bytes.Buffer, ba BlockedActivity) {
+	if len(ba.ByPolicy) > 0 {
+		buf.WriteString(`<h3>By Policy</h3><table><tr><th>Policy</th><th>Count</th></tr>`)
+		for _, row := range ba.ByPolicy {
+			buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%d</td></tr>`, escapeHTML(row.PolicyName), row.Count))
+		}
+		buf.WriteString(`</table>`)
+	}
+	if len(ba.ByApp) > 0 {
+		buf.WriteString(`<h3>By Application</h3><table><tr><th>Application</th><th>Count</th></tr>`)
+		for _, row := range ba.ByApp {
+			buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%d</td></tr>`, escapeHTML(row.PolicyName), row.Count))
+		}
+		buf.WriteString(`</table>`)
+	}
+}
+
+func (e *Engine) renderDNSSummaryHTML(buf *bytes.Buffer, dns DNSSummary) {
+	buf.WriteString(fmt.Sprintf(`<p>Total Queries: %d | Blocked: %d</p>`, dns.TotalQueries, dns.TotalBlocked))
+	if len(dns.TopDomains) > 0 {
+		buf.WriteString(`<h3>Top Domains</h3><table><tr><th>Domain</th><th>Count</th></tr>`)
+		for _, row := range dns.TopDomains {
+			buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%d</td></tr>`, escapeHTML(row.Domain), row.Count))
+		}
+		buf.WriteString(`</table>`)
+	}
+	if len(dns.TopBlocked) > 0 {
+		buf.WriteString(`<h3>Top Blocked</h3><table><tr><th>Domain</th><th>Count</th></tr>`)
+		for _, row := range dns.TopBlocked {
+			buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%d</td></tr>`, escapeHTML(row.Domain), row.Count))
+		}
+		buf.WriteString(`</table>`)
+	}
+}
+
+func (e *Engine) renderTLSPostureHTML(buf *bytes.Buffer, tls TLSPosture) {
+	buf.WriteString(fmt.Sprintf(`<p>Total Connections: %d | Untrusted Certs: %d</p>`, tls.TotalConnections, tls.UntrustedCerts))
+	if len(tls.Versions) > 0 {
+		buf.WriteString(`<h3>TLS Versions</h3><table><tr><th>Version</th><th>Count</th></tr>`)
+		for _, row := range tls.Versions {
+			buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td>%d</td></tr>`, escapeHTML(row.Version), row.Count))
+		}
+		buf.WriteString(`</table>`)
+	}
+}
+
+func (e *Engine) renderAlertsHTML(buf *bytes.Buffer, alerts Alerts) {
+	buf.WriteString(fmt.Sprintf(`<p>Total: %d | Critical: %d | High: %d</p>`, alerts.TotalAlerts, alerts.CriticalCount, alerts.HighCount))
+	if len(alerts.TopSignatures) > 0 {
+		buf.WriteString(`<h3>Top Threats</h3><table><tr><th>Signature</th><th>Severity</th><th>Count</th></tr>`)
+		for _, row := range alerts.TopSignatures {
+			buf.WriteString(fmt.Sprintf(`<tr><td>%s</td><td><span class="pill %s">%s</span></td><td>%d</td></tr>`,
+				escapeHTML(row.Signature), sevClass(row.Severity), escapeHTML(row.Severity), row.Count))
+		}
+		buf.WriteString(`</table>`)
+	}
+}
+
+func sevClass(sev string) string {
+	switch sev {
+	case "critical", "high":
+		return "bad"
+	case "medium":
+		return "warn"
+	default:
+		return "ok"
 	}
 }
 
@@ -253,6 +338,22 @@ func (e *Engine) renderSectionMarkdown(buf *bytes.Buffer, key string, data any) 
 		if tbd, ok := data.(TrafficByDevice); ok {
 			e.renderTrafficByDeviceMarkdown(buf, tbd)
 		}
+	case "blocked_activity":
+		if ba, ok := data.(BlockedActivity); ok {
+			e.renderBlockedActivityMarkdown(buf, ba)
+		}
+	case "dns_summary":
+		if dns, ok := data.(DNSSummary); ok {
+			e.renderDNSSummaryMarkdown(buf, dns)
+		}
+	case "tls_posture":
+		if tls, ok := data.(TLSPosture); ok {
+			e.renderTLSPostureMarkdown(buf, tls)
+		}
+	case "alerts":
+		if alerts, ok := data.(Alerts); ok {
+			e.renderAlertsMarkdown(buf, alerts)
+		}
 	default:
 		if b, err := json.MarshalIndent(data, "", "  "); err == nil {
 			buf.WriteString("```json\n")
@@ -287,6 +388,71 @@ func (e *Engine) renderTrafficByDeviceMarkdown(buf *bytes.Buffer, tbd TrafficByD
 			row.DeviceName, row.Zone, row.Flows,
 			formatBytes(row.BytesIn), formatBytes(row.BytesOut),
 			row.TopApp, row.BlockedFlows))
+	}
+}
+
+func (e *Engine) renderBlockedActivityMarkdown(buf *bytes.Buffer, ba BlockedActivity) {
+	if len(ba.ByPolicy) > 0 {
+		buf.WriteString("#### By Policy\n\n")
+		buf.WriteString("| Policy | Count |\n")
+		buf.WriteString("|--------|-------|\n")
+		for _, row := range ba.ByPolicy {
+			buf.WriteString(fmt.Sprintf("| %s | %d |\n", row.PolicyName, row.Count))
+		}
+		buf.WriteString("\n")
+	}
+	if len(ba.ByApp) > 0 {
+		buf.WriteString("#### By Application\n\n")
+		buf.WriteString("| Application | Count |\n")
+		buf.WriteString("|-------------|-------|\n")
+		for _, row := range ba.ByApp {
+			buf.WriteString(fmt.Sprintf("| %s | %d |\n", row.PolicyName, row.Count))
+		}
+	}
+}
+
+func (e *Engine) renderDNSSummaryMarkdown(buf *bytes.Buffer, dns DNSSummary) {
+	buf.WriteString(fmt.Sprintf("Total Queries: **%d** | Blocked: **%d**\n\n", dns.TotalQueries, dns.TotalBlocked))
+	if len(dns.TopDomains) > 0 {
+		buf.WriteString("#### Top Domains\n\n")
+		buf.WriteString("| Domain | Count |\n")
+		buf.WriteString("|--------|-------|\n")
+		for _, row := range dns.TopDomains {
+			buf.WriteString(fmt.Sprintf("| %s | %d |\n", row.Domain, row.Count))
+		}
+		buf.WriteString("\n")
+	}
+	if len(dns.TopBlocked) > 0 {
+		buf.WriteString("#### Top Blocked\n\n")
+		buf.WriteString("| Domain | Count |\n")
+		buf.WriteString("|--------|-------|\n")
+		for _, row := range dns.TopBlocked {
+			buf.WriteString(fmt.Sprintf("| %s | %d |\n", row.Domain, row.Count))
+		}
+	}
+}
+
+func (e *Engine) renderTLSPostureMarkdown(buf *bytes.Buffer, tls TLSPosture) {
+	buf.WriteString(fmt.Sprintf("Total Connections: **%d** | Untrusted Certs: **%d**\n\n", tls.TotalConnections, tls.UntrustedCerts))
+	if len(tls.Versions) > 0 {
+		buf.WriteString("#### TLS Versions\n\n")
+		buf.WriteString("| Version | Count |\n")
+		buf.WriteString("|---------|-------|\n")
+		for _, row := range tls.Versions {
+			buf.WriteString(fmt.Sprintf("| %s | %d |\n", row.Version, row.Count))
+		}
+	}
+}
+
+func (e *Engine) renderAlertsMarkdown(buf *bytes.Buffer, alerts Alerts) {
+	buf.WriteString(fmt.Sprintf("Total: **%d** | Critical: **%d** | High: **%d**\n\n", alerts.TotalAlerts, alerts.CriticalCount, alerts.HighCount))
+	if len(alerts.TopSignatures) > 0 {
+		buf.WriteString("#### Top Threats\n\n")
+		buf.WriteString("| Signature | Severity | Count |\n")
+		buf.WriteString("|-----------|----------|-------|\n")
+		for _, row := range alerts.TopSignatures {
+			buf.WriteString(fmt.Sprintf("| %s | %s | %d |\n", row.Signature, row.Severity, row.Count))
+		}
 	}
 }
 
