@@ -534,10 +534,12 @@ func (m *Module) decodeFlow(f obj, ifname string, now int64) (core.Flow, bool) {
 	}
 	if domain != "" && (net.ParseIP(domain) != nil || strings.ContainsAny(domain, " /")) {
 		domain = ""
-		domainSource = "none"
 	}
-	if domain == "" && m.identity != nil {
-		// nothing from ntopng; the resolver's answers may still name the far end
+	if domain == "" {
+		// Stored as NULL, not "none": a later poll of the same flow that has
+		// no name must not overwrite the source recorded when it had one
+		// (the update uses COALESCE, so NULL keeps what is there).
+		domainSource = ""
 	}
 	m.mu.Lock()
 	cat := m.apps[app].Category

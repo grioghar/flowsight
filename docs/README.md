@@ -47,9 +47,6 @@ shown at the bottom of the left-hand menu and under FlowSight › Updates.
 
 ## How-tos
 
-<<<<<<< HEAD
-- [Know when a device does something new](howto/anomalies.md)
-- [See what your IoT devices send abroad, and block it](HOWTO-IOT-ABROAD.md)
-=======
 Task-first guides for common operations: [How-tos](howto/README.md)
->>>>>>> howto
+- [Know when a device does something new](howto/anomalies.md)
+- [See what your IoT devices send abroad, and block it](howto/iot-abroad.md)

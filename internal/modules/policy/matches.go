@@ -148,8 +148,13 @@ func (m *Module) apiMatches(r *core.Req) (any, error) {
 		return ""
 	}
 	if countryRule && len(nets) > 0 {
-		rows, err := m.ctx.Store.Rows(`SELECT src_ip, dst_ip, dst_port, app, domain, upper(country) AS cc, bytes_in, bytes_out, COALESCE(end_ts,ts) AS seen
-			FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-' AND COALESCE(anycast,0)=0 ORDER BY id DESC LIMIT 60000`, since)
+		// Aggregate flows in SQL by (src_ip, dst_ip, dst_port, app, domain, country).
+		// This eliminates the LIMIT 60000 truncation and pushes aggregation to SQL.
+		rows, err := m.ctx.Store.Rows(`SELECT src_ip, dst_ip, dst_port, app, domain, upper(country) AS cc,
+			COUNT(*) AS sessions, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out, MAX(COALESCE(end_ts,ts)) AS seen
+			FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-' AND COALESCE(anycast,0)=0
+			GROUP BY src_ip, dst_ip, dst_port, app, domain, cc
+			ORDER BY src_ip, sessions DESC`, since)
 		if err != nil {
 			return nil, err
 		}
@@ -192,15 +197,15 @@ func (m *Module) apiMatches(r *core.Req) (any, error) {
 				d.byDest[dst] = x
 				d.Dests = append(d.Dests, x)
 			}
-			x.Sessions++
+			x.Sessions += toI(row["sessions"])
 			x.BytesIn += toI(row["bytes_in"])
 			x.BytesOut += toI(row["bytes_out"])
 			if s := toI(row["seen"]); s > x.LastSeen {
 				x.LastSeen = s
 			}
-			d.Sessions++
+			d.Sessions += toI(row["sessions"])
 			d.BytesOut += toI(row["bytes_out"])
-			d.byCC[cc]++
+			d.byCC[cc] += toI(row["sessions"])
 		}
 	}
 	devices := make([]*matchDevice, 0, len(order))

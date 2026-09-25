@@ -504,6 +504,7 @@ func (m *Module) pollLog() error {
 		}
 		fl := core.Flow{TS: ts, EndTS: ts, Key: fmt.Sprintf("squid/%s/%s/%s/%d", client, server, domain, ts),
 			SrcIP: client, DstIP: nzs(server), DstPort: sport, Proto: proto, Domain: domain,
+			DomainSource: map[bool]string{true: "sni", false: map[bool]string{true: "http_host", false: ""}[domain != ""]}[sni != ""],
 			BytesIn: bytesOut, BytesOut: bytesIn, Duration: dur / 1000, Verdict: verdict,
 			Source: "squid", TLSVersion: tlsver, TLSSNI: sni, App: "", Category: ""}
 		if m.cats != nil && domain != "" {
