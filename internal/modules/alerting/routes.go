@@ -9,12 +9,12 @@ import (
 
 // Channel family constants for grouping in the UI
 const (
-	FamilyChat        = "Chat & Collaboration"
-	FamilySMSVoice    = "SMS & Voice"
-	FamilyEmail       = "Email"
-	FamilyIncident    = "Incident Management"
-	FamilySIEM        = "SIEM & Logging"
-	FamilyGeneric     = "Generic"
+	FamilyChat     = "Chat & Collaboration"
+	FamilySMSVoice = "SMS & Voice"
+	FamilyEmail    = "Email"
+	FamilyIncident = "Incident Management"
+	FamilySIEM     = "SIEM & Logging"
+	FamilyGeneric  = "Generic"
 )
 
 // ChannelTypeInfo provides schema and metadata for a channel type
@@ -30,56 +30,56 @@ type ChannelTypeInfo struct {
 func getChannelTypeFamily(typeName string) string {
 	familyMap := map[string]string{
 		// Chat
-		"slack":             FamilyChat,
-		"discord":           FamilyChat,
-		"teams":             FamilyChat,
-		"telegram":          FamilyChat,
-		"matrix":            FamilyChat,
-		"mattermost":        FamilyChat,
-		"rocketchat":        FamilyChat,
-		"google_chat":       FamilyChat,
+		"slack":       FamilyChat,
+		"discord":     FamilyChat,
+		"teams":       FamilyChat,
+		"telegram":    FamilyChat,
+		"matrix":      FamilyChat,
+		"mattermost":  FamilyChat,
+		"rocketchat":  FamilyChat,
+		"google_chat": FamilyChat,
 		// SMS/Voice
-		"twilio":            FamilySMSVoice,
-		"vonage":            FamilySMSVoice,
-		"telnyx":            FamilySMSVoice,
-		"awssns":            FamilySMSVoice,
-		"plivo":             FamilySMSVoice,
-		"messagebird":       FamilySMSVoice,
-		"clicksend":         FamilySMSVoice,
+		"twilio":      FamilySMSVoice,
+		"vonage":      FamilySMSVoice,
+		"telnyx":      FamilySMSVoice,
+		"awssns":      FamilySMSVoice,
+		"plivo":       FamilySMSVoice,
+		"messagebird": FamilySMSVoice,
+		"clicksend":   FamilySMSVoice,
 		// Email
-		"smtp":              FamilyEmail,
-		"sendgrid":          FamilyEmail,
-		"mailgun":           FamilyEmail,
-		"amazonseses":       FamilyEmail,
-		"postmark":          FamilyEmail,
+		"smtp":        FamilyEmail,
+		"sendgrid":    FamilyEmail,
+		"mailgun":     FamilyEmail,
+		"amazonseses": FamilyEmail,
+		"postmark":    FamilyEmail,
 		// Incident
-		"pagerduty":         FamilyIncident,
-		"opsgenie":          FamilyIncident,
-		"splunk_on_call":    FamilyIncident,
-		"squadcast":         FamilyIncident,
-		"incidentio":        FamilyIncident,
-		"xmatters":          FamilyIncident,
-		"zenduty":           FamilyIncident,
-		"betterstack":       FamilyIncident,
+		"pagerduty":      FamilyIncident,
+		"opsgenie":       FamilyIncident,
+		"splunk_on_call": FamilyIncident,
+		"squadcast":      FamilyIncident,
+		"incidentio":     FamilyIncident,
+		"xmatters":       FamilyIncident,
+		"zenduty":        FamilyIncident,
+		"betterstack":    FamilyIncident,
 		// SIEM/Logging
-		"syslog":            FamilySIEM,
-		"splunk_hec":        FamilySIEM,
-		"elastic":           FamilySIEM,
-		"opensearch":        FamilySIEM,
-		"graylog":           FamilySIEM,
-		"sentinel":          FamilySIEM,
-		"datadog":           FamilySIEM,
-		"sumologic":         FamilySIEM,
-		"newrelic":          FamilySIEM,
-		"grafana_loki":      FamilySIEM,
-		"qradar":            FamilySIEM,
-		"wazuh":             FamilySIEM,
-		"sentry":            FamilySIEM,
-		"cloudwatch_logs":   FamilySIEM,
+		"syslog":          FamilySIEM,
+		"splunk_hec":      FamilySIEM,
+		"elastic":         FamilySIEM,
+		"opensearch":      FamilySIEM,
+		"graylog":         FamilySIEM,
+		"sentinel":        FamilySIEM,
+		"datadog":         FamilySIEM,
+		"sumologic":       FamilySIEM,
+		"newrelic":        FamilySIEM,
+		"grafana_loki":    FamilySIEM,
+		"qradar":          FamilySIEM,
+		"wazuh":           FamilySIEM,
+		"sentry":          FamilySIEM,
+		"cloudwatch_logs": FamilySIEM,
 		// Generic
-		"webhook":           FamilyGeneric,
-		"mqtt":              FamilyGeneric,
-		"rss_feed":          FamilyGeneric,
+		"webhook":  FamilyGeneric,
+		"mqtt":     FamilyGeneric,
+		"rss_feed": FamilyGeneric,
 	}
 	if family, ok := familyMap[typeName]; ok {
 		return family

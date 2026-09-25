@@ -26,10 +26,11 @@ import (
 func init() { core.Register(func() core.Module { return &Module{} }) }
 
 type Module struct {
-	ctx              *core.Context
-	mu               sync.RWMutex
-	lastErr          string
-	deliveryEngine   *DeliveryEngine
+	ctx            *core.Context
+	mu             sync.RWMutex
+	lastErr        string
+	deliveryEngine *DeliveryEngine
+	alertEngine    *AlertEngine // Time-based engine for digest, escalation, quiet hours
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -50,6 +51,10 @@ func (m *Module) Info() core.ModuleInfo {
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
 	m.deliveryEngine = NewDeliveryEngine(200)
+	m.alertEngine = NewAlertEngine(ctx)
+
+	// Load persistent state for alert engine
+	_ = m.alertEngine.LoadState(ctx)
 
 	// Initialize channels and rules from KV if not present
 	if !ctx.Store.KVGet("alerting.channels", &[]Channel{}) {
@@ -65,6 +70,15 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// Run rules every minute
 	ctx.Every("rules", time.Minute, m.evaluateRules)
+
+	// Run digest flusher every minute
+	ctx.Every("alerting.digests", time.Minute, m.flushDigests)
+
+	// Run escalation checker every minute
+	ctx.Every("alerting.escalations", time.Minute, m.checkEscalations)
+
+	// Persist engine state every 5 minutes
+	ctx.Every("alerting.persistence", 5*time.Minute, m.persistAlertEngineState)
 
 	// Register new API routes
 	m.registerRoutes()
@@ -193,13 +207,12 @@ func (s *notifierService) Notify(subject, body string, severity string) error {
 // raiseAlert routes an alert through the new framework rules and channels
 func (m *Module) raiseAlert(msg *Message) error {
 	// Check if maintenance mode is active
-	var maintenance struct {
-		Enabled bool `json:"enabled"`
-		Until   int64
-	}
-	m.ctx.Store.KVGet("alerting.maintenance", &maintenance)
-	if maintenance.Enabled && (maintenance.Until == 0 || time.Now().Unix() < maintenance.Until) {
-		return nil // Maintenance mode, suppress all alerts
+	if m.alertEngine.IsInMaintenanceMode() {
+		// Only allow critical alerts through maintenance mode
+		if msg.Severity != "critical" {
+			m.alertEngine.IncrementSuppressed()
+			return nil
+		}
 	}
 
 	// Get all rules
@@ -268,6 +281,11 @@ func (m *Module) raiseAlert(msg *Message) error {
 
 		// Update cooldown
 		_ = m.ctx.Store.KVSet(cooldownKey, now)
+
+		// Track for escalation if configured
+		if rule.Escalation != nil {
+			m.alertEngine.TrackForEscalation(ruleID, msg, rule.Escalation)
+		}
 	}
 
 	return nil
@@ -275,8 +293,6 @@ func (m *Module) raiseAlert(msg *Message) error {
 
 // sendToChannels delivers an alert to rule's configured channels with digest/escalation
 func (m *Module) sendToChannels(ruleID string, rule RuleConfig, channels []Channel, msg *Message) {
-	now := time.Now().Unix()
-
 	for _, chID := range rule.Channels {
 		var ch *Channel
 		for i := range channels {
@@ -291,15 +307,17 @@ func (m *Module) sendToChannels(ruleID string, rule RuleConfig, channels []Chann
 
 		// Handle digest bundling: queue alert instead of sending immediately
 		if rule.DigestMinutes > 0 {
-			m.queueForDigest(ruleID, chID, msg, rule.DigestMinutes)
+			m.alertEngine.QueueForDigest(ruleID, chID, msg)
 			continue
 		}
 
 		// Respect quiet hours if defined
-		if shouldSkipQuietHours(ch, now) {
-			// Defer to quiet hours end, or skip based on rule config
-			m.deferAlert(ruleID, chID, msg)
-			continue
+		if m.alertEngine.IsInQuietHours(&rule, ch) {
+			// Critical alerts bypass quiet hours
+			if msg.Severity != "critical" {
+				m.alertEngine.DeferAlert(chID, msg)
+				continue
+			}
 		}
 
 		// Normal delivery
@@ -317,55 +335,7 @@ func (m *Module) sendToChannels(ruleID string, rule RuleConfig, channels []Chann
 			m.lastErr = attempt.Error
 			m.mu.Unlock()
 		}
-
-		// Track for escalation
-		if rule.Escalation != nil {
-			m.trackForEscalation(ruleID, msg, rule.Escalation)
-		}
 	}
-}
-
-// queueForDigest queues an alert for digest delivery
-func (m *Module) queueForDigest(ruleID, channelID string, msg *Message, digestMinutes int) {
-	key := fmt.Sprintf("alerting.digest.%s.%s", ruleID, channelID)
-	var queue []Message
-	m.ctx.Store.KVGet(key, &queue)
-	queue = append(queue, *msg)
-	m.ctx.Store.KVSet(key, queue)
-	// In production, would schedule a timer to flush this digest at the interval
-}
-
-// deferAlert defers delivery to after quiet hours
-func (m *Module) deferAlert(ruleID, channelID string, msg *Message) {
-	key := fmt.Sprintf("alerting.deferred.%s.%s", ruleID, channelID)
-	var deferred []Message
-	m.ctx.Store.KVGet(key, &deferred)
-	deferred = append(deferred, *msg)
-	m.ctx.Store.KVSet(key, deferred)
-}
-
-// trackForEscalation records an alert for potential escalation
-func (m *Module) trackForEscalation(ruleID string, msg *Message, escalation *Escalation) {
-	key := fmt.Sprintf("alerting.escalation.%s.%s", ruleID, msg.AlertKey)
-	ackKey := fmt.Sprintf("alerting.ack.%s", msg.AlertKey)
-
-	// Check if already acknowledged
-	var ackTime int64
-	if m.ctx.Store.KVGet(ackKey, &ackTime) {
-		return // Alert was acknowledged, don't escalate
-	}
-
-	// Track escalation: store time and escalation config
-	m.ctx.Store.KVSet(key, time.Now().Unix())
-	// In production, would schedule escalation timer based on escalation.AfterMinutes
-}
-
-// shouldSkipQuietHours checks if current time is within quiet hours
-func shouldSkipQuietHours(ch *Channel, now int64) bool {
-	// For now, quiet hours are not stored on channels
-	// In full implementation, would parse quiet hours from channel config or rule config
-	// and return true if current time is within quiet hours
-	return false
 }
 
 // matchSeverity checks if a message severity meets the minimum required severity
@@ -899,7 +869,6 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	}, nil
 }
 
-
 func (m *Module) apiNotifications(r *core.Req) (any, error) {
 	limit := r.QInt("limit", 100, 1, 10000)
 	notifs, err := m.ctx.Store.Rows(`SELECT ts, channel, rule, subject, ok, error FROM notifications ORDER BY ts DESC LIMIT ?`, limit)
@@ -908,4 +877,53 @@ func (m *Module) apiNotifications(r *core.Req) (any, error) {
 	}
 
 	return map[string]any{"notifications": notifs}, nil
+}
+
+// flushDigests is called every minute to flush bundled digest alerts.
+func (m *Module) flushDigests() error {
+	// Get all channels
+	channels := make([]Channel, 0)
+	m.ctx.Store.KVGet("alerting.channels", &channels)
+
+	// Get channel type registry function
+	channelTypeRegistry := func(typeName string) (ChannelType, error) {
+		return Get(typeName)
+	}
+
+	// Flush digest queues
+	_ = m.alertEngine.FlushDigestQueues(channels, m.deliveryEngine, channelTypeRegistry)
+
+	return nil
+}
+
+// checkEscalations is called every minute to check for alerts that need escalation.
+func (m *Module) checkEscalations() error {
+	// Get all rules
+	rules := make(map[string]RuleConfig)
+	m.ctx.Store.KVGet("alerting.rules", &rules)
+
+	// Get all channels
+	channels := make([]Channel, 0)
+	m.ctx.Store.KVGet("alerting.channels", &channels)
+
+	// Get channel type registry function
+	channelTypeRegistry := func(typeName string) (ChannelType, error) {
+		return Get(typeName)
+	}
+
+	// Check escalations
+	_ = m.alertEngine.CheckEscalations(rules, channels, m.deliveryEngine, channelTypeRegistry)
+
+	return nil
+}
+
+// persistAlertEngineState persists the alert engine state to the KV store.
+func (m *Module) persistAlertEngineState() error {
+	return m.alertEngine.SaveState(m.ctx)
+}
+
+// EngineStatus returns the current status of the alert engine for monitoring.
+// This method is called by routes.go to expose engine metrics.
+func (m *Module) EngineStatus() EngineStatus {
+	return m.alertEngine.GetStatus()
 }

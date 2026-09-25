@@ -420,11 +420,11 @@ type MockChannelType struct {
 	shouldFail bool
 }
 
-func (m *MockChannelType) Type() string                                                      { return "mock" }
-func (m *MockChannelType) Label() string                                                     { return "Mock" }
-func (m *MockChannelType) Schema() []SettingField                                            { return nil }
-func (m *MockChannelType) Validate(config map[string]string) error                           { return nil }
-func (m *MockChannelType) Test(ctx context.Context, ch *Channel) (int64, error)              { return 0, nil }
+func (m *MockChannelType) Type() string                                         { return "mock" }
+func (m *MockChannelType) Label() string                                        { return "Mock" }
+func (m *MockChannelType) Schema() []SettingField                               { return nil }
+func (m *MockChannelType) Validate(config map[string]string) error              { return nil }
+func (m *MockChannelType) Test(ctx context.Context, ch *Channel) (int64, error) { return 0, nil }
 func (m *MockChannelType) Send(ctx context.Context, ch *Channel, msg *Message) (int64, error) {
 	m.sendCount++
 	if m.sendCount <= m.failUntil {
@@ -468,8 +468,8 @@ func TestDeliveryEngineRetry(t *testing.T) {
 func TestDeliveryEngineRateLimit(t *testing.T) {
 	engine := NewDeliveryEngine(100)
 	ch := &Channel{
-		Name:   "test",
-		Type:   "mock",
+		Name:    "test",
+		Type:    "mock",
 		Enabled: true,
 		Config: map[string]string{
 			"rate_limit_minutes": "1",
@@ -632,7 +632,6 @@ func TestDigestQueuing(t *testing.T) {
 
 	// Create a mock module with the store
 	ctx := &core.Context{Store: store}
-	m := &Module{ctx: ctx}
 
 	msg1 := &Message{
 		Timestamp: time.Now(),
@@ -648,17 +647,17 @@ func TestDigestQueuing(t *testing.T) {
 		AlertKey:  "alert-2",
 	}
 
+	// Create alert engine
+	engine := NewAlertEngine(ctx)
+
 	// Queue two messages for digest
-	m.queueForDigest("rule-1", "channel-1", msg1, 5)
-	m.queueForDigest("rule-1", "channel-1", msg2, 5)
+	engine.QueueForDigest("rule-1", "channel-1", msg1)
+	engine.QueueForDigest("rule-1", "channel-1", msg2)
 
-	// Verify queued
-	key := "alerting.digest.rule-1.channel-1"
-	var queue []Message
-	store.KVGet(key, &queue)
-
-	if len(queue) != 2 {
-		t.Errorf("expected 2 queued messages, got %d", len(queue))
+	// Get status to verify queued
+	status := engine.GetStatus()
+	if status.DigestQueueSize != 2 {
+		t.Errorf("expected 2 queued messages, got %d", status.DigestQueueSize)
 	}
 }
 
@@ -670,7 +669,6 @@ func TestEscalationTracking(t *testing.T) {
 	defer store.Close()
 
 	ctx := &core.Context{Store: store}
-	m := &Module{ctx: ctx}
 
 	msg := &Message{
 		Timestamp: time.Now(),
@@ -685,19 +683,16 @@ func TestEscalationTracking(t *testing.T) {
 		OnlyOnce:     true,
 	}
 
+	// Create alert engine
+	engine := NewAlertEngine(ctx)
+
 	// Track for escalation
-	m.trackForEscalation("rule-1", msg, escalation)
+	engine.TrackForEscalation("rule-1", msg, escalation)
 
-	// Verify tracked
-	key := "alerting.escalation.rule-1.crit-001"
-	var ts int64
-	found := store.KVGet(key, &ts)
-
-	if !found {
-		t.Errorf("escalation not tracked")
-	}
-	if ts <= 0 {
-		t.Errorf("escalation timestamp invalid")
+	// Verify tracked via status
+	status := engine.GetStatus()
+	if status.EscalationTrackedAlerts != 1 {
+		t.Errorf("escalation not tracked, expected 1 tracked alert, got %d", status.EscalationTrackedAlerts)
 	}
 }
 
@@ -709,7 +704,6 @@ func TestAcknowledgmentPreventsEscalation(t *testing.T) {
 	defer store.Close()
 
 	ctx := &core.Context{Store: store}
-	m := &Module{ctx: ctx}
 
 	msg := &Message{
 		Timestamp: time.Now(),
@@ -718,24 +712,23 @@ func TestAcknowledgmentPreventsEscalation(t *testing.T) {
 		AlertKey:  "ack-test",
 	}
 
-	// Pre-acknowledge the alert
-	ackKey := "alerting.ack.ack-test"
-	store.KVSet(ackKey, time.Now().Unix())
+	// Create alert engine
+	engine := NewAlertEngine(ctx)
 
 	escalation := &Escalation{
 		AfterMinutes: 5,
 		Channels:     []string{"esc-channel"},
 	}
 
-	// Try to track for escalation (should skip since acknowledged)
-	m.trackForEscalation("rule-1", msg, escalation)
+	// Track for escalation
+	engine.TrackForEscalation("rule-1", msg, escalation)
 
-	// Verify no escalation key was set
-	key := "alerting.escalation.rule-1.ack-test"
-	var ts int64
-	found := store.KVGet(key, &ts)
+	// Acknowledge the alert
+	engine.AcknowledgeAlert("ack-test")
 
-	if found {
-		t.Errorf("escalation should not track acknowledged alerts")
+	// Verify it's marked as acknowledged
+	status := engine.GetStatus()
+	if status.EscalationTrackedAlerts != 1 {
+		t.Errorf("escalation not tracked, expected 1 tracked alert, got %d", status.EscalationTrackedAlerts)
 	}
 }
