@@ -124,7 +124,7 @@ func (m *Module) apiMap(r *core.Req) (any, error) {
 
 	// Build requirements for each guest
 	for _, guest := range m.inventory.Guests {
-		req := m.buildRequirements(&guest, guestByVMID, resp.Edges)
+		req := m.buildRequirements(&guest, guestByVMID, resp.Edges, hours)
 		key := fmt.Sprintf("%d:%s", guest.VMID, guest.Node)
 		resp.Requirements[key] = req
 	}
@@ -169,7 +169,7 @@ func (m *Module) apiRequirements(r *core.Req) (any, error) {
 	edges = append(edges, m.getObservedEdges(hours, ipToGuest, guestByVMID)...)
 	edges = append(edges, m.getDeclaredEdges(guestByVMID)...)
 
-	req := m.buildRequirements(&guest, guestByVMID, edges)
+	req := m.buildRequirements(&guest, guestByVMID, edges, hours)
 	return req, nil
 }
 
@@ -265,14 +265,85 @@ func (m *Module) getDeclaredEdges(guestByVMID map[int]*Guest) []Edge {
 func (m *Module) getExternalDeps(hours int, ipToGuest map[string]int, guestByVMID map[int]*Guest) []ExternalDep {
 	var deps []ExternalDep
 
-	// Query rollup_domain for external destinations
-	// This requires querying the database for domain resolutions
-	// For now, we return an empty list as a placeholder
+	if len(ipToGuest) == 0 {
+		return deps
+	}
+
+	windowSeconds := int64(hours * 3600)
+	cutoff := time.Now().Unix() - windowSeconds
+
+	// Get identity module for local network checking
+	identity, _ := m.ctx.Service("identity").(core.Identity)
+
+	// Build placeholders and args for guest IPs
+	var placeholders []string
+	var args []interface{}
+	args = append(args, cutoff)
+	for ip := range ipToGuest {
+		placeholders = append(placeholders, "?")
+		args = append(args, ip)
+	}
+
+	// Query rollup_dst for external destinations from guest IPs
+	rows, err := m.ctx.Store.Rows(
+		`SELECT dst_ip, SUM(flows) as flows, SUM(bytes) as bytes
+		 FROM rollup_dst WHERE last_seen >= ? AND src_ip IN (
+		 	`+strings.Join(placeholders, ",")+`
+		 ) GROUP BY dst_ip ORDER BY bytes DESC LIMIT 20`,
+		args...)
+	if err != nil {
+		return deps
+	}
+
+	// Build external dependency list, filtering out local IPs
+	extDepMap := make(map[string]*ExternalDep)
+	for _, row := range rows {
+		dstIP, _ := row["dst_ip"].(string)
+		bytes, _ := row["bytes"].(int64)
+
+		// Skip if destination is local or belongs to a guest
+		if dstIP == "" || ipToGuest[dstIP] > 0 {
+			continue
+		}
+		if identity != nil && identity.IsLocal(dstIP) {
+			continue
+		}
+
+		// Check if we already have this IP
+		if existing, ok := extDepMap[dstIP]; ok {
+			existing.Bytes += bytes
+		} else {
+			extDepMap[dstIP] = &ExternalDep{
+				Destination: dstIP,
+				Bytes:       bytes,
+			}
+		}
+	}
+
+	// Try to resolve domain names from identity
+	if identity != nil {
+		for dstIP := range extDepMap {
+			if name := identity.Name(dstIP); name != "" {
+				extDepMap[dstIP].Name = name
+			}
+		}
+	}
+
+	// Convert to slice and keep only top 8
+	for _, dep := range extDepMap {
+		deps = append(deps, *dep)
+	}
+	sort.Slice(deps, func(i, j int) bool {
+		return deps[i].Bytes > deps[j].Bytes
+	})
+	if len(deps) > 8 {
+		deps = deps[:8]
+	}
 
 	return deps
 }
 
-func (m *Module) buildRequirements(guest *Guest, guestByVMID map[int]*Guest, edges []Edge) Requirements {
+func (m *Module) buildRequirements(guest *Guest, guestByVMID map[int]*Guest, edges []Edge, hours int) Requirements {
 	req := Requirements{
 		VMID:       guest.VMID,
 		Node:       guest.Node,
@@ -309,6 +380,16 @@ func (m *Module) buildRequirements(guest *Guest, guestByVMID map[int]*Guest, edg
 	// Deduplicate relations
 	req.DependsOn = dedupeRelations(req.DependsOn, guestByVMID)
 	req.DependentOn = dedupeRelations(req.DependentOn, guestByVMID)
+
+	// Get external dependencies for this guest
+	if len(guest.IPs) > 0 {
+		// Build a map of just this guest's IPs
+		guestIPMap := make(map[string]int)
+		for _, ip := range guest.IPs {
+			guestIPMap[ip] = guest.VMID
+		}
+		req.ExternalDeps = m.getExternalDeps(hours, guestIPMap, guestByVMID)
+	}
 
 	return req
 }
