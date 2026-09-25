@@ -76,9 +76,14 @@ type Guest struct {
 	RawConfig      map[string]interface{} `json:"-"` // unpublished; used to parse declared requirements
 }
 
-type GuestInventoryService interface {
-	GuestFor(macOrIP string) (Guest, bool)
+type GuestRef struct {
+	VMID int    `json:"vmid"`
+	Type string `json:"type"`
+	Node string `json:"node"`
+	Name string `json:"name"`
+	OS   string `json:"os"`
 }
+
 
 func (m *Module) Info() core.ModuleInfo {
 	return core.ModuleInfo{
@@ -181,28 +186,6 @@ func (m *Module) Setup(ctx *core.Context) error {
 	return nil
 }
 
-// GuestFor implements GuestInventoryService
-func (m *Module) GuestFor(macOrIP string) (Guest, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.inventory == nil {
-		return Guest{}, false
-	}
-	macOrIP = strings.ToLower(macOrIP)
-	for _, g := range m.inventory.Guests {
-		for _, mac := range g.MACs {
-			if strings.ToLower(mac) == macOrIP {
-				return g, true
-			}
-		}
-		for _, ip := range g.IPs {
-			if ip == macOrIP {
-				return g, true
-			}
-		}
-	}
-	return Guest{}, false
-}
 
 // Parsers
 
@@ -732,6 +715,51 @@ func (m *Module) enrichment(inv *Inventory, excludeVMIDs map[string]bool, identi
 
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+// GuestFor returns a guest reference map for a device identified by MAC or IP address
+// Returns as map[string]interface{} to avoid import cycles with other modules
+func (m *Module) GuestFor(macOrIP string) (any, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.inventory == nil {
+		return nil, false
+	}
+
+	// Search by IP first
+	for i := range m.inventory.Guests {
+		g := &m.inventory.Guests[i]
+		for _, ip := range g.IPs {
+			if ip == macOrIP {
+				return map[string]interface{}{
+					"vmid": g.VMID,
+					"type": g.Type,
+					"node": g.Node,
+					"name": g.Name,
+					"os":   g.OS,
+				}, true
+			}
+		}
+	}
+
+	// Search by MAC
+	for i := range m.inventory.Guests {
+		g := &m.inventory.Guests[i]
+		for _, mac := range g.MACs {
+			if strings.EqualFold(mac, macOrIP) {
+				return map[string]interface{}{
+					"vmid": g.VMID,
+					"type": g.Type,
+					"node": g.Node,
+					"name": g.Name,
+					"os":   g.OS,
+				}, true
+			}
+		}
+	}
+
+	return nil, false
 }
 
 // API routes

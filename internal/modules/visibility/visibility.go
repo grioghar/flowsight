@@ -893,6 +893,24 @@ func (m *Module) apiHost(r *core.Req) (any, error) {
 		host["vendor"] = m.identity.Vendor(mac)
 	}
 	device, _ := st.Row(`SELECT * FROM devices WHERE mac=?`, host["mac"])
+
+	// Get proxmox reference if available
+	type ProxmoxGuestRef interface {
+		GuestFor(macOrIP string) (any, bool)
+	}
+	if proxmoxSvc, ok := m.ctx.Service("proxmox").(ProxmoxGuestRef); ok {
+		mac, _ := host["mac"].(string)
+		if ref, found := proxmoxSvc.GuestFor(mac); found {
+			if refMap, ok := ref.(map[string]interface{}); ok {
+				device["proxmox"] = refMap
+			}
+		} else if ref, found := proxmoxSvc.GuestFor(ip); found {
+			if refMap, ok := ref.(map[string]interface{}); ok {
+				device["proxmox"] = refMap
+			}
+		}
+	}
+
 	apps, _ := st.Rows(`SELECT app, MAX(category) AS category, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out,
 		SUM(flows) AS flows, SUM(CASE WHEN verdict='blocked' THEN flows ELSE 0 END) AS blocked FROM rollup_app
 		WHERE bucket>=? AND src_ip=? GROUP BY app ORDER BY bytes_in+bytes_out DESC LIMIT 50`, since, ip)

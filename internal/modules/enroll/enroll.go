@@ -78,6 +78,14 @@ type Module struct {
 }
 
 // Device is one MAC address in the registry.
+type ProxmoxRef struct {
+	VMID int    `json:"vmid"`
+	Type string `json:"type"` // qemu or lxc
+	Node string `json:"node"`
+	Name string `json:"name"`
+	OS   string `json:"os"`
+}
+
 type Device struct {
 	MAC         string `json:"mac"`
 	IP          string `json:"ip"`
@@ -105,6 +113,9 @@ type Device struct {
 	// and which entry does it.
 	Excluded   bool   `json:"excluded,omitempty"`
 	ExcludedBy string `json:"excluded_by,omitempty"`
+
+	// Proxmox reference, when the device maps to a Proxmox guest
+	Proxmox *ProxmoxRef `json:"proxmox,omitempty"`
 }
 
 // ZonesDoc is zones.json.
@@ -1077,6 +1088,13 @@ func (m *Module) apiDevices(r *core.Req) (any, error) {
 	}
 	out := make([]*Device, 0, len(devices))
 	excl := m.exclusions()
+
+	// Get proxmox inventory service if available
+	type ProxmoxGuestRef interface {
+		GuestFor(macOrIP string) (any, bool)
+	}
+	proxmoxSvc, _ := m.ctx.Service("proxmox").(ProxmoxGuestRef)
+
 	for _, d := range devices {
 		c := *d
 		if c.Vendor == "" {
@@ -1084,6 +1102,34 @@ func (m *Module) apiDevices(r *core.Req) (any, error) {
 		}
 		c.ExcludedBy = excl.covers(&c)
 		c.Excluded = c.ExcludedBy != ""
+
+		// Look up Proxmox guest reference by MAC or IP
+		if proxmoxSvc != nil {
+			lookupProxmoxRef := func(identifier string) {
+				if c.Proxmox != nil || identifier == "" {
+					return
+				}
+				if ref, ok := proxmoxSvc.GuestFor(identifier); ok {
+					if refMap, ok := ref.(map[string]interface{}); ok {
+						vmid, _ := refMap["vmid"].(float64)
+						typ, _ := refMap["type"].(string)
+						node, _ := refMap["node"].(string)
+						name, _ := refMap["name"].(string)
+						os, _ := refMap["os"].(string)
+						c.Proxmox = &ProxmoxRef{
+							VMID: int(vmid),
+							Type: typ,
+							Node: node,
+							Name: name,
+							OS:   os,
+						}
+					}
+				}
+			}
+			lookupProxmoxRef(c.MAC)
+			lookupProxmoxRef(c.IP)
+		}
+
 		out = append(out, &c)
 	}
 	return map[string]any{"devices": out, "excluded": excl.entries()}, nil
