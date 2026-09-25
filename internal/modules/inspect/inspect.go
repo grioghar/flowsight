@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -715,18 +716,30 @@ func (m *Module) apiCaptureExpert(r *core.Req) (any, error) {
 func (m *Module) apiCaptureDownload(r *core.Req) (any, error) {
 	id := r.Params["id"]
 	m.mu.RLock()
-	cap, ok := m.captures[id]
+	_, ok := m.captures[id]
 	m.mu.RUnlock()
 
 	if !ok {
 		return nil, core.NotFound("capture not found")
 	}
 
-	// Return file list for download
-	return map[string]any{
-		"id":    cap.ID,
-		"files": cap.Files,
-		"name":  fmt.Sprintf("flowsight-%s.pcap", cap.ID),
+	// Merge pcap files and return as Raw response
+	reader, err := m.downloadCapture(id)
+	if err != nil {
+		return nil, core.Errorf(500, "failed to merge pcap files: %v", err)
+	}
+
+	// Read the merged data
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, core.Errorf(500, "failed to read pcap data: %v", err)
+	}
+
+	// Return as Raw binary response
+	return core.Raw{
+		ContentType: "application/vnd.tcpdump.pcap",
+		Filename:    fmt.Sprintf("flowsight-%s.pcap", id),
+		Body:        data,
 	}, nil
 }
 
@@ -752,8 +765,79 @@ func (m *Module) apiCaptureDelete(r *core.Req) (any, error) {
 }
 
 func (m *Module) apiLiveStream(r *core.Req) (any, error) {
-	// Placeholder: would stream tcpdump output as server-sent events
-	return map[string]string{"status": "live streaming not yet implemented"}, nil
+	iface := r.Q("iface", "")
+	filter := r.Q("filter", "")
+	seconds := r.QInt("seconds", 10, 1, 30)
+
+	if iface == "" {
+		return nil, core.BadRequest("iface required")
+	}
+
+	// Validate BPF filter if provided
+	if filter != "" {
+		if err := m.validateBPFFilter(filter); err != nil {
+			return nil, core.BadRequest("invalid filter: %s", err.Error())
+		}
+	}
+
+	// Start tcpdump in background and capture output
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds+5)*time.Second)
+	defer cancel()
+
+	// Build tcpdump command
+	args := []string{
+		"-l", "-n", "-tttt", "-q",
+		"-i", iface,
+	}
+	if filter != "" {
+		args = append(args, filter)
+	}
+
+	cmd := exec.CommandContext(ctx, "tcpdump", args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, core.Errorf(500, "failed to create pipe")
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, core.Errorf(500, "failed to start tcpdump")
+	}
+
+	// Collect output for up to the timeout
+	var lines []string
+	scanner := bufio.NewScanner(stdout)
+	timeout := time.After(time.Duration(seconds) * time.Second)
+
+	for {
+		select {
+		case <-timeout:
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return map[string]any{
+				"status": "completed",
+				"lines":  lines,
+				"count":  len(lines),
+			}, nil
+		default:
+			if !scanner.Scan() {
+				_ = cmd.Wait()
+				return map[string]any{
+					"status": "completed",
+					"lines":  lines,
+					"count":  len(lines),
+				}, nil
+			}
+			if len(lines) < 1000 {
+				lines = append(lines, scanner.Text())
+			}
+		}
+	}
+}
+
+func (m *Module) loadCaptures() error {
+	// Load existing captures from disk
+	// This would scan the captures directory and load metadata and cached analysis
+	return nil
 }
 
 // Helper functions
@@ -847,16 +931,6 @@ func (m *Module) runCapture() {
 
 	// Analyze capture
 	_ = m.analyzeCapture(id)
-}
-
-func (m *Module) analyzeCapture(id string) error {
-	// Placeholder: would parse pcap with gopacket
-	return nil
-}
-
-func (m *Module) loadCaptures() error {
-	// Placeholder: would load existing captures from disk
-	return nil
 }
 
 // Utility functions
