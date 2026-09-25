@@ -167,6 +167,8 @@
         ${card('Alerts', table(d.alerts || [], [{ t: 'When', f: r => when(r.ts), sort: 'ts' }, { t: 'Severity', f: r => FS.sevPill(r.severity), sort: 'severity' }, { t: 'Signature', k: 'signature' }, { t: 'Peer', f: r => r.src_ip === ip ? esc(r.dst_ip) : esc(r.src_ip) }]))}
         ${card('Findings', table(d.findings || [], [{ t: 'Severity', f: r => FS.sevPill(r.severity) }, { t: 'Finding', f: r => `<b>${esc(r.title)}</b><div class="muted small">${esc(r.detail || '')}</div>` }]))}
       </div>`;
+      // A quick way to the question everyone asks about a gadget.
+      const idc = FS.$('#rename', el); if (idc && idc.parentNode && !FS.$('#abroad-link', el)) { const a = document.createElement('a'); a.id = 'abroad-link'; a.className = 'btn small'; a.href = '#flows?ip=' + encodeURIComponent(ip) + '&abroad=1'; a.textContent = 'Sessions outside the country'; idc.parentNode.appendChild(a); }
       FS.$('#rename', el).onclick = async (e) => { e.preventDefault(); const name = prompt('Display name for ' + ip, h.name || ''); if (name === null) return; const r = await post('/api/identity/name', { ip, name }); if (r.error) FS.toast(r.error, true); else FS.render(); };
       const identBtn = FS.$('#identify', el);
       if (identBtn) identBtn.onclick = async () => { const scanResp = await post('/api/scan/start', { ip, profile: 'identify' }); if (scanResp.error) { FS.toast(scanResp.error.includes('disabled') ? 'Scanning disabled: Settings › Scan to enable it' : scanResp.error, true); return; } FS.toast('Identifying ' + ip + '...'); let result; for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 3000)); result = await get(`/api/scan/result?ip=${encodeURIComponent(ip)}`); if (result && !result.error && result.finished) break; } if (result && !result.error) FS.render(); };
@@ -179,16 +181,18 @@
     async render(el, ctx) {
       const p = ctx.params; const qs = new URLSearchParams({ minutes: p.minutes || 30, limit: 500 });
       if (p.ip) qs.set('ip', p.ip); if (p.app) qs.set('app', p.app); if (p.blocked) qs.set('blocked', '1');
+      if (p.country) qs.set('country', p.country); if (p.abroad) qs.set('abroad', '1');
       const d = await get('/api/visibility/flows?' + qs);
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
       let rows = d.flows || [];
       if (p.domain) rows = rows.filter(f => (f.domain || '').includes(p.domain));
       const filt = (k, v) => v ? `<span class="chip">${esc(k)}: ${esc(v)} <button data-k="${esc(k)}">×</button></span>` : '';
-      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
+      const home = d.home_country || '';
+      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${filt('country', p.country)}${p.abroad ? filt('only', 'outside ' + (home || 'home')) : ''}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?abroad=1${p.ip ? '&ip=' + p.ip : ''}" title="${home ? 'Sessions whose far end is outside ' + esc(home) : 'Sessions whose far end is outside this country (needs the country database under Settings › enrich)'}">Outside ${esc(home || 'the country')}</a><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
         card(`${rows.length} sessions`, table(rows, [
           { t: 'When', f: r => when(r.end_ts || r.ts), sort: 'ts' },
           { t: 'Client', f: r => hostLink(r.src_ip, r.src_name), sort: 'src_ip' },
-          { t: 'Server', f: r => `${FS.ipTag(r.dst_ip, r.dst_name)}:${r.dst_port}`, sort: 'dst_ip' },
+          { t: 'Server', f: r => `${FS.ipTag(r.dst_ip, r.dst_name)}:${r.dst_port}${r.country && r.country !== '-' ? ` <a class="pill ${home && r.country.toUpperCase() !== home ? 'warn' : ''}" href="#flows?country=${esc(r.country)}${p.ip ? '&ip=' + p.ip : ''}" title="Sessions to ${esc(r.country)}">${esc(r.country)}</a>` : ''}`, sort: 'dst_ip' },
           { t: 'App', f: r => `<a href="#flows?app=${encodeURIComponent(r.app || '')}">${esc(r.app || '')}</a> <span class="muted small">${esc(r.category || '')}</span>`, sort: 'app' },
           { t: 'Site', f: r => domainLink(r.domain), sort: 'domain' },
           { t: 'Proto', f: r => `${esc(r.proto || '')}${r.tls_version ? ' <span class="muted small">' + esc(r.tls_version) + '</span>' : ''}`, sort: 'proto' },
@@ -201,7 +205,7 @@
           // sessions have no path across the internet to show.
           { t: '', f: r => FS.isPrivateIP(r.dst_ip) || !r.dst_ip ? '' : `<a class="btn small" href="#paths?dst=${encodeURIComponent(r.dst_ip)}&device=${encodeURIComponent(r.src_ip || '')}" title="Show this session's path on the map: ${esc(r.src_name || r.src_ip)} to ${esc(r.dst_name || r.dst_ip)}">Map</a>` }]));
       FS.$$('#win button', el).forEach(b => b.onclick = () => { p.minutes = b.dataset.m; FS.go('#flows?' + new URLSearchParams(p)); });
-      FS.$$('.chip button', el).forEach(b => b.onclick = () => { delete p[b.dataset.k === 'only' ? 'blocked' : b.dataset.k]; FS.go('#flows?' + new URLSearchParams(p)); });
+      FS.$$('.chip button', el).forEach(b => b.onclick = () => { if (b.dataset.k === 'only') { delete p.blocked; delete p.abroad; } else delete p[b.dataset.k]; FS.go('#flows?' + new URLSearchParams(p)); });
     }
   });
 

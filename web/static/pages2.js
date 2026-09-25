@@ -25,6 +25,7 @@
         if (dd.tlds && dd.tlds.length) bits.push(`TLDs: .${dd.tlds.join(', .')}`);
         if (dd.ports && dd.ports.length) bits.push(`ports: ${dd.ports.join(', ')}`);
         if (dd.countries && dd.countries.length) bits.push(`countries: ${dd.countries.join(', ')}`);
+        if (dd.countries_except && dd.countries_except.length) bits.push(`every country except ${dd.countries_except.join(', ')}`);
         if (dd.internet) bits.push('no internet');
         if (p.safe_search) bits.push('safe search');
         if (p.youtube) bits.push('YouTube ' + p.youtube);
@@ -81,10 +82,11 @@
       <div data-pane="countries" hidden>
         <div id="countries-loading" class="small muted">Loading country list…</div>
         <div id="countries-list" hidden>
-          <label>Block traffic to these countries</label>
+          <div class="check"><input type="checkbox" name="countries_except" ${(pol.deny.countries_except || []).length ? 'checked' : ''}><span>Block every country <b>except</b> the ones selected (your own country is always allowed)</span></div>
+          <label>Countries</label>
           <input type="text" id="countries-search" name="countries-search" placeholder="Search countries…" style="margin-bottom:8px">
           <select name="countries" multiple size="8" id="countries-select">${opts((pol.deny.countries || []), pol.deny.countries)}</select>
-          <div class="help">Select countries to block outbound traffic. Requires country lookup enabled in enrich settings.</div>
+          <div class="help">Two-letter codes come from the local country database (Settings › enrich › Country lookup). Deny mode blocks the selected countries; except mode blocks everything else. Sessions › Outside shows what each device reached.</div>
         </div>
         <div id="countries-error" hidden class="sev-high small"></div>
       </div>
@@ -117,7 +119,7 @@
           return;
         }
         const countries = r.countries || [];
-        const opts = countries.map(c => `<option value="${esc(c.code)}" ${(pol.deny && pol.deny.countries && pol.deny.countries.includes(c.code)) ? 'selected' : ''}>${esc(c.code)} – ${esc(c.name)} (${c.prefixes} network(s))</option>`).join('');
+        const opts = countries.map(c => `<option value="${esc(c.code)}" ${(((pol.deny && pol.deny.countries) || []).concat((pol.deny && pol.deny.countries_except) || [])).includes(c.code) ? 'selected' : ''}>${esc(c.code)} – ${esc(c.name)} (${c.prefixes} network(s))</option>`).join('');
         select.innerHTML = opts;
         if (loading) loading.hidden = true;
         if (list) list.hidden = false;
@@ -137,7 +139,7 @@
         const multi = (n) => Array.from(f[n].selectedOptions).map(o => o.value);
         const out = { name: f.name.value.trim(), description: f.description.value.trim(), enabled: f.enabled.checked, action: f.action.value,
           match: { all: f.all.checked, groups: multi('groups'), members: lines('members') }, schedule: f.schedule.value,
-          deny: { apps: lines('apps'), app_categories: multi('app_categories'), ports: lines('ports'), internet: f.internet.checked, categories: multi('categories'), domains: lines('domains'), tlds: lines('tlds'), countries: multi('countries') },
+          deny: { apps: lines('apps'), app_categories: multi('app_categories'), ports: lines('ports'), internet: f.internet.checked, categories: multi('categories'), domains: lines('domains'), tlds: lines('tlds'), countries: f.countries_except.checked ? [] : multi('countries'), countries_except: f.countries_except.checked ? multi('countries') : [] },
           allow: { apps: lines('allow_apps'), domains: lines('allow_domains') }, tls: { inspect: f.inspect.checked, bypass: lines('bypass') },
           safe_search: f.safe_search.checked, youtube: f.youtube.value };
         const r = await post('/api/policy/policy', { original: isNew ? '' : pol.name, policy: out });
@@ -151,16 +153,23 @@
     const [d, caps] = await Promise.all([get('/api/policy'), get('/api/policy/capabilities')]);
     const doc = Object.assign({ groups: {}, schedules: {}, policies: [] }, d.document || {}); doc.policies = doc.policies || []; doc.groups = doc.groups || {}; doc.schedules = doc.schedules || {};
     FS.policyEditor(null, doc, caps);
-    setTimeout(() => { const f = FS.$('#modal form'); if (!f) return;
-      if (deny.apps) { f.apps.value = deny.apps.join('\n'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); }
-      if (deny.countries) {
-        // Pre-fill countries tab (will need to wait for countries to load)
-        setTimeout(() => { if (f['countries-select']) { Array.from(f['countries-select'].options).forEach(o => { o.selected = deny.countries.includes(o.value); }); } }, 200);
-      }
-      if (deny.members) {
-        // Pre-fill members in the Who tab
-        f.members.value = (deny.members || []).join('\n');
-        FS.$$('.tabs button', f)[0].click();
+    setTimeout(() => {
+      const f = FS.$('#modal form'); if (!f) return;
+      if (deny.apps) { f.apps.value = deny.apps.join('
+'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); }
+      if (deny.members && f.members) { f.members.value = deny.members.join('
+'); }
+      if (deny.countries && deny.countries.length) {
+        if (!f.name.value) f.name.value = 'block-' + deny.countries.join('-').toLowerCase();
+        // The country list loads after the form opens; select once it is there.
+        let tries = 0;
+        const pick = () => {
+          const sel = f['countries-select'];
+          if (sel && sel.options.length) { Array.from(sel.options).forEach(o => { o.selected = deny.countries.includes(o.value); }); return; }
+          if (++tries < 40) setTimeout(pick, 150);
+        };
+        pick();
+        FS.$$('.tabs button', f)[2].click();
       }
     }, 50);
   };

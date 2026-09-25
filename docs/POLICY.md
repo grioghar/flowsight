@@ -28,6 +28,7 @@ policies:
       domains: [example.com]
       tlds: [zip, mov]
       countries: [CN, RU]                  # block destinations in these countries
+      # countries_except: [US]             # or: block every country but these (home is always allowed)
       ports: [tcp/25, udp/6881-6889]
     allow:
       domains: [classroom.google.com]
@@ -60,7 +61,7 @@ options:
 | `domains`, `categories`, `tlds` | Unbound RPZ zone per policy, tagged to the policy's clients; squid ACLs | the DNS answer, then the TLS ClientHello or HTTP request for anything that slipped past DNS |
 | `apps`, `app_categories` | pf table per policy filled by app control from nDPI identifications | the first identified flow is cut and every later connection to that endpoint is dropped |
 | `ports`, `internet` | pf rules in `flowsight/policy` | the first packet |
-| `countries` | pf tables per country from the MaxMind GeoIP database | the first outbound packet to any address in that country |
+| `countries`, `countries_except` | pf tables built from the local country database | the first packet to an address registered in a denied country |
 | `safe_search`, `youtube` | Unbound view with CNAME redirects | the DNS answer |
 | `tls.inspect` | squid bumps the client with the FlowSight CA | the handshake; bypassed names are spliced |
 
@@ -75,33 +76,42 @@ policy, `allow` beats `deny`. Exclusions beat everything.
 
 ## Country-based blocking
 
-Country denials block outbound traffic to IP addresses in specified countries
-using two-letter ISO 3166-1 codes (e.g., `CN` for China, `RU` for Russia).
-FlowSight looks up every destination's country in the MaxMind GeoIP database
-and blocks the flow if it matches the policy.
+Two forms, in the policy's *Countries* tab or in the file:
 
-**Requirements:**
-- Country lookup must be enabled in the enrich module settings
-- The GeoIP database must be downloaded (check enrich module status)
+- `countries: [CN, RU]` denies the listed countries (ISO 3166-1 two-letter
+  codes).
+- `countries_except: [US]` denies every country other than the listed ones.
+  The gateway's own country (the one its public address is registered in) is
+  always added to the allowed set, so a policy with an empty list means
+  "home only". This is the usual shape for IoT devices.
 
-**How it works:**
-- Country-level blocks are compiled into pf firewall rules with one table per country
-- Each table is populated from the GeoIP database and contains all IPv4 and IPv6
-  address ranges for that country
-- The rules block at the first packet, before any application or DNS handling
-- Because CDNs and anycast services reuse the same IPs for multiple countries,
-  geographic blocking is coarse; edge cases where traffic maps to the "wrong"
-  country are normal
+A policy uses one form or the other, not both.
 
-**Performance:**
-- Tables are built once per GeoIP database update (typically monthly)
-- Memory usage scales with the number of networks: roughly 10,000–50,000 prefixes
-  per country depending on size
-- Lookups are O(1) in pf, so performance impact is minimal
+**What it needs.** The country database, switched on at *Settings › enrich ›
+Country lookup*. It is downloaded once and refreshed monthly; nothing else
+leaves the gateway to build the tables. Without it the plan fails with a
+message naming the setting.
 
-**Precedence:**
-Like other denials, country blocks respect the `allow` exceptions and do not
-override exclusions.
+**How it is enforced.** The firewall provider declares one persistent pf
+table per denied country, `fs_geo_<cc>`, or one per except-policy,
+`fs_geox_<policy>`, in the `flowsight/policy` anchor, and one rule per table
+from the policy's members to that table. On apply each table is filled in a
+single pass over the database (both address families). The tables follow the
+database: an hourly check rebuilds any table filled from an older build, and a
+restarted daemon refills them once. `GET /api/firewall/status` lists them
+under `geo_tables` with their countries, prefix count, database epoch and
+fill time; *Protect › Firewall Analysis Engine (FAE)* shows the same.
+
+**Limits.** Registration is not location: CDNs and anycast services answer
+from nearby data centres under a foreign registration and the reverse, so
+expect some surprises and start in monitor mode. Addresses the database does
+not know are in no table and are never blocked by a country rule. Tables hold
+tens of thousands of prefixes for a large country and a few hundred thousand
+for an except-table; pf keeps them in a radix tree, so lookup cost does not
+depend on size.
+
+**Precedence.** Like other denials, country rules respect the policy order,
+`allow` exceptions for the same members, monitor mode and exclusions.
 
 ## Monitor first
 

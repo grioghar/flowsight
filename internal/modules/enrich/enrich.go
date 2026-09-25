@@ -87,7 +87,6 @@ type Module struct {
 	geoTag       string // the database's build epoch, for the status page
 	geoEpoch     int64  // build epoch as unix timestamp
 	geoCountries []core.CountryInfo
-	geoNetworks  map[string][]string // country code -> prefixes, cached
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -125,7 +124,6 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.client = &http.Client{Timeout: 5 * time.Minute}
 	m.cache = map[string]*entry{}
 	m.queue = make(chan string, 4096)
-	m.geoNetworks = make(map[string][]string)
 	for i := 0; i < 4; i++ {
 		go m.worker()
 	}
@@ -178,6 +176,31 @@ func (m *Module) Enabled() (bool, bool) {
 // Lookup answers from the cache and the database at once, and queues
 // reverse lookups for names it does not have yet. It never blocks on the
 // network, so a page render stays fast; the next call has the names.
+// CountryOf is the ISO country of a public address from the local
+// database, or "" when the database is off or the address is local. It
+// queues no reverse lookups and is cheap enough to call per flow.
+func (m *Module) CountryOf(ip string) string {
+	_, geo := m.Enabled()
+	if !geo {
+		return ""
+	}
+	addr := net.ParseIP(strings.TrimSpace(ip))
+	if addr == nil || addr.IsPrivate() || addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.IsMulticast() || addr.IsUnspecified() {
+		return ""
+	}
+	if m.identity != nil && m.identity.IsLocal(addr.String()) {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.geo == nil {
+		return ""
+	}
+	info := Info{IP: addr.String()}
+	m.place(addr, &info)
+	return info.Country
+}
+
 func (m *Module) Lookup(ips []string) map[string]Info {
 	rd, geo := m.Enabled()
 	out := make(map[string]Info, len(ips))
@@ -274,7 +297,8 @@ func (m *Module) prune() error {
 // struct reads either one and no switch is needed at lookup time.
 type geoRecord struct {
 	Country struct {
-		ISOCode string `maxminddb:"iso_code"`
+		ISOCode string            `maxminddb:"iso_code"`
+		Names   map[string]string `maxminddb:"names"`
 	} `maxminddb:"country"`
 	City struct {
 		Names map[string]string `maxminddb:"names"`
@@ -368,15 +392,14 @@ func (m *Module) refreshGeo() error {
 		m.geoErr = "cannot open database: " + err.Error()
 		return err
 	}
-	if m.geo != nil {
-		m.geo.Close()
+	if old := m.geo; old != nil {
+		// A table build may still be walking the old reader; give it time.
+		time.AfterFunc(10*time.Minute, func() { old.Close() })
 	}
 	m.geo, m.geoAt, m.geoErr = r, modTime(path), ""
 	m.geoEpoch = int64(r.Metadata.BuildEpoch)
 	m.geoTag = time.Unix(m.geoEpoch, 0).UTC().Format("2006-01-02") + " (" + r.Metadata.DatabaseType + ")"
-	// Invalidate the country and network caches.
-	m.geoCountries = nil
-	m.geoNetworks = make(map[string][]string)
+	m.geoCountries = nil // rebuilt from the new database on demand
 	return nil
 }
 
@@ -482,96 +505,83 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 
 // ---------------------------------------------------------------- GeoService
 
-// Networks returns IPv4 and IPv6 prefixes for a country code, cached
-// by the database's build epoch.
-func (m *Module) Networks(cc string) ([]string, error) {
-	cc = strings.ToUpper(cc)
-	m.mu.Lock()
-	if m.geo == nil {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("country lookup not available: Settings › enrich › Country lookup")
-	}
-	if cached, ok := m.geoNetworks[cc]; ok {
-		m.mu.Unlock()
-		return cached, nil
-	}
-	m.mu.Unlock()
+var errNoGeo = fmt.Errorf("country lookup not available: Settings › enrich › Country lookup")
 
-	// Build the prefix list from the database.
-	var prefixes []string
-	networks := m.geo.Networks(maxminddb.SkipAliasedNetworks)
-	for networks.Next() {
+// walk visits every network in the database once. The reader is taken
+// under the lock and stays valid for the walk because refreshGeo closes a
+// replaced reader only minutes later.
+func (m *Module) walk(visit func(cc string, rec *geoRecord, prefix string)) error {
+	m.mu.Lock()
+	r := m.geo
+	m.mu.Unlock()
+	if r == nil {
+		return errNoGeo
+	}
+	it := r.Networks(maxminddb.SkipAliasedNetworks)
+	for it.Next() {
 		var rec geoRecord
-		prefix, err := networks.Network(&rec)
-		if err != nil {
+		prefix, err := it.Network(&rec)
+		if err != nil || rec.Country.ISOCode == "" {
 			continue
 		}
-		if rec.Country.ISOCode == cc {
-			prefixes = append(prefixes, prefix.String())
-		}
+		visit(rec.Country.ISOCode, &rec, prefix.String())
 	}
-
-	// Cache it.
-	m.mu.Lock()
-	m.geoNetworks[cc] = prefixes
-	m.mu.Unlock()
-
-	return prefixes, nil
+	return it.Err()
 }
 
-// Countries returns the list of countries in the loaded database.
+// NetworksFor returns the prefixes registered to the given countries, or
+// with invert to every other country, in a single pass over the database.
+func (m *Module) NetworksFor(ccs []string, invert bool) ([]string, error) {
+	want := map[string]bool{}
+	for _, cc := range ccs {
+		want[strings.ToUpper(strings.TrimSpace(cc))] = true
+	}
+	var out []string
+	err := m.walk(func(cc string, _ *geoRecord, prefix string) {
+		if want[cc] != invert {
+			out = append(out, prefix)
+		}
+	})
+	return out, err
+}
+
+// Countries lists the countries in the loaded database with their English
+// names and prefix counts; built once per database.
 func (m *Module) Countries() ([]core.CountryInfo, error) {
 	m.mu.Lock()
 	if m.geo == nil {
 		m.mu.Unlock()
-		return nil, fmt.Errorf("country lookup not available: Settings › enrich › Country lookup")
+		return nil, errNoGeo
 	}
-	if len(m.geoCountries) > 0 {
-		out := make([]core.CountryInfo, len(m.geoCountries))
-		copy(out, m.geoCountries)
+	if cached := m.geoCountries; cached != nil {
 		m.mu.Unlock()
-		return out, nil
+		return append([]core.CountryInfo(nil), cached...), nil
 	}
 	m.mu.Unlock()
-
-	// Build the country list by iterating the networks.
-	counts := make(map[string]int)
-	networks := m.geo.Networks(maxminddb.SkipAliasedNetworks)
-	for networks.Next() {
-		var rec geoRecord
-		_, err := networks.Network(&rec)
-		if err == nil && rec.Country.ISOCode != "" {
-			counts[rec.Country.ISOCode]++
+	counts := map[string]int{}
+	names := map[string]string{}
+	err := m.walk(func(cc string, rec *geoRecord, _ string) {
+		counts[cc]++
+		if names[cc] == "" {
+			names[cc] = rec.Country.Names["en"]
 		}
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	// Build CountryInfo slice. Use an embedded ISO 3166-1 table for names.
-	isoNames := map[string]string{
-		"US": "United States", "GB": "United Kingdom", "CN": "China", "IN": "India",
-		"DE": "Germany", "FR": "France", "JP": "Japan", "BR": "Brazil",
-		"RU": "Russia", "CA": "Canada", "AU": "Australia", "IT": "Italy",
-		"ES": "Spain", "MX": "Mexico", "NL": "Netherlands", "KR": "South Korea",
-		"TR": "Turkey", "SA": "Saudi Arabia", "ZA": "South Africa", "NG": "Nigeria",
-		"SG": "Singapore", "HK": "Hong Kong", "SE": "Sweden", "CH": "Switzerland",
-		// Add more as needed; the database may include names for en
-	}
-
-	var out []core.CountryInfo
-	for cc, count := range counts {
-		name := isoNames[cc]
+	out := make([]core.CountryInfo, 0, len(counts))
+	for cc, n := range counts {
+		name := names[cc]
 		if name == "" {
-			name = cc // Fallback to code if name not in table
+			name = cc
 		}
-		out = append(out, core.CountryInfo{Code: cc, Name: name, Prefixes: count})
+		out = append(out, core.CountryInfo{Code: cc, Name: name, Prefixes: n})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
-
-	// Cache it.
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	m.mu.Lock()
 	m.geoCountries = out
 	m.mu.Unlock()
-
-	return out, nil
+	return append([]core.CountryInfo(nil), out...), nil
 }
 
 // DatabaseEpoch returns the build epoch of the loaded database, or 0.
@@ -584,7 +594,7 @@ func (m *Module) DatabaseEpoch() int64 {
 func (m *Module) apiCountries(r *core.Req) (any, error) {
 	countries, err := m.Countries()
 	if err != nil {
-		return map[string]any{"error": err.Error()}, nil
+		return map[string]any{"error": err.Error(), "countries": []core.CountryInfo{}}, nil
 	}
-	return map[string]any{"countries": countries}, nil
+	return map[string]any{"countries": countries, "epoch": m.DatabaseEpoch()}, nil
 }

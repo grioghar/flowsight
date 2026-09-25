@@ -84,6 +84,13 @@ session alone: the client device and the route to that destination, one
 traceroute. Sessions between two local addresses have no button, since
 there is no path across the internet to show.
 
+**Where the far end is.** Each session's server shows its country; the
+**Outside \<country\>** button keeps only sessions whose far end is abroad
+(FlowSight learns your own country from its public address once *Country
+lookup* is on under *Settings › enrich*), and a country pill narrows to that
+country. The DLP page's **Leaving the country** card lists this per device.
+There is a step-by-step guide in [HOWTO-IOT-ABROAD.md](HOWTO-IOT-ABROAD.md).
+
 ### Applications
 
 Applications ranked by activity: sessions first, then who did it. Each row

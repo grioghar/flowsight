@@ -127,8 +127,14 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("catalog", time.Hour, m.loadCatalog)
 
 	ctx.Route("GET", "/api/visibility/summary", m.apiSummary, core.Doc("Throughput, active flows and hosts right now"))
+	// Flows recorded before country lookup was on, or before this release,
+	// have no country; fill them in behind the scenes, a few hundred a minute,
+	// so the "abroad" views cover the whole retention window.
+	ctx.Every("country_backfill", time.Minute, m.backfillCountries, core.Delayed())
+	ctx.Route("GET", "/api/visibility/abroad", m.apiAbroad, core.Doc("Per local device, the foreign countries it reached, sessions and bytes per country, and the destinations behind them"),
+		core.Params("hours", "window, default 24", "ip", "one device only"))
 	ctx.Route("GET", "/api/visibility/flows", m.apiFlows, core.Doc("Recent flows"),
-		core.Params("minutes", "window", "ip", "filter by either end", "app", "filter", "limit", "rows"))
+		core.Params("minutes", "window", "ip", "filter by either end", "app", "filter", "limit", "rows", "country", "far end in this country (ISO code)", "abroad", "1 = far end outside this gateway's country", "blocked", "1 = blocked only"))
 	ctx.Route("GET", "/api/visibility/apps", m.apiApps, core.Doc("Application breakdown over a window"),
 		core.Params("hours", "window", "ip", "one host"))
 	ctx.Route("GET", "/api/visibility/top", m.apiTop, core.Doc("Top hosts, applications, categories, destinations"),
@@ -416,6 +422,12 @@ func (m *Module) poll() error {
 	if err := m.ctx.Store.AddMetrics(now, metrics); err != nil {
 		return err
 	}
+	look, _ := m.ctx.Service("enrich").(core.CountryLookup)
+	var isLocal func(string) bool
+	if m.identity != nil {
+		isLocal = m.identity.IsLocal
+	}
+	core.FillCountries(flows, look, isLocal)
 	if err := m.ctx.Store.AddFlows(flows); err != nil {
 		return err
 	}
@@ -587,6 +599,17 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 	if r.Q("blocked", "") != "" {
 		q += ` AND verdict='blocked'`
 	}
+	// Where the far end is. "country=DE" is one country; "abroad=1" is any
+	// country other than the one this gateway sits in.
+	if cc, _ := r.QSafe("country", "", 2); cc != "" {
+		q += ` AND upper(country)=?`
+		args = append(args, strings.ToUpper(cc))
+	}
+	home := m.homeCountry()
+	if r.Q("abroad", "") != "" && home != "" {
+		q += ` AND country<>'' AND country<>'-' AND upper(country)<>?`
+		args = append(args, home)
+	}
 	q += ` ORDER BY COALESCE(end_ts,ts) DESC LIMIT ?`
 	args = append(args, limit)
 	rows, err := m.ctx.Store.Rows(q, args...)
@@ -595,7 +618,124 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 	}
 	m.decorate(rows, "src_ip", "src_name")
 	m.decorate(rows, "dst_ip", "dst_name")
-	return map[string]any{"flows": rows}, nil
+	return map[string]any{"flows": rows, "home_country": home}, nil
+}
+
+// homeCountry asks the paths module where this gateway is.
+func (m *Module) homeCountry() string {
+	if h, ok := m.ctx.Service("home").(interface{ HomeCountry() string }); ok && h != nil {
+		return h.HomeCountry()
+	}
+	return ""
+}
+
+// apiAbroad answers "which of my devices talk to other countries, and to
+// whom": per local device, the foreign countries it reached in the window,
+// sessions and bytes per country, and the destinations behind them. Built
+// from the flow table (which carries the far end's country), so it needs
+// no database of its own. A device with no foreign traffic is absent.
+func (m *Module) apiAbroad(r *core.Req) (any, error) {
+	hours := r.Hours(24)
+	since := time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
+	ip, err := r.QSafe("ip", "", 64)
+	if err != nil {
+		return nil, err
+	}
+	home := m.homeCountry()
+	q := `SELECT src_ip, upper(country) AS cc, dst_ip, MAX(domain) AS domain, COUNT(*) AS sessions,
+		SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out, MAX(COALESCE(end_ts,ts)) AS last_seen
+		FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-'`
+	args := []any{since}
+	if home != "" {
+		q += ` AND upper(country)<>?`
+		args = append(args, home)
+	}
+	if ip != "" {
+		q += ` AND src_ip=?`
+		args = append(args, ip)
+	}
+	q += ` GROUP BY src_ip, cc, dst_ip ORDER BY sessions DESC LIMIT 5000`
+	rows, err := m.ctx.Store.Rows(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	type dest struct {
+		IP       string `json:"ip"`
+		Name     string `json:"name,omitempty"`
+		Domain   string `json:"domain,omitempty"`
+		Sessions int64  `json:"sessions"`
+		Bytes    int64  `json:"bytes"`
+	}
+	type country struct {
+		Country  string  `json:"country"`
+		Sessions int64   `json:"sessions"`
+		BytesIn  int64   `json:"bytes_in"`
+		BytesOut int64   `json:"bytes_out"`
+		LastSeen int64   `json:"last_seen"`
+		Dests    []*dest `json:"destinations"`
+	}
+	type device struct {
+		IP        string              `json:"ip"`
+		IPs       []string            `json:"other_ips,omitempty"`
+		Name      string              `json:"name,omitempty"`
+		MAC       string              `json:"mac,omitempty"`
+		Sessions  int64               `json:"sessions"`
+		Countries []*country          `json:"countries"`
+		byCC      map[string]*country `json:"-"`
+	}
+	devs := map[string]*device{}
+	var order []string
+	for _, row := range rows {
+		src, _ := row["src_ip"].(string)
+		if src == "" || (m.identity != nil && !m.identity.IsLocal(src)) {
+			continue
+		}
+		cc, _ := row["cc"].(string)
+		// One row per device: addresses (v4 and v6) fold into their MAC.
+		mac := ""
+		if m.identity != nil {
+			mac = m.identity.MAC(src)
+		}
+		key := src
+		if mac != "" {
+			key = mac
+		}
+		d := devs[key]
+		if d == nil {
+			d = &device{IP: src, Name: m.name(src), MAC: mac, byCC: map[string]*country{}}
+			devs[key] = d
+			order = append(order, key)
+		} else if d.IP != src && !containsStr(d.IPs, src) {
+			d.IPs = append(d.IPs, src)
+		}
+		c := d.byCC[cc]
+		if c == nil {
+			c = &country{Country: cc}
+			d.byCC[cc] = c
+			d.Countries = append(d.Countries, c)
+		}
+		n := toI(row["sessions"])
+		c.Sessions += n
+		d.Sessions += n
+		c.BytesIn += toI(row["bytes_in"])
+		c.BytesOut += toI(row["bytes_out"])
+		if ls := toI(row["last_seen"]); ls > c.LastSeen {
+			c.LastSeen = ls
+		}
+		if len(c.Dests) < 5 {
+			dip, _ := row["dst_ip"].(string)
+			dom, _ := row["domain"].(string)
+			c.Dests = append(c.Dests, &dest{IP: dip, Name: m.name(dip), Domain: dom, Sessions: n, Bytes: toI(row["bytes_in"]) + toI(row["bytes_out"])})
+		}
+	}
+	out := make([]*device, 0, len(order))
+	for _, k := range order {
+		d := devs[k]
+		sort.Slice(d.Countries, func(i, j int) bool { return d.Countries[i].Sessions > d.Countries[j].Sessions })
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Sessions > out[j].Sessions })
+	return map[string]any{"home_country": home, "hours": hours, "devices": out}, nil
 }
 
 // topHostsBy answers "who does this": for each key (an app, a category, a
@@ -1124,4 +1264,52 @@ func (m *Module) addressesOf(ip string) []string {
 		}
 	}
 	return nil
+}
+
+// backfillCountries stamps countries on recent flows that lack one.
+func (m *Module) backfillCountries() error {
+	look, _ := m.ctx.Service("enrich").(core.CountryLookup)
+	if look == nil {
+		return nil
+	}
+	since := time.Now().Add(-7 * 24 * time.Hour).Unix()
+	rows, err := m.ctx.Store.Rows(`SELECT id, src_ip, dst_ip FROM flows WHERE ts >= ? AND (country IS NULL OR country='') ORDER BY id DESC LIMIT 500`, since)
+	if err != nil || len(rows) == 0 {
+		return err
+	}
+	memo := map[string]string{}
+	cc := func(ip string) string {
+		if ip == "" || (m.identity != nil && m.identity.IsLocal(ip)) {
+			return ""
+		}
+		if v, ok := memo[ip]; ok {
+			return v
+		}
+		v := look.CountryOf(ip)
+		memo[ip] = v
+		return v
+	}
+	for _, r := range rows {
+		id := toI(r["id"])
+		dst, _ := r["dst_ip"].(string)
+		src, _ := r["src_ip"].(string)
+		c := cc(dst)
+		if c == "" {
+			c = cc(src)
+		}
+		if c == "" {
+			c = "-" // looked at, nothing to say: do not look again
+		}
+		_ = m.ctx.Store.Exec(`UPDATE flows SET country=? WHERE id=?`, c, id)
+	}
+	return nil
+}
+
+func containsStr(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

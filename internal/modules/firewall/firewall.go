@@ -40,9 +40,12 @@ type Module struct {
 
 // TableInfo holds information about a pf table.
 type TableInfo struct {
-	Name     string `json:"name"`
-	Prefixes int    `json:"prefixes"`
-	Epoch    int64  `json:"epoch"` // database build epoch when last updated
+	Name      string   `json:"name"`
+	Countries []string `json:"countries"`
+	Invert    bool     `json:"invert,omitempty"` // holds every country except Countries
+	Prefixes  int      `json:"prefixes"`
+	Epoch     int64    `json:"epoch"` // database build epoch when last filled
+	Updated   int64    `json:"updated"`
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -103,6 +106,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		ctx.Provider(&provider{m: m})
 		ctx.Every("local-table", 60*time.Second, m.refreshLocal)
 		ctx.Every("anchor-check", 60*time.Second, m.checkAnchor)
+		ctx.Every("geo-tables", time.Hour, m.refreshGeoTables, core.Delayed())
 	}
 	ctx.Route("GET", "/api/firewall/status", m.apiStatus, core.Doc("Anchor state, tables and rule counters"))
 	return nil
@@ -125,17 +129,6 @@ func (m *Module) Health() core.Health {
 }
 
 func (m *Module) LocalTable() string { return "flowsight_local" }
-
-// UpdateGeoTableInfo records information about a geo table for status reporting.
-func (m *Module) UpdateGeoTableInfo(cc string, prefixes int, epoch int64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.geoTables[cc] = &TableInfo{
-		Name:     "fs_geo_" + strings.ToLower(cc),
-		Prefixes: prefixes,
-		Epoch:    epoch,
-	}
-}
 
 func (m *Module) pfctl(args ...string) (string, error) {
 	return core.Run(30*time.Second, m.ctx.Platform.Pfctl, args...)
@@ -361,10 +354,11 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		}
 	}
 	m.mu.Lock()
-	geoTables := make([]any, 0, len(m.geoTables))
+	geoTables := make([]*TableInfo, 0, len(m.geoTables))
 	for _, ti := range m.geoTables {
 		geoTables = append(geoTables, ti)
 	}
+	sort.Slice(geoTables, func(i, j int) bool { return geoTables[i].Name < geoTables[j].Name })
 	m.mu.Unlock()
 	main, _ := m.pfctl("-sr")
 	return map[string]any{"available": true, "anchors": list, "counters": counters,

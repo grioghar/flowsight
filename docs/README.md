@@ -43,3 +43,7 @@ with every release.
 
 This manual describes FlowSight 0.9.x. The version an installation runs is
 shown at the bottom of the left-hand menu and under FlowSight › Updates.
+
+## How-tos
+
+- [See what your IoT devices send abroad, and block it](HOWTO-IOT-ABROAD.md)

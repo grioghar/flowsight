@@ -78,8 +78,11 @@ type Deny struct {
 	Domains       []string `json:"domains,omitempty"`
 	TLDs          []string `json:"tlds,omitempty"`
 	Countries     []string `json:"countries,omitempty"`
-	Ports         []string `json:"ports,omitempty"` // "tcp/25", "udp/53", "tcp/6881-6889"
-	Internet      bool     `json:"internet,omitempty"`
+	// CountriesExcept blocks every country other than the ones listed; the
+	// home country is always allowed. Use one of Countries/CountriesExcept.
+	CountriesExcept []string `json:"countries_except,omitempty"`
+	Ports           []string `json:"ports,omitempty"` // "tcp/25", "udp/53", "tcp/6881-6889"
+	Internet        bool     `json:"internet,omitempty"`
 }
 
 // Allow carves exceptions out of Deny for the same clients.
@@ -123,7 +126,7 @@ func (p *Policy) Requirements() []string {
 		set[CapDNSBlock] = true
 		set[CapWebBlock] = true
 	}
-	if len(d.Countries) > 0 || len(d.Ports) > 0 || d.Internet {
+	if len(d.Countries) > 0 || len(d.CountriesExcept) > 0 || len(d.Ports) > 0 || d.Internet {
 		set[CapNetBlock] = true
 	}
 	if p.TLS.Inspect {
@@ -300,12 +303,17 @@ func (d *PolicyDoc) Validate() error {
 			}
 			p.Deny.TLDs[j] = t
 		}
-		for j, c := range p.Deny.Countries {
-			c = strings.ToUpper(strings.TrimSpace(c))
-			if !ccRe.MatchString(c) {
-				return perr("policy %q: %q is not a two-letter country code", p.Name, c)
+		for _, list := range [][]string{p.Deny.Countries, p.Deny.CountriesExcept} {
+			for j, c := range list {
+				c = strings.ToUpper(strings.TrimSpace(c))
+				if !ccRe.MatchString(c) {
+					return perr("policy %q: %q is not a two-letter country code", p.Name, c)
+				}
+				list[j] = c
 			}
-			p.Deny.Countries[j] = c
+		}
+		if len(p.Deny.Countries) > 0 && len(p.Deny.CountriesExcept) > 0 {
+			return perr("policy %q: use either countries or countries_except, not both", p.Name)
 		}
 		for _, pt := range p.Deny.Ports {
 			if !portRe.MatchString(strings.ToLower(pt)) {
@@ -511,9 +519,10 @@ type AppCatalog interface {
 
 // GeoService provides country-level network blocks for policy enforcement.
 type GeoService interface {
-	// Networks returns IPv4 and IPv6 prefixes for a country code.
-	// Returns error if the database is not loaded.
-	Networks(cc string) ([]string, error)
+	// NetworksFor returns the IPv4 and IPv6 prefixes registered to the given
+	// countries in one pass over the database, or, with invert, to every
+	// country except them. It errors when no database is loaded.
+	NetworksFor(ccs []string, invert bool) ([]string, error)
 	// Countries returns the list of countries available in the database
 	// with their ISO codes, names, and prefix counts.
 	Countries() ([]CountryInfo, error)
@@ -521,6 +530,9 @@ type GeoService interface {
 	// or 0 if none is loaded.
 	DatabaseEpoch() int64
 }
+
+// HomeService answers the country the gateway's public address is in.
+type HomeService interface{ HomeCountry() string }
 
 // CountryInfo is one country in the GeoIP database.
 type CountryInfo struct {

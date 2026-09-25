@@ -12,26 +12,42 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8r202609251900
+## 0.9.8r202609252049
 
-**Country-level GeoIP blocking in policies.**
+**Block traffic by country.** Policies gain `deny.countries` (deny the
+listed countries) and `deny.countries_except` (deny every country but the
+listed ones; the gateway's own country is always allowed). The firewall
+provider declares one persistent pf table per denied country, or one per
+except-policy, in the `flowsight/policy` anchor and fills it in a single pass
+over the local country database; both address families are covered. An
+hourly check rebuilds tables after the monthly database refresh and a
+restarted daemon refills them once. The policy editor has a *Countries* tab
+with a searchable list from `GET /api/enrich/countries` (English names from
+the database) and an *except* switch. `GET /api/firewall/status` lists the
+tables under `geo_tables`. DLP's **Block…** now pre-fills the device by MAC
+address, and the "outside the country" device list folds a device's v4 and
+v6 addresses into one row. Documented in POLICY.md and the IoT HOWTO.
 
-New in policies:
+## 0.9.8r202609252040
 
-- **`deny.countries`**: Block outbound traffic to IP addresses in specified countries using two-letter ISO codes (e.g., `CN`, `RU`).
-- **GeoService**: New service in the enrich module that extracts IPv4/IPv6 network prefixes from the MaxMind GeoIP database, cached per database epoch.
-- **Firewall tables**: One pf table per country, `fs_geo_<CC>`, populated during policy apply. Blocks at the first packet.
-- **Countries API route**: `GET /api/enrich/countries` lists available countries with ISO code, name, and network count for the UI selector.
-- **Policy editor UI**: New *Countries* tab with searchable multi-select. Shows prefix counts per country. Requires country lookup enabled in enrich settings.
-- **Status reporting**: `GET /api/firewall/status` now includes geo tables with prefix count and database epoch.
-- **Documentation**: POLICY.md covers country blocking, requirements, how it works, performance, and precedence. See also SECURITY and CONFIGURATION for geolocation settings.
+**Sessions carry the far end's country.** The flow probe never reported
+one and the proxy log cannot, so every session had an empty country and the
+new abroad views were empty. Sessions are now stamped at ingest from the
+local country database (both the probe's flows and the proxy's), and a quiet
+background pass fills in the last seven days a few hundred rows a minute.
 
-How it works:
+## 0.9.8r202609252038
 
-- Country denials compile to pf rules with tables loaded from the GeoIP database
-- Rules respect monitor mode, allow exceptions, and policy order
-- Tables scale with countries in use, not all countries (load only what you block)
-- CDNs/anycast may map to unexpected countries; geographic blocking is coarse
+**What leaves the country, per device.** Sessions now filter by the far
+end's country (`country=`) or by *Outside \<home\>* (`abroad=1`), where home
+is the country of the gateway's own public address; the server column shows
+the country as a pill that narrows the list. The DLP page has a *Leaving the
+country* card: per device, the foreign countries it reached with sessions
+and bytes, the destinations behind them, and a *Block* button that opens the
+policy editor pre-filled. The host page links to a device's foreign sessions.
+`GET /api/visibility/abroad` serves the per-device data. A how-to,
+`docs/HOWTO-IOT-ABROAD.md`, walks through seeing and blocking IoT traffic to
+other countries end to end.
 
 ## 0.9.8r202609252021
 

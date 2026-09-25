@@ -55,7 +55,7 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 	local := p.m.LocalTable()
 	var rules []string
 	tables := 0
-	geoTables := map[string]bool{} // Track which geo tables are needed
+	geoTables := map[string]geoSpec{}
 
 	for i := range doc.Policies {
 		pol := &doc.Policies[i]
@@ -114,15 +114,22 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 			rules = append(rules, fmt.Sprintf("%s %s from %s to any port %s label \"%s:port\"",
 				action, protoClause, src, rng, label))
 		}
-		// Handle country denials.
-		if len(pol.Deny.Countries) > 0 {
+		// Country denials: one persistent table per denied country, or one
+		// per policy holding every country but the allowed ones. The tables
+		// are declared here and filled in Apply from the local database.
+		if len(pol.Deny.Countries) > 0 || len(pol.Deny.CountriesExcept) > 0 {
 			if geo == nil {
-				return core.Artifact{}, fmt.Errorf("policy %q denies countries but GeoIP service is not available", pol.Name)
+				return core.Artifact{}, fmt.Errorf("policy %q denies countries, which needs the country database: Settings › enrich › Country lookup", pol.Name)
 			}
 			for _, cc := range pol.Deny.Countries {
 				tbl := GeoTableFor(cc)
-				geoTables[tbl] = true
-				rules = append(rules, fmt.Sprintf("%s from %s to <%s> label \"%s:country:%s\"", action, src, tbl, label, cc))
+				geoTables[tbl] = geoSpec{Table: tbl, Countries: []string{strings.ToUpper(cc)}}
+				rules = append(rules, fmt.Sprintf("%s from %s to <%s> label \"%s:country:%s\"", action, src, tbl, label, strings.ToUpper(cc)))
+			}
+			if len(pol.Deny.CountriesExcept) > 0 {
+				tbl := "fs_geox_" + Slug(pol.Name)
+				geoTables[tbl] = geoSpec{Table: tbl, Countries: upperAll(pol.Deny.CountriesExcept), Invert: true}
+				rules = append(rules, fmt.Sprintf("%s from %s to <%s> label \"%s:country-except\"", action, src, tbl, label))
 			}
 		}
 	}
@@ -130,21 +137,65 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 	for _, r := range rules {
 		b.WriteString(r + "\n")
 	}
-	// Declare geo tables (they will be populated separately).
 	if len(geoTables) > 0 {
-		b.WriteString("# GeoIP country tables\n")
-		var geoTableList []string
+		names := make([]string, 0, len(geoTables))
 		for tbl := range geoTables {
-			geoTableList = append(geoTableList, tbl)
+			names = append(names, tbl)
 		}
-		sort.Strings(geoTableList)
-		for _, tbl := range geoTableList {
-			fmt.Fprintf(&b, "table <%s> persist file \"%s/geo-%s.txt\"\n", tbl, p.m.dir, strings.TrimPrefix(tbl, "fs_geo_"))
+		sort.Strings(names)
+		for _, tbl := range names {
+			fmt.Fprintf(&b, "table <%s> persist\n", tbl)
+			b.WriteString(geoTables[tbl].comment() + "\n")
 		}
 		tables += len(geoTables)
 	}
 	return core.Artifact{Files: map[string]string{p.path(): b.String()},
-		Note: fmt.Sprintf("%d rule(s), %d app/geo table(s)", len(rules), tables)}, nil
+		Note: fmt.Sprintf("%d rule(s), %d table(s)", len(rules), tables)}, nil
+}
+
+// geoSpec is what a country table must hold. It is written into the rules
+// file as a comment so Apply, and the hourly refresh, can rebuild it from
+// the artifact alone.
+type geoSpec struct {
+	Table     string
+	Countries []string
+	Invert    bool
+}
+
+func (g geoSpec) comment() string {
+	list := strings.Join(g.Countries, ",")
+	if g.Invert {
+		list = "!" + list
+	}
+	return "# geo-table " + g.Table + " " + list
+}
+
+// geoSpecs reads the geo-table comments back out of a rules file.
+func geoSpecs(rules string) []geoSpec {
+	var out []geoSpec
+	for _, l := range strings.Split(rules, "\n") {
+		f := strings.Fields(l)
+		if len(f) != 4 || f[0] != "#" || f[1] != "geo-table" {
+			continue
+		}
+		g := geoSpec{Table: f[2]}
+		list := f[3]
+		if strings.HasPrefix(list, "!") {
+			g.Invert = true
+			list = list[1:]
+		}
+		g.Countries = strings.Split(list, ",")
+		out = append(out, g)
+	}
+	return out
+}
+
+func upperAll(in []string) []string {
+	out := make([]string, len(in))
+	for i, s := range in {
+		out[i] = strings.ToUpper(strings.TrimSpace(s))
+	}
+	return out
 }
 
 func (p *provider) Current() (core.Artifact, error) {
@@ -163,11 +214,9 @@ func (p *provider) Apply(a core.Artifact) (string, error) {
 		return "", err
 	}
 
-	// Populate geo tables if the service is available.
-	geo, _ := p.m.ctx.Service("geo").(core.GeoService)
-	if geo != nil {
-		if err := p.populateGeoTables(); err != nil {
-			p.m.ctx.Event("firewall", "failed to populate geo tables", map[string]any{"error": err.Error()})
+	if specs := geoSpecs(rules); len(specs) > 0 {
+		if err := p.m.populateGeoTables(specs, true); err != nil {
+			p.m.ctx.Event("firewall", "country tables not filled", map[string]any{"error": err.Error()})
 		}
 	}
 
@@ -180,33 +229,62 @@ func (p *provider) Apply(a core.Artifact) (string, error) {
 	return fmt.Sprintf("anchor flowsight/policy loaded with %d rule(s)", n), nil
 }
 
-// populateGeoTables loads country prefixes into pf tables.
-func (p *provider) populateGeoTables() error {
-	geo, ok := p.m.ctx.Service("geo").(core.GeoService)
-	if !ok || geo == nil {
+// populateGeoTables fills the country tables the policy rules reference,
+// each in one pass over the local database. With force false a table is
+// left alone when it was already filled from the current database build.
+// For "every country except" tables the home country is always allowed.
+func (m *Module) populateGeoTables(specs []geoSpec, force bool) error {
+	geo, _ := m.ctx.Service("geo").(core.GeoService)
+	if geo == nil {
+		return fmt.Errorf("country database not available")
+	}
+	epoch := geo.DatabaseEpoch()
+	if epoch == 0 {
+		return fmt.Errorf("country database not loaded yet")
+	}
+	home := ""
+	if h, ok := m.ctx.Service("home").(core.HomeService); ok {
+		home = h.HomeCountry()
+	}
+	var firstErr error
+	for _, g := range specs {
+		m.mu.Lock()
+		cur := m.geoTables[g.Table]
+		m.mu.Unlock()
+		if !force && cur != nil && cur.Epoch == epoch {
+			continue
+		}
+		ccs := g.Countries
+		if g.Invert && home != "" {
+			ccs = append(append([]string(nil), ccs...), home)
+		}
+		prefixes, err := geo.NetworksFor(ccs, g.Invert)
+		if err == nil {
+			err = m.ReplaceTable("policy", g.Table, prefixes)
+		}
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("%s: %w", g.Table, err)
+			}
+			continue
+		}
+		m.mu.Lock()
+		m.geoTables[g.Table] = &TableInfo{Name: g.Table, Countries: ccs, Invert: g.Invert, Prefixes: len(prefixes), Epoch: epoch, Updated: time.Now().Unix()}
+		m.mu.Unlock()
+	}
+	return firstErr
+}
+
+// refreshGeoTables follows the monthly database update: tables filled from
+// an older build are rebuilt, and a fresh process fills them once.
+func (m *Module) refreshGeoTables() error {
+	a, err := (&provider{m: m}).Current()
+	if err != nil {
 		return nil
 	}
-
-	countries, err := geo.Countries()
-	if err != nil {
-		return err
+	specs := geoSpecs(a.Files[filepath.Join(m.dir, "policy.conf")])
+	if len(specs) == 0 {
+		return nil
 	}
-
-	epoch := geo.DatabaseEpoch()
-	for _, ci := range countries {
-		prefixes, err := geo.Networks(ci.Code)
-		if err != nil {
-			continue // Skip countries with errors
-		}
-
-		// Write to a temporary file and reload the table.
-		tbl := GeoTableFor(ci.Code)
-		if err := p.m.ReplaceTable("policy", tbl, prefixes); err != nil {
-			continue // Non-fatal; other tables may still load
-		}
-
-		// Record the table info for status reporting.
-		p.m.UpdateGeoTableInfo(ci.Code, len(prefixes), epoch)
-	}
-	return nil
+	return m.populateGeoTables(specs, false)
 }
