@@ -12,6 +12,22 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252003
+
+**Setup wizard.** A new 12-step guided wizard under **Administration › Setup
+wizard** walks new installations through essential configuration: license (optional),
+site basics, traffic source (ntopng), DNS source (Pi-hole or Unbound), web
+interception, identity zones, security (IDS, TLS probing), inventory (Proxmox),
+alerting, updates, API access, and a review step. The wizard auto-detects platform
+facts (interfaces, installed binaries, license tier), discovers services on the
+subnet (Pi-hole, Proxmox), tests connectivity, and applies settings via the
+existing module configuration system. Progress is kept server-side so refreshing
+resumes. The Overview shows a banner until the wizard is completed or dismissed.
+Never touches firewall rules, SSH or the GUI listener.
+
+API: `/api/setup/state` (detector facts), `/api/setup/apply` (save step),
+`/api/setup/test` (test connectivity), `/api/setup/reset` (start over).
+
 ## 0.9.8r202609252000
 
 **No inline scripts anywhere.** Every inline event handler in the web pages
