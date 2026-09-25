@@ -51,8 +51,8 @@ A lock next to a menu entry means the same.
 The menu has four areas, by what you are doing. **Monitor** is watching
 traffic: Overview, Sessions, Applications, Web, DNS and the Map. **Inventory**
 is what is on the network: IP Addresses, Devices and Zones. **Protect** is
-what is allowed: Policies, Priority, Groups & schedules, Categories, Deep
-inspection, TLS, Threats, Data out and Firewall hygiene. **Administration**
+what is allowed: Policies, Priority, Groups & Schedules, Categories, Deep
+inspection, TLS, Threats, DLP and Firewall Analysis Engine (FAE). **Administration**
 is FlowSight itself: Reports, Alerting, API, Updates, License, Status and
 Settings. The chapters below follow the same order.
 
@@ -208,7 +208,7 @@ inside of a session. To decrypt selected devices:
      require manual installation; VMs without a guest agent cannot be reached; 
      phones, Macs, and Echo devices outside Proxmox are not reached by this script.
    
-3. **Groups & schedules**: make a group with those devices (by `mac:` is
+3. **Groups & Schedules**: make a group with those devices (by `mac:` is
    the stable choice).
 4. **Policies**: a policy matching the group with *Inspect TLS* on and a
    bypass list for names that must never be decrypted: banking, health,
@@ -706,7 +706,7 @@ The page shows the rules, what each one currently matches, the queues and
 what they are holding, and the firewall rules the settings would produce, so
 you can read them before trusting them.
 
-### Data out (Business)
+### DLP (Business)
 
 The one page written in the present tense. Everything else in FlowSight
 reports what happened; this reports what is happening, because a transfer
@@ -743,11 +743,11 @@ before, and anything at all going somewhere unnamed. A quiet-hours window
 raises the severity of anything flagged inside it.
 
 What this cannot tell you is what was inside. For the sessions that can be
-decrypted, deep inspection reads the request itself. The two are meant to be
+decrypted, stateful packet inspection reads the request itself. The two are meant to be
 read together: this says a device is sending four gigabytes to a cloud
-storage provider, and deep inspection says which files.
+storage provider, and stateful packet inspection says which files.
 
-### Deep inspection (Business)
+### Stateful Packet Inspection (Business)
 
 What a decrypted session carries, not just which server it reached. The
 proxy hands each request and response to FlowSight as it passes, using ICAP,
@@ -763,7 +763,7 @@ switched on and are never stored.
 
 Today one decoder is shipped: **DNS over HTTPS**. A browser resolving over
 HTTPS puts its question in the request body, where a proxy log cannot see
-it; deep inspection reads it and files it in the DNS history like any other
+it; stateful packet inspection reads it and files it in the DNS history like any other
 lookup, so the name is visible and attributable to the device that asked.
 
 *Settings › mitm* switches it on, sets the loopback port, chooses how much
@@ -780,7 +780,7 @@ certificate on ends up relayed rather than broken. Excluded hosts are never
 touched. Turn this on deliberately: it is the setting with the widest reach
 in the product.
 
-### Firewall hygiene (Pro)
+### Firewall Analysis Engine (FAE) (Pro)
 
 Continuous analysis of the live pf ruleset. **Rules** lists every rule with
 its evaluation and packet counters, when the ruleset was loaded, and the
@@ -813,7 +813,7 @@ JSON or YAML.
 
 Community allows three policies; Pro removes the limit.
 
-### Groups & schedules
+### Groups & Schedules
 
 Groups: name, description and members (addresses, networks, `mac:`,
 `device:`, `zone:`, `all`), with the members each resolves to right now.

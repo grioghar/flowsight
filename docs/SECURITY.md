@@ -102,9 +102,9 @@ on devices you own or administer with the consent their users would
 reasonably expect; do not use it on guests. Inspected sessions yield URLs
 and certificates for policy and inventory; bodies are not stored.
 
-## Deep inspection, and what it does not keep
+## Stateful Packet Inspection, and what it does not keep
 
-The deep inspection module (Business) listens on loopback for ICAP and is
+The stateful packet inspection module (Business) listens on loopback for ICAP and is
 handed each decrypted request and response by the proxy as it passes. It
 records what the exchange was: method, URL, status, content type, size,
 timing, and request headers when that is switched on. Cookies and

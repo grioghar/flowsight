@@ -16,7 +16,7 @@
 // be decrypted, and all of them can be measured.
 //
 // What it cannot tell you is what was inside. For that, on the sessions that
-// can be decrypted, deep inspection reads the request itself. The two are
+// can be decrypted, stateful packet inspection reads the request itself. The two are
 // meant to be read together: this says a device is sending four gigabytes to
 // a cloud storage provider, and if that session was decrypted, deep
 // inspection says which files.
@@ -178,7 +178,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Transfers that crossed a threshold, most recent first"), core.Params("limit", "rows"))
 	ctx.Route("POST", "/api/egress/stop", m.apiStop, core.Write(), core.Needs("egress.watch"),
 		core.Doc("Drop a transfer that is running ({local, peer, port}); the connection is killed at the firewall"))
-	ctx.Panel(core.Panel{ID: "egress", Title: "Data out", Group: "Protect", Order: 72, Icon: "egress", Feature: "egress.watch"})
+	ctx.Panel(core.Panel{ID: "egress", Title: "DLP", Group: "Protect", Order: 72, Icon: "egress", Feature: "egress.watch"})
 	ctx.Publish("egress", m)
 	return nil
 }
@@ -402,7 +402,7 @@ func (m *Module) detail(t *Transfer) string {
 	case "unknown":
 		b.WriteString(" Nothing names this address: no DNS answer, no server name in a handshake and no reverse lookup. That is unusual for ordinary traffic.")
 	default:
-		b.WriteString(" Whether the contents are readable depends on whether a policy decrypts this device and whether the far end pins its certificate; see the TLS and Deep inspection pages.")
+		b.WriteString(" Whether the contents are readable depends on whether a policy decrypts this device and whether the far end pins its certificate; see the TLS and Stateful Packet Inspection pages.")
 	}
 	return b.String()
 }

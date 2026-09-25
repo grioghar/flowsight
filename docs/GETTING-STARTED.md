@@ -75,7 +75,7 @@ web down. Details and pf ordering are in [Interception](INTERCEPTION.md).
 
 Policies are written against **groups** of devices and evaluated in order.
 
-1. **Groups & schedules**: create a group, for example *kids*, and add
+1. **Groups & Schedules**: create a group, for example *kids*, and add
    members. A member can be an address, a network, `mac:…` for a device
    whatever address it holds, `device:<name>` or `zone:<id>`. Add a
    schedule if the policy should only apply at certain hours.
@@ -116,7 +116,7 @@ opt-in per policy and needs the FlowSight CA trusted on those devices.
 
 - **Devices & zones** classifies new devices and, in enforce mode (Pro),
   places them into zones with DHCP reservations and isolation.
-- **Firewall hygiene** (Pro) analyses the pf ruleset continuously: rules
+- **Firewall Analysis Engine (FAE)** (Pro) analyses the pf ruleset continuously: rules
   never evaluated, unused for weeks, shadowed, or changed since the last
   look.
 - **Reports** renders on-screen reports for any window; Pro schedules them

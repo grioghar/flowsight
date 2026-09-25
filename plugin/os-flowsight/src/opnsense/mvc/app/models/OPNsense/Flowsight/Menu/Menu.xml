@@ -34,13 +34,13 @@
         <Protect order="30" cssClass="fa fa-shield fa-fw">
             <Policies order="100" url="/flowsight.php?page=policy"/>
             <Priority order="105" url="/flowsight.php?page=qos"/>
-            <Groups VisibleName="Groups &amp; schedules" order="110" url="/flowsight.php?page=groups"/>
+            <Groups VisibleName="Groups &amp; Schedules" order="110" url="/flowsight.php?page=groups"/>
             <Categories order="120" url="/flowsight.php?page=categories"/>
-            <DeepInspection VisibleName="Deep inspection" order="95" url="/flowsight.php?page=deep"/>
+            <DeepInspection VisibleName="Stateful Packet Inspection" order="95" url="/flowsight.php?page=deep"/>
             <TLS order="90" url="/flowsight.php?page=tls"/>
             <Threats order="80" url="/flowsight.php?page=threats"/>
-            <DataOut VisibleName="Data out" order="75" url="/flowsight.php?page=egress"/>
-            <Firewall VisibleName="Firewall hygiene" order="140" url="/flowsight.php?page=firewall"/>
+            <DataOut VisibleName="DLP" order="75" url="/flowsight.php?page=egress"/>
+            <Firewall VisibleName="Firewall Analysis Engine (FAE)" order="140" url="/flowsight.php?page=firewall"/>
         </Protect>
         <Administration order="40" cssClass="fa fa-cog fa-fw">
             <Reports order="180" url="/flowsight.php?page=reports"/>

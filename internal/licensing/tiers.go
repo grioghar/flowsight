@@ -64,7 +64,7 @@ var Features = []Feature{
 		Desc: "The route to the places this network talks to: every hop with its name, carrier and location, collapsed where paths share a leg."},
 	{Key: "qos.shape", Tier: TierPro, Title: "Traffic priority",
 		Desc: "Decide who waits when the link is full: move the queue onto this firewall and share the link by weight, with ceilings per device or service."},
-	{Key: "deep.inspect", Tier: TierBusiness, Title: "Deep inspection",
+	{Key: "deep.inspect", Tier: TierBusiness, Title: "Stateful Packet Inspection",
 		Desc: "Look inside decrypted sessions: request headers, content types, and the questions inside DNS-over-HTTPS. Bodies are decoded, never stored."},
 	{Key: "egress.watch", Tier: TierBusiness, Title: "Live egress monitoring",
 		Desc: "See what is leaving the network as it leaves, read from the firewall's own connection counters: pinned sessions, QUIC and encrypted tunnels included. Raises an event while a transfer is still running, and can drop it."},

@@ -122,7 +122,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("POST", "/api/policy/import", m.apiImport, core.Write(), core.Doc("Replace the document from YAML or JSON text"))
 	ctx.Route("GET", "/api/policy/capabilities", m.apiCapabilities, core.Doc("Providers, capabilities and what each policy needs"))
 	ctx.Panel(core.Panel{ID: "policy", Title: "Policies", Group: "Protect", Order: 100, Icon: "policy"})
-	ctx.Panel(core.Panel{ID: "groups", Title: "Groups & schedules", Group: "Protect", Order: 110, Icon: "groups"})
+	ctx.Panel(core.Panel{ID: "groups", Title: "Groups & Schedules", Group: "Protect", Order: 110, Icon: "groups"})
 	return nil
 }
 
@@ -409,7 +409,7 @@ func (m *Module) signature() string {
 	}
 	fmt.Fprintf(h, "enforce=%v;", core.Bool(m.ctx.Settings(), "enforce", false))
 	// Every module whose settings change what a provider writes belongs here.
-	// Deep inspection does: it decides the proxy's ICAP service and, with
+	// Stateful Packet Inspection does: it decides the proxy's ICAP service and, with
 	// "inspect everything", adds a policy covering every local network. Leaving
 	// it out made that switch appear to do nothing for up to ten minutes, until
 	// an unrelated change happened to force a recompile.

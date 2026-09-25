@@ -13,7 +13,7 @@
   safe search and YouTube restriction; monitor mode.
 - TLS transparency: generated inspection CA, per-policy inspection with
   bypass lists, certificate inventory and findings.
-- Firewall hygiene: live counters, shadowed and permissive rules, change
+- Firewall Analysis Engine (FAE): live counters, shadowed and permissive rules, change
   tracking with the user who changed it, risk score.
 - Enrolment: device identification from DHCP, zones, placement and isolation
   in monitor-first mode, captive self-identification page.
@@ -67,7 +67,7 @@ module that decides what to do about a transfer never has to live inside the
 module that measures one. Today the only action is an operator pressing
 **Stop**.
 
-Deep inspection is the other. ICAP is a synchronous gate: the proxy sends
+Stateful Packet Inspection is the other. ICAP is a synchronous gate: the proxy sends
 each decrypted request and *waits* for FlowSight's answer before forwarding
 it. FlowSight answers "no modification" every time today, but the same point
 in the exchange is where a request could be refused. That is what would let a

@@ -1,11 +1,11 @@
-/* FlowSight pages: firewall hygiene, alerting, reports, updates, devices & zones. */
+/* FlowSight pages: the Firewall Analysis Engine, alerting, reports, updates, devices & zones. */
 'use strict';
 (function () {
   const { esc, num, bytes, ago, when, pill, card, kpi, table, bars, hostLink, domainLink, get, post } = FS;
 
-  // ------------------------------------------------------------- Firewall hygiene
+  // ------------------------------------------------------------- Firewall Analysis Engine (FAE)
   FS.registerPage('firewall', {
-    title: 'Firewall hygiene', refresh: 60,
+    title: 'Firewall Analysis Engine (FAE)', refresh: 60,
     async render(el, ctx) {
       const [s, r, f, c] = await Promise.all([get('/api/rulehygiene/summary'), get('/api/rulehygiene/rules'), get('/api/rulehygiene/findings'), get('/api/rulehygiene/changes')]);
       if (s.error) { el.innerHTML = FS.err(s.error); return; }
@@ -163,9 +163,9 @@
   // Old deep links keep working.
   FS.registerPage('enroll', { title: 'Devices', refresh: 0, async render(el, ctx) { FS.go('#devices' + (ctx.params.zone ? '?zone=' + encodeURIComponent(ctx.params.zone) : '')); } });
 
-  // ------------------------------------------------------------- Deep inspection
+  // ------------------------------------------------------------- Stateful Packet Inspection
   FS.registerPage('deep', {
-    title: 'Deep inspection', refresh: 15,
+    title: 'Stateful Packet Inspection', refresh: 15,
     async render(el, ctx) {
       const [s, r] = await Promise.all([get('/api/mitm/status'), get('/api/mitm/requests?limit=300' + (ctx.params.q ? '&q=' + encodeURIComponent(ctx.params.q) : ''))]);
       if (s.error) { el.innerHTML = FS.err(s.error); return; }
@@ -196,7 +196,7 @@
     }
   });
 
-  // ------------------------------------------------------------- Data out
+  // ------------------------------------------------------------- DLP
   // The one page that is about the present tense. Everything else in
   // FlowSight reports what happened; this reports what is happening, because
   // a transfer you read about tomorrow is a transfer that finished.
@@ -210,7 +210,7 @@
     return pill(t.group_title || t.group, tone);
   };
   FS.registerPage('egress', {
-    title: 'Data out', refresh: 5,
+    title: 'DLP', refresh: 5,
     async render(el, ctx) {
       const [live, sum, ev] = await Promise.all([
         get('/api/egress/live?min_kb=' + (ctx.params.all ? 0 : 64)),

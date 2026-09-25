@@ -65,7 +65,7 @@ var TagMap = map[string][]string{
 	"web":        {"Monitor", "Web"},
 	"dns":        {"Monitor", "DNS"},
 	"paths":      {"Monitor", "Map"},
-	"egress":     {"Monitor", "Data out"},
+	"egress":     {"Monitor", "DLP"},
 	// Inventory
 	"enroll": {"Inventory", "Devices"},
 	// Protect
@@ -73,7 +73,7 @@ var TagMap = map[string][]string{
 	"qos":         {"Protect", "Priority"},
 	"categories":  {"Protect", "Categories"},
 	"tls":         {"Protect", "TLS"},
-	"mitm":        {"Protect", "Deep inspection"},
+	"mitm":        {"Protect", "Stateful Packet Inspection"},
 	"ids":         {"Protect", "Threats"},
 	"firewall":    {"Protect", "Firewall"},
 	"rulehygiene": {"Protect", "Firewall"},

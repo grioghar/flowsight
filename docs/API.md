@@ -130,7 +130,7 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/mitm/status` | Deep inspection: whether it is listening and what it has seen |  |
+| GET | `/api/mitm/status` | Stateful Packet Inspection: whether it is listening and what it has seen |  |
 | GET | `/api/mitm/requests` | The most recent decrypted requests with their headers | limit (rows), q (substring) |
 
 ### paths

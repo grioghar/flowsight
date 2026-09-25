@@ -4,7 +4,7 @@ package tls
 //
 // The proxy's log names a certificate by its subject and issuer and nothing
 // more: no validity dates, no key, no fingerprint. Suricata's log carries
-// dates when the IDS is running, and deep inspection carries everything for
+// dates when the IDS is running, and stateful packet inspection carries everything for
 // the sessions it opens, but most networks have neither, and a spliced
 // session never shows its certificate at all.
 //

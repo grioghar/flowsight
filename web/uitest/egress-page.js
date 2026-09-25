@@ -64,7 +64,7 @@ FS.pages.egress.render(el, { params:{} }).then(function(){
   // The Plex server's 3 GB must not be counted as data this network sent.
   var kpi = h.slice(h.indexOf('Sent, open connections') - 400, h.indexOf('Sent, open connections') + 200);
   if (kpi.indexOf('3.0 GB') >= 0 || kpi.indexOf('248') >= 0) throw new Error('serving bytes counted as sent: ' + kpi);
-  print('Data out page renders live transfers, flags, serving vs reaching out, and the stop control');
+  print('DLP page renders live transfers, flags, serving vs reaching out, and the stop control');
 }).catch(fail);
 if (typeof drainMicrotasks === 'function') drainMicrotasks();
 if (FAILURE) throw FAILURE;

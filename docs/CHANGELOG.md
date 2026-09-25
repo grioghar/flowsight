@@ -12,6 +12,15 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251946
+
+**Four pages renamed.** *Data out* is now **DLP**; *Deep inspection* is now
+**Stateful Packet Inspection**; *Firewall hygiene* is now **Firewall Analysis
+Engine (FAE)**; *Groups & schedules* is now **Groups & Schedules**. Page
+addresses and settings keys are unchanged, so bookmarks and configuration
+keep working; the OPNsense menu picks up the new labels when the plugin's
+menu file is updated.
+
 ## 0.9.8r202609251941
 
 **One device, not one address.** The "who did it" lists counted a laptop's

@@ -139,7 +139,7 @@ Entitlements: Community, Pro and Business tiers, activated online or with a sign
 
 ### mitm (Business tier)
 
-Deep inspection: the proxy hands each decrypted request and response over by ICAP on loopback, FlowSight reads it and answers "no modification". Bodies are previewed for the decoders that are switched on and never stored.
+Stateful Packet Inspection: the proxy hands each decrypted request and response over by ICAP on loopback, FlowSight reads it and answers "no modification". Bodies are previewed for the decoders that are switched on and never stored.
 
 | Key | Setting | Type | Default | Notes |
 |---|---|---|---|---|

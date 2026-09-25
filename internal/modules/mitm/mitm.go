@@ -1,4 +1,4 @@
-// Package mitm is deep inspection: the stage that sees inside a decrypted
+// Package mitm is stateful packet inspection: the stage that sees inside a decrypted
 // session, not just its server name.
 //
 // FlowSight already terminates TLS for the devices a policy names, with its
@@ -67,7 +67,7 @@ func (m *Module) Info() core.ModuleInfo {
 		Name:         "mitm",
 		Version:      "1.0",
 		Tier:         "business",
-		Description:  "Deep inspection of decrypted sessions: headers, content types and the questions inside DNS-over-HTTPS. Bodies are previewed to decode them and never stored.",
+		Description:  "Stateful Packet Inspection of decrypted sessions: headers, content types and the questions inside DNS-over-HTTPS. Bodies are previewed to decode them and never stored.",
 		After:        []string{"web", "tls"},
 		Capabilities: []string{core.CapWebObserve},
 		Defaults: map[string]any{
@@ -106,10 +106,10 @@ func (m *Module) Info() core.ModuleInfo {
 
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
-	ctx.Route("GET", "/api/mitm/status", m.apiStatus, core.Doc("Deep inspection: whether it is listening and what it has seen"))
+	ctx.Route("GET", "/api/mitm/status", m.apiStatus, core.Doc("Stateful Packet Inspection: whether it is listening and what it has seen"))
 	ctx.Route("GET", "/api/mitm/requests", m.apiRequests, core.Needs("deep.inspect"),
 		core.Doc("The most recent decrypted requests with their headers"), core.Params("limit", "rows", "q", "substring"))
-	ctx.Panel(core.Panel{ID: "deep", Title: "Deep inspection", Group: "Protect", Order: 75, Icon: "deep", Feature: "deep.inspect"})
+	ctx.Panel(core.Panel{ID: "deep", Title: "Stateful Packet Inspection", Group: "Protect", Order: 75, Icon: "deep", Feature: "deep.inspect"})
 	ctx.Every("supervise", 30*time.Second, m.supervise)
 	ctx.Publish("mitm", m)
 	return m.start()
@@ -228,7 +228,7 @@ func (m *Module) start() error {
 			go m.icapServe(c)
 		}
 	}()
-	m.ctx.Log.Info("deep inspection listening", "icap_port", port)
+	m.ctx.Log.Info("stateful packet inspection listening", "icap_port", port)
 	return nil
 }
 

@@ -123,7 +123,7 @@ func (p squidParams) render() (string, map[string]string) {
 	}
 	if p.DeepPort > 0 {
 		w("")
-		w("# Deep inspection: each decrypted request and response is handed to")
+		w("# Stateful Packet Inspection: each decrypted request and response is handed to")
 		w("# flowsightd over ICAP (RFC 3507). FlowSight reads the headers and a")
 		w("# short preview of the body, answers 204 No Content, and the exchange")
 		w("# continues unmodified. Nothing is proxied through it and no body is kept.")

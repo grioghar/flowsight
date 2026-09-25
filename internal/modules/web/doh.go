@@ -72,7 +72,7 @@ func parseDoHURL(rawURL string) (provider string, q *dohQuery, ok bool) {
 }
 
 // DNSQuestion reads the first question of a DNS message in wire format. It
-// is exported because deep inspection decodes the same thing out of a
+// is exported because stateful packet inspection decodes the same thing out of a
 // request body.
 func DNSQuestion(msg []byte) (name, qtype string, ok bool) { return dnsQuestion(msg) }
 

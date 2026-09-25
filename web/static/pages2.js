@@ -66,7 +66,7 @@
       <div class="tabs"><button type="button" class="on" data-tab="who">Who</button><button type="button" data-tab="what">What to deny</button><button type="button" data-tab="web">Web & DNS</button><button type="button" data-tab="tls">TLS</button></div>
       <div data-pane="who">
         <div class="check"><input type="checkbox" name="all" ${pol.match.all ? 'checked' : ''}><span>Everyone on the local networks</span></div>
-        <label>Groups</label><select name="groups" multiple size="${Math.min(6, Math.max(2, groups.length))}">${opts(groups, pol.match.groups)}</select><div class="help">Manage groups under Groups &amp; schedules.</div>
+        <label>Groups</label><select name="groups" multiple size="${Math.min(6, Math.max(2, groups.length))}">${opts(groups, pol.match.groups)}</select><div class="help">Manage groups under Groups &amp; Schedules.</div>
         <label>Extra members</label><textarea name="members" placeholder="10.0.0.5&#10;10.0.1.0/24&#10;mac:aa:bb:cc:dd:ee:ff&#10;device:kids-ipad">${esc(list(pol.match.members))}</textarea>
         <label>Schedule</label><select name="schedule"><option value="">always</option>${opts(schedules, [pol.schedule])}</select>
       </div>
@@ -115,9 +115,9 @@
     setTimeout(() => { const f = FS.$('#modal form'); if (!f) return; if (deny.apps) { f.apps.value = deny.apps.join('\n'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); } }, 50);
   };
 
-  // ------------------------------------------------------------- Groups & schedules
+  // ------------------------------------------------------------- Groups & Schedules
   FS.registerPage('groups', {
-    title: 'Groups & schedules', refresh: 0,
+    title: 'Groups & Schedules', refresh: 0,
     async render(el) {
       const d = await get('/api/policy'); const doc = d.document || { groups: {}, schedules: {}, exclusions: {}, options: {} };
       const grows = Object.entries(doc.groups || {}).map(([name, g]) => ({ name, ...g }));

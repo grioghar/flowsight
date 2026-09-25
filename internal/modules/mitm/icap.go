@@ -67,7 +67,7 @@ func (m *Module) icapOptions(w io.Writer, req *icapRequest) {
 	}
 	fmt.Fprintf(w, "ICAP/1.0 200 OK\r\n"+
 		"Methods: %s\r\n"+
-		"Service: FlowSight deep inspection\r\n"+
+		"Service: FlowSight stateful packet inspection\r\n"+
 		"ISTag: \"%s\"\r\n"+
 		"Allow: 204\r\n"+
 		"Preview: %d\r\n"+

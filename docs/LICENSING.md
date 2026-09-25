@@ -16,7 +16,7 @@ Community expires, phones home or needs registration.
 | Notification channels (e-mail, webhook, chat) | alerts in the UI | yes | yes |
 | Path mapping | | yes | yes |
 | Traffic priority and shaping | | yes | yes |
-| Deep inspection of decrypted sessions | | | yes |
+| Stateful Packet Inspection of decrypted sessions | | | yes |
 | Live egress monitoring and interdiction | | | yes |
 | Telemetry export (OTLP / SIEM) | | | yes |
 | Directory identity (LDAP / AD / RADIUS) | | | yes |

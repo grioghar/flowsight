@@ -111,7 +111,7 @@ the daemon.
 No licence gates: exclusions, unlimited policies, every report. No cloud: data
 never leaves the firewall, and the category feeds are open. No inline packet
 engine to pin a core or drop rings. Policy, groups and schedules as a diffable
-document. Firewall hygiene, certificate inventory, device enrolment with zone
+document. Firewall Analysis Engine (FAE), certificate inventory, device enrolment with zone
 placement, self-hosted alerting and reports, signed in-place updates.
 
 ## Where it does not, yet
