@@ -961,20 +961,22 @@ async function init3DPane(el, canvas, layout) {
     }
   }
 
-  // Add rooms as extruded boxes (translucent)
+  // Add rooms as extruded boxes for all floors
   const currentFloorId = layout.floors?.[0]?.id || '0';
-  const currentFloor = layout.floors?.find(f => f.id === currentFloorId);
-  const floorRooms = layout.rooms?.filter(r => r.floor === currentFloorId) || [];
+  const allRooms = layout.rooms || [];
 
-  floorRooms.forEach((room, idx) => {
+  allRooms.forEach((room, idx) => {
     if (!room.polygon || room.polygon.length < 3) return;
+
+    const floor = layout.floors?.find(f => f.id === room.floor);
+    const isCurrent = room.floor === currentFloorId;
 
     // Create box geometry for room
     const positions = [];
     const indices = [];
 
     // Polygon vertices at floor
-    const z0 = currentFloor?.elevation_m || 0;
+    const z0 = floor?.elevation_m || 0;
     const z1 = z0 + (room.ceiling_m || 2.6);
 
     // Bottom polygon
@@ -1008,10 +1010,16 @@ async function init3DPane(el, canvas, layout) {
     }
 
     if (indices.length > 0) {
+      // Current floor rooms: opaque, other floors: faint
+      const alpha = isCurrent ? 0.4 : 0.1;
+      const color = isCurrent
+        ? [0.6, 0.7, 0.9, alpha]
+        : [0.7, 0.7, 0.8, alpha];
+
       viewer.addMesh(
         { positions: new Float32Array(positions), indices: new Uint32Array(indices), normals: null },
-        [0.6, 0.7, 0.9, 0.3], // translucent blue
-        'Room: ' + room.name
+        color,
+        'Room: ' + room.name + (isCurrent ? '' : ` (${floor?.name || 'Floor'})`)
       );
     }
   });
