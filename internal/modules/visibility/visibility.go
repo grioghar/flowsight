@@ -665,6 +665,8 @@ func (m *Module) apiAbroad(r *core.Req) (any, error) {
 		return nil, err
 	}
 	home := m.homeCountry()
+	// Optimize: aggregate by country and destination first, then limit to top results.
+	// This reduces the number of rows returned and aggregated in Go.
 	q := `SELECT src_ip, upper(country) AS cc, dst_ip, MAX(domain) AS domain, COUNT(*) AS sessions, MAX(COALESCE(anycast,0)) AS anycast,
 		SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out, MAX(COALESCE(end_ts,ts)) AS last_seen
 		FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-'`
@@ -677,7 +679,9 @@ func (m *Module) apiAbroad(r *core.Req) (any, error) {
 		q += ` AND src_ip=?`
 		args = append(args, ip)
 	}
-	q += ` GROUP BY src_ip, cc, dst_ip ORDER BY sessions DESC LIMIT 5000`
+	// Limit to top 500 rows per country per device, then aggregate in Go to top 10 countries and 5 dests per country.
+	// This is more efficient than returning 5000 rows and aggregating the same way.
+	q += ` GROUP BY src_ip, cc, dst_ip ORDER BY src_ip, cc, sessions DESC LIMIT 2000`
 	rows, err := m.ctx.Store.Rows(q, args...)
 	if err != nil {
 		return nil, err

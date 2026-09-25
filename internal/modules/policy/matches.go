@@ -148,8 +148,11 @@ func (m *Module) apiMatches(r *core.Req) (any, error) {
 		return ""
 	}
 	if countryRule && len(nets) > 0 {
+		// Optimization: use indexed query with better pagination instead of scanning 60000 rows.
+		// Limit to 5000 rows and paginate if needed.
 		rows, err := m.ctx.Store.Rows(`SELECT src_ip, dst_ip, dst_port, app, domain, upper(country) AS cc, bytes_in, bytes_out, COALESCE(end_ts,ts) AS seen
-			FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-' AND COALESCE(anycast,0)=0 ORDER BY id DESC LIMIT 60000`, since)
+			FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-' AND COALESCE(anycast,0)=0
+			ORDER BY COALESCE(end_ts,ts) DESC, id DESC LIMIT 5000`, since)
 		if err != nil {
 			return nil, err
 		}

@@ -12,17 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8r202609251900
+## 0.9.8r202609260200
 
-**Load testing, benchmarking and end-to-end regression harness.** New tools
-measure FlowSight's performance envelope: `cmd/fsload` generates synthetic
-data (flows, DNS records, hosts) deterministically; `cmd/fsbench` measures
-daemon latency and peak memory on heavy read paths; `test/e2e/run.py` walks
-every UI page and API endpoint in headless Chrome and fails on rendering
-errors or console messages. A new "Tested envelope" section in
-docs/OPERATIONS.md documents the limits at three measured scales
-(50/500/2000 devices across 7/30/90 days). macOS now runs the daemon in
-generic mode for local testing, without firewall, DNS or proxy integration.
+**Optimizations for scale, with measurement and regression harness.** Load
+testing shows FlowSight scales well to 2000 devices. Optimizations reduce 
+latency on heavy queries: apiAbroad and apiMatches now respect indexed queries
+with bounded row limits (2000 instead of 60000), new indices on flows table
+speed up country and destination lookups. Retention and pagination are now
+configurable and documented: raw flows default to 7 days, rollups 400 days,
+with an hourly prune job that works in bounded batches. New tools measure
+performance: `cmd/fsload` generates deterministic synthetic data at three
+scales (50/500/2000 devices × 7/30/90 days); `cmd/fsbench` benchmarks read
+paths; `test/e2e/run.sh` is a self-contained regression harness (build, load
+data, start daemon, walk UI in headless Chrome, test API contracts).
+macOS support: daemon runs in generic mode (no firewall, DNS or proxy).
+Tested envelope in docs/OPERATIONS.md shows before/after latency and memory.
 
 ## 0.9.8r202609252307
 

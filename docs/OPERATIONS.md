@@ -97,6 +97,47 @@ indexed. squid uses another 50 to 100 MB. CPU is idle apart from feed
 refreshes and rollups. The store grows with retention; the System page
 shows its size and row counts, and retention is capped by the license tier.
 
+## Configuration: Retention
+
+Raw flows, DNS queries and other time-series data are kept for a configurable
+number of days; five-minute rollups are kept for a year and answer long-window
+reports. Configure retention in `flowsight.json` under `core.retention`:
+
+```json
+{
+  "core": {
+    "retention": {
+      "flows_days": 7,      // Raw flows: default 7 days
+      "dns_days": 7,        // DNS queries: default 7 days
+      "rollup_days": 400,   // 5-min rollups: default 400 days (~1 year)
+      "alerts_days": 30,    // Alerts: default 30 days
+      "events_days": 30,    // Events and audit: default 30 days
+      "tls_days": 90        // TLS sessions and certs: default 90 days
+    }
+  }
+}
+```
+
+The `prune` job runs every hour and removes rows older than the configured
+thresholds. At 2000 devices, reducing `flows_days` from 7 to 3 cuts database
+size roughly in half. License tier may impose an upper limit on `flows_days`.
+
+## Configuration: Pagination
+
+List routes that can return hundreds or thousands of rows support pagination
+via `limit` and `offset` query parameters. Defaults and maxima:
+
+| Route | Default Limit | Max Limit | Example |
+|-------|---------------|-----------|---------|
+| `/api/visibility/flows` | 200 | 5000 | `?limit=100&offset=200` |
+| `/api/visibility/top` | 15 | 200 | `?limit=50` (per category) |
+| `/api/identity/hosts` | 50 | 500 | `?limit=100&offset=100` |
+| `/api/dns/summary` | 50 | 500 | `?limit=200` |
+
+The UI's "Show N more" pattern uses limit/offset to paginate instead of loading
+all results at once. Pagination is advised to avoid memory spikes on large
+networks.
+
 ## Logs
 
 - `flowsightd.log` is the daemon log (level set by `log_level`). Module

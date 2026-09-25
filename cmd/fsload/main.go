@@ -199,6 +199,10 @@ func (g *generator) generate() error {
 
 		// Generate host updates (once per day per host)
 		for _, ip := range g.hosts {
+			blockedCount := *flowsPerDay / 10
+			if blockedCount <= 0 {
+				blockedCount = 1
+			}
 			hostBatch = append(hostBatch, core.HostUpdate{
 				IP:         ip,
 				MAC:        g.randomMAC(),
@@ -211,7 +215,7 @@ func (g *generator) generate() error {
 				BytesIn:    g.r.Int63n(10000000),
 				BytesOut:   g.r.Int63n(10000000),
 				Flows:      int64(*flowsPerDay),
-				Blocked:    int64(g.r.Intn(*flowsPerDay / 10)),
+				Blocked:    int64(g.r.Intn(blockedCount)),
 				LastSeen:   dayEnd,
 				IsLocal:    ptr(true),
 			})
