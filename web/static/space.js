@@ -551,6 +551,7 @@ async function init3DPane(canvas, layout) {
 
   const viewer = new FS.space3D.Viewer(canvas);
   viewer.layout = layout;
+  viewer.markerMeshes = new Map(); // mac -> mesh for interaction
 
   // Create grid and axes
   viewer.createGrid(10, 1);
@@ -746,13 +747,19 @@ async function init3DPane(canvas, layout) {
 
       indices.push(...cubeIndices);
 
-      viewer.addMesh(
+      const mesh = viewer.addMesh(
         { positions: new Float32Array(positions), indices: new Uint32Array(indices), normals: null },
         [1, 0.2, 0.2, 1],
         'Device: ' + p.label
       );
+
+      // Track mesh for interaction
+      viewer.markerMeshes.set(p.mac, { mesh, placement: p });
     });
   }
+
+  // Marker interaction: click to open popover, drag to move, wheel to adjust z
+  setupMarkerInteraction(canvas, viewer, layout);
 
   // Store viewer for later access
   if (!FS.space) FS.space = {};
@@ -775,6 +782,303 @@ async function parseWithProgress(buffer, format, updateProgress) {
       reject(e);
     }
   });
+}
+
+// === Marker Interaction (3D) ===
+
+function setupMarkerInteraction(canvas, viewer, layout) {
+  let draggingMarker = null;
+  let dragStartPos = null;
+
+  // Find which marker (placement) a ray hits
+  function findMarkerAtRay(screenX, screenY) {
+    const ray = viewer.unproject(screenX, screenY);
+    const hitRadius = 0.15; // metres
+    let closest = null;
+    let minDist = Infinity;
+
+    for (const [mac, entry] of viewer.markerMeshes.entries()) {
+      const p = entry.placement;
+      const markerPos = [p.x, p.y, p.z];
+
+      // Simple distance check from ray to point
+      const rayToPoint = [
+        markerPos[0] - ray.origin[0],
+        markerPos[1] - ray.origin[1],
+        markerPos[2] - ray.origin[2]
+      ];
+
+      const rayLen = Math.sqrt(ray.dir[0] * ray.dir[0] + ray.dir[1] * ray.dir[1] + ray.dir[2] * ray.dir[2]);
+      const projLen = (rayToPoint[0] * ray.dir[0] + rayToPoint[1] * ray.dir[1] + rayToPoint[2] * ray.dir[2]) / (rayLen * rayLen);
+
+      if (projLen < 0) continue; // Behind camera
+
+      const proj = [
+        ray.origin[0] + ray.dir[0] * projLen,
+        ray.origin[1] + ray.dir[1] * projLen,
+        ray.origin[2] + ray.dir[2] * projLen
+      ];
+
+      const dist = Math.sqrt(
+        (markerPos[0] - proj[0]) ** 2 +
+        (markerPos[1] - proj[1]) ** 2 +
+        (markerPos[2] - proj[2]) ** 2
+      );
+
+      if (dist < hitRadius && dist < minDist) {
+        closest = { mac, placement: p, dist };
+        minDist = dist;
+      }
+    }
+
+    return closest;
+  }
+
+  // Canvas mouse events
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return; // Left click only
+
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    const marker = findMarkerAtRay(screenX, screenY);
+    if (marker) {
+      draggingMarker = marker;
+      dragStartPos = { x: marker.placement.x, y: marker.placement.y, z: marker.placement.z };
+      e.preventDefault();
+    }
+  });
+
+  let currentDragZ = 0;
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!draggingMarker) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    const hit = viewer.raycast(screenX, screenY);
+    if (hit) {
+      // Update placement position in viewer state (not saved yet)
+      draggingMarker.placement.x = hit.x;
+      draggingMarker.placement.y = hit.y;
+      // z can be adjusted with wheel, so keep currentDragZ
+      draggingMarker.placement.z = currentDragZ;
+    }
+  });
+
+  canvas.addEventListener('pointerup', async (e) => {
+    if (!draggingMarker) return;
+
+    // Save placement
+    try {
+      const resp = await fetch('/api/space/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mac: draggingMarker.mac,
+          x: draggingMarker.placement.x,
+          y: draggingMarker.placement.y,
+          z: draggingMarker.placement.z,
+          floor: layout.floors?.[0]?.id || '0',
+          room: pointInRoom(draggingMarker.placement.x, draggingMarker.placement.y, layout)
+        })
+      });
+
+      if (!resp.ok) {
+        console.error('Failed to save placement');
+        // Restore original position
+        draggingMarker.placement.x = dragStartPos.x;
+        draggingMarker.placement.y = dragStartPos.y;
+        draggingMarker.placement.z = dragStartPos.z;
+      }
+    } catch (err) {
+      console.error('Failed to save placement:', err);
+      draggingMarker.placement.x = dragStartPos.x;
+      draggingMarker.placement.y = dragStartPos.y;
+      draggingMarker.placement.z = dragStartPos.z;
+    }
+
+    draggingMarker = null;
+    dragStartPos = null;
+    currentDragZ = 0;
+  });
+
+  // Wheel while dragging adjusts z
+  canvas.addEventListener('wheel', (e) => {
+    if (!draggingMarker) return;
+    e.preventDefault();
+
+    const zDelta = -e.deltaY * 0.01;
+    currentDragZ = Math.max(0, draggingMarker.placement.z + zDelta);
+    draggingMarker.placement.z = currentDragZ;
+  });
+
+  // Click (not drag) on marker opens popover
+  let clickStartPos = null;
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+
+    const rect = canvas.getBoundingClientRect();
+    clickStartPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  });
+
+  canvas.addEventListener('pointerup', async (e) => {
+    if (!clickStartPos) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    const dist = Math.hypot(
+      screenX - clickStartPos.x,
+      screenY - clickStartPos.y
+    );
+
+    // Only treat as click if pointer didn't move much
+    if (dist > 5) {
+      clickStartPos = null;
+      return;
+    }
+
+    const marker = findMarkerAtRay(screenX, screenY);
+    if (marker) {
+      showMarkerPopover(marker, layout);
+    }
+
+    clickStartPos = null;
+  });
+}
+
+// Show marker popover with device info and visibility sparkline
+async function showMarkerPopover(marker, layout) {
+  const placement = marker.placement;
+
+  // Fetch visibility data for sparkline
+  let sparklineData = [];
+  try {
+    const visResp = await FS.get(`/api/visibility/host?ip=${encodeURIComponent(placement.ip || placement.mac)}&hours=1`);
+    if (visResp && visResp.timeline) {
+      sparklineData = visResp.timeline.slice(-60); // Last 60 points
+    }
+  } catch (e) {
+    console.warn('Failed to load visibility:', e);
+  }
+
+  // Build sparkline SVG
+  const sparklineSvg = sparklineData.length > 0
+    ? `<svg width="100%" height="20" style="margin:4px 0" viewBox="0 0 ${sparklineData.length} 1">
+        ${sparklineData.map((v, i) => {
+          const y = 1 - (v || 0);
+          return `<rect x="${i}" y="${y * 0.8}" width="1" height="${Math.min(0.8, (v || 0) * 0.8)}" fill="var(--text-muted)" opacity="0.5"/>`;
+        }).join('')}
+      </svg>`
+    : '<div style="font-size:11px;color:var(--text-muted)">No visibility data</div>';
+
+  const roomName = layout.rooms?.find(r => r.id === placement.room)?.name || placement.room || 'Unknown';
+
+  const html = `
+    <h3>${esc(placement.label || placement.mac)}</h3>
+    <div style="font-size:11px;color:var(--text-muted);margin:4px 0">
+      <div><strong>MAC:</strong> ${esc(placement.mac)}</div>
+      <div><strong>Position:</strong> ${FS.num(placement.x, 2)}, ${FS.num(placement.y, 2)}, ${FS.num(placement.z, 2)} m</div>
+      <div><strong>Floor:</strong> ${esc(placement.floor)}</div>
+      <div><strong>Room:</strong> ${esc(roomName)}</div>
+      <div><strong>Placed:</strong> ${new Date(placement.placed_since || Date.now()).toLocaleDateString()}</div>
+    </div>
+    <div style="margin:8px 0">
+      <div style="font-size:10px;font-weight:500;margin:4px 0">Visibility (1h)</div>
+      ${sparklineSvg}
+    </div>
+    <div class="actions" style="margin-top:8px;display:flex;gap:4px">
+      <button class="btn" id="pop-host-link">Host Details</button>
+      <button class="btn" id="pop-devices-link">Devices</button>
+      <button class="btn destructive" id="pop-unplace">Unplace</button>
+    </div>
+  `;
+
+  FS.modal(html, (body) => {
+    const hostLink = body.querySelector('#pop-host-link');
+    const devicesLink = body.querySelector('#pop-devices-link');
+    const unplaceBtn = body.querySelector('#pop-unplace');
+
+    if (hostLink && placement.ip) {
+      hostLink.addEventListener('click', () => {
+        FS.closeModal();
+        window.location.hash = `#host/${encodeURIComponent(placement.ip)}`;
+      });
+    }
+
+    if (devicesLink) {
+      devicesLink.addEventListener('click', () => {
+        FS.closeModal();
+        window.location.hash = '#devices';
+      });
+    }
+
+    if (unplaceBtn) {
+      unplaceBtn.addEventListener('click', async () => {
+        try {
+          const resp = await fetch(`/api/space/place/${encodeURIComponent(marker.mac)}`, {
+            method: 'DELETE'
+          });
+
+          if (resp.ok) {
+            FS.closeModal();
+            location.reload();
+          } else {
+            alert('Failed to unplace device');
+          }
+        } catch (err) {
+          alert('Error: ' + err.message);
+        }
+      });
+    }
+  });
+}
+
+// Palette: highlight a device and fly camera to its marker
+function highlightMarkerInPalette(mac, viewer) {
+  const entry = viewer.markerMeshes?.get(mac);
+  if (!entry) return;
+
+  const p = entry.placement;
+  const targetPos = [p.x, p.y, p.z];
+
+  // Animate camera to marker over ~600 ms
+  const startEye = [...viewer.camera.eye];
+  const startCenter = [...viewer.camera.center];
+  const startTime = Date.now();
+  const duration = 600;
+
+  const animateCamera = () => {
+    const elapsed = Date.now() - startTime;
+    const t = Math.min(1, elapsed / duration);
+
+    // Ease out cubic
+    const easeT = 1 - Math.pow(1 - t, 3);
+
+    viewer.camera.eye = [
+      startEye[0] + (targetPos[0] - startEye[0]) * easeT,
+      startEye[1] + (targetPos[1] - startEye[1]) * easeT,
+      startEye[2] + (targetPos[2] - startEye[2]) * easeT
+    ];
+
+    viewer.camera.center = [
+      startCenter[0] + (targetPos[0] - startCenter[0]) * easeT,
+      startCenter[1] + (targetPos[1] - startCenter[1]) * easeT,
+      startCenter[2] + (targetPos[2] - startCenter[2]) * easeT
+    ];
+
+    if (t < 1) {
+      requestAnimationFrame(animateCamera);
+    }
+  };
+
+  animateCamera();
 }
 
 // === Palette Pane (Device List) ===
@@ -811,7 +1115,7 @@ function initPalettePane(listEl, devices, layout) {
       </div>
     `).join('');
 
-    // Add drag handlers
+    // Add drag and click handlers
     listEl.querySelectorAll('.space-device-item').forEach(item => {
       item.addEventListener('dragstart', (e) => {
         const mac = item.dataset.mac;
@@ -822,6 +1126,14 @@ function initPalettePane(listEl, devices, layout) {
 
       item.addEventListener('dragend', () => {
         draggedDevice = null;
+      });
+
+      // Click to highlight marker in 3D and fly camera
+      item.addEventListener('click', () => {
+        const mac = item.dataset.mac;
+        if (FS.space?.viewer) {
+          highlightMarkerInPalette(mac, FS.space.viewer);
+        }
       });
     });
   }
