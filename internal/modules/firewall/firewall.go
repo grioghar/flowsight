@@ -34,7 +34,7 @@ type Module struct {
 	mu                 sync.Mutex
 	lastErr            string
 	identity           core.Identity
-	loaded             map[string]string // anchor -> hash of rules loaded
+	loaded             map[string]string     // anchor -> hash of rules loaded
 	geoTables          map[string]*TableInfo // geo table info
 }
 
