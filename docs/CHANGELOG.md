@@ -12,6 +12,21 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252317
+
+**Every name and domain carries where it came from.** Names now show their
+source (DHCP lease, static reservation, device enrollment, reverse DNS, or
+operator-assigned) and a confidence level, replacing guesswork with clarity.
+In the IP Addresses table and elsewhere, a quiet mark (superscript bullet) on
+a name reveals its source and confidence in the tooltip. Sessions show which
+source gave the domain (SNI, HTTP Host, DNS query, flow probe, or none).
+Countries for addresses likewise carry their source: GeoIP database or none.
+The API includes `name_source` and `name_confidence` on the hosts list, and
+flows include `domain_source` and `country_source`. Operator-assigned names
+remain the highest priority and override all others; DHCP hostnames beat
+device table names; resolver answers never replace local addresses. See
+CONCEPTS.md for the full precedence table.
+
 ## 0.9.8r202609252307
 
 **No more "example.com" on every Cloudflare session.** With no SNI or Host

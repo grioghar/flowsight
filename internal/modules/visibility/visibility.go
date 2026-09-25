@@ -499,7 +499,20 @@ func (m *Module) decodeFlow(f obj, ifname string, now int64) (core.Flow, bool) {
 	} else {
 		key = ifname + "/" + key
 	}
+	// Track domain source: SNI > HTTP Host > probe name > resolver answer > none
 	domain := strings.TrimSpace(f.str("info", "server_name", "host_server_name", "sni"))
+	domainSource := "none"
+	if domain != "" {
+		// Domain came from SNI or server_name field (client-provided)
+		if strings.HasPrefix(domain, "http") {
+			if u, err := url.Parse(domain); err == nil {
+				domain = u.Host
+				domainSource = "http_host"
+			}
+		} else {
+			domainSource = "sni"
+		}
+	}
 	if domain == "" {
 		// The probe's own name for the far end comes from whatever DNS answer
 		// it last saw point at that address. For an address shared by many
@@ -515,16 +528,13 @@ func (m *Module) decodeFlow(f obj, ifname string, now int64) (core.Flow, bool) {
 			}
 			if !shared {
 				domain = strings.ToLower(strings.TrimSuffix(n, "."))
+				domainSource = "probe_name"
 			}
-		}
-	}
-	if strings.HasPrefix(domain, "http") {
-		if u, err := url.Parse(domain); err == nil {
-			domain = u.Host
 		}
 	}
 	if domain != "" && (net.ParseIP(domain) != nil || strings.ContainsAny(domain, " /")) {
 		domain = ""
+		domainSource = "none"
 	}
 	if domain == "" && m.identity != nil {
 		// nothing from ntopng; the resolver's answers may still name the far end
@@ -541,12 +551,18 @@ func (m *Module) decodeFlow(f obj, ifname string, now int64) (core.Flow, bool) {
 	if cat == "" {
 		cat = f.str("category_name", "cat_name")
 	}
+	// Country source is always from the enrichment database when present
+	countrySource := "none"
+	if country := srv.str("country"); country != "" && country != "-" {
+		countrySource = "database"
+	}
+
 	fl := core.Flow{
 		TS: first, Key: key, SrcIP: srcIP, SrcPort: int(cli.num("port")), DstIP: dstIP,
 		DstPort: int(srv.num("port")), Proto: strings.ToLower(l4), App: app, Category: cat, Domain: domain,
-		BytesIn: in, BytesOut: out, Packets: f.i64("packets", "num_packets"),
+		DomainSource: domainSource, BytesIn: in, BytesOut: out, Packets: f.i64("packets", "num_packets"),
 		Duration: f.num("duration"), Source: "ntopng", Iface: ifname,
-		Country: srv.str("country"), TLSVersion: f.str("tls_version"),
+		Country: srv.str("country"), CountrySource: countrySource, TLSVersion: f.str("tls_version"),
 	}
 	if e := f.str("encrypted"); e == "true" && fl.TLSVersion == "" {
 		fl.TLSVersion = "TLS"

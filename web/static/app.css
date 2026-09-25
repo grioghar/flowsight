@@ -635,3 +635,16 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .card h3 .grip:hover { opacity: 1; }
 .card.dragging { opacity: .5; outline: 2px dashed var(--line); }
 #layout:empty { display: none; }
+
+/* Provenance mark: quiet indicator of name/domain source and confidence */
+.provenance-mark {
+  display: inline-block;
+  font-size: 0.75em;
+  color: var(--muted);
+  opacity: 0.6;
+  margin-left: 2px;
+  cursor: help;
+  border-bottom: 1px dotted var(--muted);
+  padding-bottom: 1px;
+  vertical-align: super;
+}

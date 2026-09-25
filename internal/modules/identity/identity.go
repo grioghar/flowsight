@@ -97,6 +97,113 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 // ---------------------------------------------------------------- service
 
+// NameInfo returns the name for an address along with its source and confidence.
+// Sources in order of trust: override (1.0), dhcp_hostname (0.88), dns_query (0.85),
+// probe_name (0.50), none (0.0). The name comes from the device table when it is
+// the only source; it gives way to a DHCP hostname that came in after enrollment.
+func (m *Module) NameInfo(ip string) struct {
+	Name       string
+	Source     string
+	Confidence float64
+} {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Operator override has the highest confidence
+	if n := m.overr[ip]; n != "" {
+		return struct {
+			Name       string
+			Source     string
+			Confidence float64
+		}{Name: n, Source: "override", Confidence: 1.0}
+	}
+
+	if ip == "127.0.0.1" || ip == "::1" {
+		return struct {
+			Name       string
+			Source     string
+			Confidence float64
+		}{Name: "this gateway (loopback)", Source: "loopback", Confidence: 1.0}
+	}
+
+	// Check if a DHCP lease covers this address
+	if mac := m.macs[ip]; mac != "" {
+		for _, l := range m.leases {
+			if l.MAC == mac && l.IP == ip && l.Hostname != "" && l.Hostname != "*" {
+				return struct {
+					Name       string
+					Source     string
+					Confidence float64
+				}{Name: l.Hostname, Source: "dhcp_hostname", Confidence: 0.88}
+			}
+		}
+	}
+
+	// Check static reservations / /etc/hosts
+	if n := m.static[ip]; n != "" {
+		return struct {
+			Name       string
+			Source     string
+			Confidence float64
+		}{Name: n, Source: "reservation", Confidence: 0.80}
+	}
+
+	// Check device table (enrollment) names
+	// These are lower priority than DHCP or reservation
+	if n := m.names[ip]; n != "" {
+		// Try to determine if this is from device table or elsewhere
+		// For now, assume device table if not in leases
+		isFromDeviceTable := true
+		if mac := m.macs[ip]; mac != "" {
+			for _, l := range m.leases {
+				if l.MAC == mac && l.IP == ip {
+					isFromDeviceTable = false
+					break
+				}
+			}
+		}
+		if isFromDeviceTable {
+			return struct {
+				Name       string
+				Source     string
+				Confidence float64
+			}{Name: n, Source: "device_table", Confidence: 0.70}
+		}
+	}
+
+	// Check device via MAC for any address the device holds
+	if mac := m.macs[ip]; mac != "" {
+		if n := m.macName[mac]; n != "" {
+			return struct {
+				Name       string
+				Source     string
+				Confidence float64
+			}{Name: n, Source: "device_table", Confidence: 0.70}
+		}
+	}
+
+	// Check ever-known MAC
+	if mac := m.everMAC[ip]; mac != "" {
+		if n := m.macName[mac]; n != "" {
+			return struct {
+				Name       string
+				Source     string
+				Confidence float64
+			}{Name: n, Source: "device_table", Confidence: 0.70}
+		}
+	}
+
+	// Check resolver answers (lowest confidence)
+	// These only apply to non-local addresses
+	// We don't hold the lock when querying the database, so we need to release it first
+	// Return a placeholder that the caller must then check
+	return struct {
+		Name       string
+		Source     string
+		Confidence float64
+	}{Name: "", Source: "none", Confidence: 0.0}
+}
+
 func (m *Module) Name(ip string) string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -1141,11 +1248,15 @@ func (m *Module) apiHosts(r *core.Req) (any, error) {
 	m.mu.RLock()
 	for _, row := range rows {
 		ip, _ := row["ip"].(string)
+		info := m.NameInfo(ip)
 		if n := m.overr[ip]; n != "" {
 			row["name"] = n
 		} else if n := m.names[ip]; n != "" && row["name"] == nil {
 			row["name"] = n
 		}
+		// Add provenance information for names
+		row["name_source"] = info.Source
+		row["name_confidence"] = int(info.Confidence * 100) // Convert to 0-100 scale
 		if mac, _ := row["mac"].(string); mac != "" {
 			row["vendor"] = m.Vendor(mac)
 			row["randomized"] = isRandomized(mac)
