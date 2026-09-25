@@ -12,6 +12,13 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252242
+
+**Withdraws 0.9.8r202609252231**, which never reached a gateway: its
+country-name table broke on the apostrophe in Côte d'Ivoire and the
+interface script would not have parsed. The table is now emitted as JSON,
+and the release chain stops on a failed interface check instead of tagging.
+
 ## 0.9.8r202609252231
 
 **Country codes show their name on hover.** Everywhere the interface prints
