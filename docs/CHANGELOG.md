@@ -12,6 +12,20 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252307
+
+**No more "example.com" on every Cloudflare session.** With no SNI or Host
+to go on, a session took the flow probe's own name for the far end, which
+is whatever DNS answer the probe last saw point at that address. For an
+address shared by many sites that is a coincidence: one check of example.com
+from the gateway had every session to Cloudflare wearing that name. An
+anycast far end now takes no cached name; the wrong rows already stored are
+cleared once.
+
+**Overview: one row per device in Top hosts.** A device's IPv4 lease and its
+IPv6 addresses were separate rows; they fold into one, traffic summed, with
+the IPv4 address shown and the count of other addresses beside it.
+
 ## 0.9.8r202609252300
 
 **A route's trail stops where the story ends.** Once the destination itself

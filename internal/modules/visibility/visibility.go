@@ -131,6 +131,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 	// have no country; fill them in behind the scenes, a few hundred a minute,
 	// so the "abroad" views cover the whole retention window.
 	ctx.Every("country_backfill", time.Minute, m.backfillCountries, core.Delayed())
+	// Sessions labelled by the probe's stale name cache for a shared address
+	// (see decodeFlow): the one label known to be wrong is cleared; rows with
+	// a client-stated name (SNI) are untouched.
+	_ = ctx.Store.Exec(`UPDATE flows SET domain=NULL WHERE domain='example.com' AND (tls_sni IS NULL OR tls_sni='')`)
 	ctx.Route("GET", "/api/visibility/abroad", m.apiAbroad, core.Doc("Per local device, the foreign countries it reached, sessions and bytes per country, and the destinations behind them"),
 		core.Params("hours", "window, default 24", "ip", "one device only"))
 	ctx.Route("GET", "/api/visibility/flows", m.apiFlows, core.Doc("Recent flows"),
@@ -497,8 +501,21 @@ func (m *Module) decodeFlow(f obj, ifname string, now int64) (core.Flow, bool) {
 	}
 	domain := strings.TrimSpace(f.str("info", "server_name", "host_server_name", "sni"))
 	if domain == "" {
+		// The probe's own name for the far end comes from whatever DNS answer
+		// it last saw point at that address. For an address shared by many
+		// sites (a CDN or any anycast range) that is a coincidence, not a
+		// label: one probe of example.com from the gateway had every session
+		// to Cloudflare reading "example.com" for a day. Only an address that
+		// is not anycast takes the probe's name; the rest stay unnamed until
+		// the client says a name itself (SNI, Host, the DNS query).
 		if n := srv.str("name"); n != "" && n != dstIP && net.ParseIP(n) == nil && !strings.Contains(n, "@") {
-			domain = strings.ToLower(strings.TrimSuffix(n, "."))
+			shared := false
+			if anyc, ok := m.ctx.Service("anycast").(core.AnycastLookup); ok {
+				shared, _ = anyc.Anycast(dstIP)
+			}
+			if !shared {
+				domain = strings.ToLower(strings.TrimSuffix(n, "."))
+			}
 		}
 	}
 	if strings.HasPrefix(domain, "http") {
@@ -979,11 +996,12 @@ func (m *Module) apiTop(r *core.Req) (any, error) {
 	hosts, err := st.Rows(`SELECT src_ip AS ip, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out,
 		SUM(flows) AS flows, SUM(CASE WHEN verdict='blocked' THEN flows ELSE 0 END) AS blocked, MAX(bucket) AS last_seen,
 		COUNT(DISTINCT app) AS apps
-		FROM rollup_app WHERE bucket>=? GROUP BY src_ip ORDER BY flows DESC LIMIT ?`, since, limit)
+		FROM rollup_app WHERE bucket>=? GROUP BY src_ip ORDER BY flows DESC LIMIT ?`, since, limit*4)
 	if err != nil {
 		return nil, err
 	}
 	m.decorate(hosts, "ip", "name")
+	hosts = m.foldHostsByDevice(hosts, limit)
 	apps, _ := st.Rows(`SELECT app, MAX(category) AS category, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out,
 		SUM(flows) AS flows, COUNT(DISTINCT src_ip) AS hosts, MAX(bucket) AS last_seen
 		FROM rollup_app WHERE bucket>=? GROUP BY app ORDER BY flows DESC LIMIT ?`,
@@ -1392,4 +1410,68 @@ func containsStr(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// foldHostsByDevice makes the top-hosts list one row per device: a laptop
+// with an IPv4 lease and a few IPv6 addresses is one entry, its traffic
+// summed, the IPv4 address as the row's address and the rest listed.
+func (m *Module) foldHostsByDevice(rows []map[string]any, limit int) []map[string]any {
+	if m.identity == nil {
+		if len(rows) > limit {
+			rows = rows[:limit]
+		}
+		return rows
+	}
+	type acc struct {
+		row   map[string]any
+		addrs []string
+	}
+	byKey := map[string]*acc{}
+	var order []string
+	for _, r := range rows {
+		ip, _ := r["ip"].(string)
+		key := ip
+		if mac := m.identity.MAC(ip); mac != "" {
+			key = mac
+			r["mac"] = mac
+		}
+		a := byKey[key]
+		if a == nil {
+			a = &acc{row: r}
+			byKey[key] = a
+			order = append(order, key)
+		} else {
+			for _, k := range []string{"bytes_in", "bytes_out", "flows", "blocked"} {
+				a.row[k] = toI(a.row[k]) + toI(r[k])
+			}
+			if toI(r["apps"]) > toI(a.row["apps"]) {
+				a.row["apps"] = r["apps"]
+			}
+			if toI(r["last_seen"]) > toI(a.row["last_seen"]) {
+				a.row["last_seen"] = r["last_seen"]
+			}
+			if n, _ := r["name"].(string); n != "" {
+				if cur, _ := a.row["name"].(string); cur == "" {
+					a.row["name"] = n
+				}
+			}
+			cur, _ := a.row["ip"].(string)
+			if strings.Contains(cur, ":") && !strings.Contains(ip, ":") {
+				a.row["ip"] = ip
+			}
+		}
+		a.addrs = append(a.addrs, ip)
+	}
+	out := make([]map[string]any, 0, len(order))
+	for _, k := range order {
+		a := byKey[k]
+		sort.Strings(a.addrs)
+		a.row["addresses"] = a.addrs
+		out = append(out, a.row)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return toI(out[i]["flows"]) > toI(out[j]["flows"]) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }
