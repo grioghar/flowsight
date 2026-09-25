@@ -12,6 +12,13 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252128
+
+**The kernel address count read zero.** `pfctl -v -sT` prints flags and
+names only; the per-table statistics need `-vv`. The *In kernel* column on
+the Policies page and `kernel_addresses` in the API now show the real
+figure (a membership test had already proved the table full).
+
 ## 0.9.8r202609252118
 
 **Country tables, proven from the kernel.** The first live country policy

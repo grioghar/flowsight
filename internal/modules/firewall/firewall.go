@@ -382,9 +382,10 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 }
 
 // tableSizes reads the kernel's own address counts for the tables of an
-// anchor, from pfctl -vsT ("Addresses: N" under each table line).
+// anchor, from pfctl -vvsT ("Addresses: N" under each table line).
 func (m *Module) tableSizes(anchor string) map[string]int {
-	out, err := m.pfctl("-a", rootAnchor+"/"+anchor, "-vsT")
+	// -vv: one -v prints flags and names only; the address counts come with two.
+	out, err := m.pfctl("-a", rootAnchor+"/"+anchor, "-vvsT")
 	if err != nil {
 		return nil
 	}
