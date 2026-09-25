@@ -12,6 +12,18 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252255
+
+**OpenAPI 3.0 self-documenting API.** The API now supports full OpenAPI 3.0
+documentation metadata: every route can be annotated with request/response
+schemas, parameters with types and examples, and operation descriptions. The
+interactive API explorer (Administration page) now shows parameter tables,
+request body field documentation, and response examples. An `apidoc` tool
+generates searchable Markdown documentation from the live spec. Routes use
+new helpers (`Fld()`, `Query()`, `PathParam()`, `Body()`, `Returns()`,
+`ReturnsType()`) to make documentation concise and maintainable. Download the
+full spec from the API page for use with Swagger UI, Insomnia, or Postman.
+
 ## 0.9.8r202609252242
 
 **Withdraws 0.9.8r202609252231**, which never reached a gateway: its
