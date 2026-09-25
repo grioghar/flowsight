@@ -247,7 +247,7 @@ UDP flow collectors for NetFlow v5/v9, IPFIX, and sFlow v5. Extends visibility t
 
 | Key | Setting | Type | Default | Notes |
 |---|---|---|---|---|
-| `enabled` | Enable netflow collectors | bool | `false` | Listeners open and accept flows only when enabled. |
+| `collect` | Collect flows (open the listeners) | bool | `false` | The UDP listeners open and accept flows only when this is on. (`enabled` is the module switch, as for every module.) |
 | `bind_address` | Bind address | string | `(LAN bind address)` | Interface to listen on; empty uses the platform default LAN address. |
 | `netflow5_port` | NetFlow v5 port | int | `2055` | UDP port for NetFlow v5 (fixed-format legacy flows). |
 | `netflow9_port` | NetFlow v9 port | int | `2055` | UDP port for NetFlow v9 (template-based flows). |

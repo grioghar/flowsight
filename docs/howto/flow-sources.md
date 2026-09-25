@@ -16,7 +16,7 @@ You will **not** see:
 
 ## Prerequisites
 
-1. **NetFlow module enabled**: Go to Settings → Network Flow Collection and toggle "Enable netflow collectors".
+1. **NetFlow module enabled**: Go to Settings → Network Flow Collection and turn on "Collect flows (open the listeners)"s".
 2. **Network device**: A router, switch, or firewall that exports NetFlow v5, v9, IPFIX, or sFlow v5.
 3. **FlowSight reachable**: The exporting device must be able to reach FlowSight on UDP port 2055 (NetFlow/IPFIX) or 6343 (sFlow), or the port you configured.
 
@@ -26,7 +26,7 @@ You will **not** see:
 
 1. Log in to OPNsense web interface.
 2. Go to **Reporting → NetFlow**.
-3. Check **Enable NetFlow** (if not already enabled).
+3. Turn on **Collect flows (open the listeners)** if it is not on already.
 4. Under **NetFlow Collector** → **Add collector**:
    - **Host**: FlowSight's IP address (e.g., `192.168.1.1`)
    - **Port**: `2055` (default NetFlow port)

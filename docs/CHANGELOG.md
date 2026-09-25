@@ -12,6 +12,14 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252339
+
+**Flow sources module was never loaded.** Its collector switch was named
+`enabled`, which is the key the core reads to load or skip a module, so a
+default of off switched the whole module off: no page, no routes. The
+collector switch is now `collect` (default off; the listeners open only when
+it is on) and the module loads like every other.
+
 ## 0.9.8r202609252331
 
 **Extend visibility beyond the gateway with NetFlow, IPFIX, and sFlow.** A new

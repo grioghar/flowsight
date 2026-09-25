@@ -82,7 +82,7 @@ func (m *Module) Info() core.ModuleInfo {
 		Capabilities: []string{core.CapTrafficObserve},
 		After:        []string{"identity"},
 		Defaults: map[string]any{
-			"enabled":           false,
+			"collect":           false,
 			"bind_address":      "",
 			"netflow5_port":     2055,
 			"netflow9_port":     2055,
@@ -93,7 +93,7 @@ func (m *Module) Info() core.ModuleInfo {
 			"max_exporters":     100,
 		},
 		Schema: []core.SettingField{
-			{Key: "enabled", Label: "Enable netflow collectors", Type: "bool",
+			{Key: "collect", Label: "Collect flows (open the listeners)", Type: "bool",
 				Section: "Network Flow Collection", Help: "UDP listeners must be turned on before exporters can connect."},
 			{Key: "bind_address", Label: "Bind address", Type: "string", Placeholder: "LAN address or 0.0.0.0",
 				Section: "Network Flow Collection", Help: "Leave empty to use the platform default LAN bind address."},
@@ -134,7 +134,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 }
 
 func (m *Module) reconfigure(s map[string]any) error {
-	if !core.Bool(s, "enabled", false) {
+	if !core.Bool(s, "collect", false) {
 		m.Stop()
 		return nil
 	}
@@ -426,7 +426,7 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	}
 
 	return map[string]any{
-		"enabled":   core.Bool(m.ctx.Settings(), "enabled", false),
+		"collecting": core.Bool(m.ctx.Settings(), "collect", false),
 		"exporters": exporters,
 		"ok":        m.lastErr == "",
 		"error":     m.lastErr,
