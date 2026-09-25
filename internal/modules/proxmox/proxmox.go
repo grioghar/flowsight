@@ -315,15 +315,34 @@ type pveAgentOSInfo struct {
 	} `json:"result"`
 }
 
+// pveLXCInterfaces is /nodes/{n}/lxc/{vmid}/interfaces as PVE 8/9 return
+// it: hwaddr and hardware-address both present, addresses as a list of
+// {ip-address, ip-address-type} plus inet/inet6 CIDR strings.
 type pveLXCInterfaces struct {
 	Data []struct {
-		Name    string `json:"name"`
-		HwAddr  string `json:"hwaddr"`
-		Address []struct {
-			Address string `json:"address"`
-			Family  string `json:"family"`
-		} `json:"address"`
+		Name            string `json:"name"`
+		HwAddr          string `json:"hwaddr"`
+		HardwareAddress string `json:"hardware-address"`
+		Inet            string `json:"inet"`
+		Inet6           string `json:"inet6"`
+		IPAddresses     []struct {
+			IPAddress string `json:"ip-address"`
+			Type      string `json:"ip-address-type"`
+		} `json:"ip-addresses"`
 	} `json:"data"`
+}
+
+// usableIP is an address worth recording: not loopback, not link-local.
+func usableIP(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	if i := strings.Index(s, "/"); i > 0 {
+		s = s[:i]
+	}
+	ip := net.ParseIP(s)
+	if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+		return "", false
+	}
+	return ip.String(), true
 }
 
 // HTTP and polling
@@ -615,12 +634,11 @@ func (m *Module) pollHost(hostURL string, inv *Inventory, excludeVMIDs map[strin
 									if iface.HardwareAddress != "" && iface.HardwareAddress != "00:00:00:00:00:00" {
 										g.MACs = append(g.MACs, strings.ToLower(iface.HardwareAddress))
 									}
+									// The agent reports the family as inet/inet6 (PVE 9)
+									// or ipv4/ipv6 (older); the address decides.
 									for _, addr := range iface.IPAddresses {
-										if addr.IPAddress != "" && addr.Type == "ipv4" || addr.Type == "ipv6" {
-											ip := net.ParseIP(addr.IPAddress)
-											if ip != nil && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
-												g.IPs = append(g.IPs, addr.IPAddress)
-											}
+										if ip, ok := usableIP(addr.IPAddress); ok {
+											g.IPs = append(g.IPs, ip)
 										}
 									}
 								}
@@ -695,13 +713,23 @@ func (m *Module) pollHost(hostURL string, inv *Inventory, excludeVMIDs map[strin
 					var ifaces pveLXCInterfaces
 					if err := json.Unmarshal(ifBody, &ifaces); err == nil && ifaces.Data != nil {
 						for _, iface := range ifaces.Data {
-							if iface.HwAddr != "" && iface.HwAddr != "00:00:00:00:00:00" {
-								g.MACs = append(g.MACs, strings.ToLower(iface.HwAddr))
+							mac := iface.HwAddr
+							if mac == "" {
+								mac = iface.HardwareAddress
 							}
-							for _, addr := range iface.Address {
-								ip := net.ParseIP(addr.Address)
-								if ip != nil && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
-									g.IPs = append(g.IPs, addr.Address)
+							if mac != "" && mac != "00:00:00:00:00:00" {
+								g.MACs = append(g.MACs, strings.ToLower(mac))
+							}
+							for _, addr := range iface.IPAddresses {
+								if ip, ok := usableIP(addr.IPAddress); ok {
+									g.IPs = append(g.IPs, ip)
+								}
+							}
+							if len(iface.IPAddresses) == 0 {
+								for _, cidr := range []string{iface.Inet, iface.Inet6} {
+									if ip, ok := usableIP(cidr); ok {
+										g.IPs = append(g.IPs, ip)
+									}
 								}
 							}
 						}

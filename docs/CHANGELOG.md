@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251908
+
+**Proxmox reads what the API actually sends.** Against the live node the
+first poll listed 57 guests with no addresses: container interfaces carry
+addresses as `ip-addresses[].ip-address`, the guest agent reports the
+family as `inet`/`inet6`, and the map's traffic queries named columns the
+rollup table does not have. All three are fixed against the captured
+responses, with tests. Guest-agent facts also need the `VM.GuestAgent.Audit`
+privilege on Proxmox 8 and 9; the configuration guide's role now includes
+it.
+
 ## 0.9.8r202609251903
 
 **Proxmox status no longer hangs after the first poll.** The optional

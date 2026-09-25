@@ -183,8 +183,8 @@ func (m *Module) getObservedEdges(hours int, ipToGuest map[string]int, guestByVM
 
 	// Query rollup_dst for traffic between guests
 	rows, err := m.ctx.Store.Rows(
-		`SELECT src_ip, dst_ip, dst_port, proto, SUM(flows) as flows, SUM(bytes) as bytes
-		 FROM rollup_dst WHERE last_seen >= ? GROUP BY src_ip, dst_ip, dst_port, proto`,
+		`SELECT src_ip, dst_ip, dst_port, proto, SUM(flows) as flows, SUM(bytes_in+bytes_out) as bytes
+		 FROM rollup_dst WHERE bucket >= ? GROUP BY src_ip, dst_ip, dst_port, proto`,
 		cutoff)
 	if err != nil {
 		return edges
@@ -289,8 +289,8 @@ func (m *Module) getExternalDeps(hours int, ipToGuest map[string]int, guestByVMI
 
 	// Query rollup_dst for external destinations from guest IPs
 	rows, err := m.ctx.Store.Rows(
-		`SELECT dst_ip, SUM(flows) as flows, SUM(bytes) as bytes
-		 FROM rollup_dst WHERE last_seen >= ? AND src_ip IN (
+		`SELECT dst_ip, SUM(flows) as flows, SUM(bytes_in+bytes_out) as bytes
+		 FROM rollup_dst WHERE bucket >= ? AND src_ip IN (
 		 	`+strings.Join(placeholders, ",")+`
 		 ) GROUP BY dst_ip ORDER BY bytes DESC LIMIT 20`,
 		args...)

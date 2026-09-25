@@ -381,7 +381,7 @@ The Proxmox module maps Proxmox VE cluster inventory into FlowSight: nodes, QEMU
 Create a token with minimal privileges:
 
 ```bash
-pveum role add FlowSight -privs "VM.Audit VM.Config.Options Sys.Audit"
+pveum role add FlowSight -privs "VM.Audit VM.Config.Options Sys.Audit Datastore.Audit VM.GuestAgent.Audit"
 pveum user add flowsight@pve
 pveum user token add flowsight@pve flowsight --privsep 0
 pveum acl modify / --users flowsight@pve --roles FlowSight
