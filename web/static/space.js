@@ -52,6 +52,7 @@ FS.registerPage('space', {
           <!-- 3D pane (WebGL) -->
           <div id="space-3d" class="space-pane space-3d">
             <div class="space-toolbar">
+              <button id="btn-3d-upload-scan" class="btn-icon" title="Upload scan (GLB, OBJ, PLY, RoomPlan JSON)">⬆ Scan</button>
               <button id="btn-3d-level" class="btn-icon" title="Level the scan to floor (click 3 floor points)">📐 Level</button>
               <button id="btn-3d-align" class="btn-icon" title="Align scan to plan (2 pts in 3D → 2 pts on plan)">⚙ Align</button>
               <label>Floor: <select id="space-3d-floor-select" style="margin:0 8px">
@@ -109,8 +110,11 @@ FS.registerPage('space', {
     // Plan pane: 2D editor
     initPlanPane(el, planCanvas, layout);
 
-    // 3D pane: WebGL viewer (stub for now; full implementation in space-gl.js)
+    // 3D pane: WebGL viewer
     init3DPane(canvas3d, layout);
+
+    // Upload scan modal
+    initUploadScan(el);
 
     // Palette pane: device list
     initPalettePane(devicesList, devices, layout);
@@ -595,6 +599,97 @@ function initPalettePane(listEl, devices, layout) {
   filterUnplaced?.addEventListener('change', renderDevices);
 
   renderDevices();
+}
+
+// === Upload Scan ===
+
+function initUploadScan(el) {
+  const btn = el.querySelector('#btn-3d-upload-scan');
+  if (!btn) return;
+
+  btn.addEventListener('click', () => {
+    const html = `
+      <h2>Upload Scan</h2>
+      <p>Supported formats: GLB (recommended), OBJ, PLY, RoomPlan JSON</p>
+      <input type="file" id="scan-file" accept=".glb,.obj,.ply,.json" style="display:block;margin:12px 0">
+      <div id="scan-size" style="font-size:11px;color:var(--text-muted);margin:8px 0"></div>
+      <div class="actions">
+        <button class="btn primary" id="upload-btn">Upload</button>
+        <button class="btn" id="cancel-btn">Cancel</button>
+      </div>
+    `;
+
+    FS.modal(html, (body) => {
+      const fileInput = body.querySelector('#scan-file');
+      const sizeDiv = body.querySelector('#scan-size');
+      const uploadBtn = body.querySelector('#upload-btn');
+      const cancelBtn = body.querySelector('#cancel-btn');
+
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+          const file = fileInput.files[0];
+          const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+          sizeDiv.textContent = `File: ${file.name} (${sizeMB} MB)`;
+
+          if (file.size > 50 * 1024 * 1024) {
+            sizeDiv.textContent += ' ⚠ Max 50 MB';
+          }
+
+          // Check format
+          const ext = file.name.split('.').pop().toLowerCase();
+          if (!['glb', 'obj', 'ply', 'json'].includes(ext)) {
+            sizeDiv.textContent += ' ⚠ Unsupported format';
+          }
+
+          if (ext === 'usdz') {
+            sizeDiv.innerHTML += '<br><strong>USDZ not supported.</strong> Export your scan as GLB or OBJ from your app (see docs).';
+          }
+        }
+      });
+
+      uploadBtn.addEventListener('click', async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = 'Uploading...';
+
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const resp = await fetch(`/api/space/scan?name=${encodeURIComponent(file.name.split('.')[0])}`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (resp.ok) {
+            FS.closeModal();
+            uploadBtn.textContent = 'Upload';
+            uploadBtn.disabled = false;
+
+            // Reload to show the new scan
+            setTimeout(() => location.reload(), 500);
+          } else {
+            const err = await resp.text();
+            sizeDiv.innerHTML = `<strong style="color:red">Upload failed: ${err}</strong>`;
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Upload';
+          }
+        } catch (e) {
+          sizeDiv.innerHTML = `<strong style="color:red">Error: ${e.message}</strong>`;
+          uploadBtn.disabled = false;
+          uploadBtn.textContent = 'Upload';
+        }
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        FS.closeModal();
+      });
+
+      fileInput.focus();
+    });
+  });
 }
 
 // === Helpers ===
