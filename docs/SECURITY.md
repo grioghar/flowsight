@@ -185,6 +185,20 @@ Addresses are named from what FlowSight already holds, the server name in a
 handshake and the answer to a DNS query. No external service is consulted to
 name a destination.
 
+## Reviewing the host firewall
+
+FlowSight sees, reports, and can enforce policy only on traffic the gateway already forwards. It does not rewrite rules that are already in place; it adds a policy layer. Before deploying FlowSight:
+
+- **Examine the base firewall ruleset**: Disable any rules that serve the functions FlowSight will take over (e.g., category blocks, per-host rate limits, time-based access). FlowSight policies are less brittle and easier to audit than static pf rules; running both creates confusion and wastes rules.
+- **Test in monitor mode first**: Leave enforcement off for a day, so FlowSight can learn which applications your network runs and which category feeds need tuning. A policy that blocks YouTube on a network where the conference room streams announcements will fail visibly in monitor mode; in enforce mode, the room's TV goes dark during a board meeting.
+- **Understand ICAP scope**: If you enable Stateful Packet Inspection (Business tier), it runs on every decrypted request from the policy it covers. It does not see pinned sessions or bypassed hosts; it does not block on its own (only in monitor mode for testing). If you want to block a content type, use the content filter rules or set up a HTTP sniff handler in the policy editor.
+
+Because FlowSight is stateless with respect to the base firewall, you can:
+
+- Remove it from the gateway without reboot and without affecting rules already in place.
+- Roll back to an older policy by reverting `policy.json` and restarting the daemon.
+- Run FlowSight in monitor mode indefinitely; it will not drop any traffic.
+
 ## Hardening checklist
 
 - Keep the daemon on loopback; reach it through the OPNsense GUI or a

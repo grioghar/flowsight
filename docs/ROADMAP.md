@@ -46,6 +46,8 @@
 - Reimplementing DPI. nDPI is better than anything this project would write.
 - A packet engine of our own in the forwarding path.
 - A cloud dependency of any kind.
+- **Multi-gateway high availability (HA)**: FlowSight is designed as a single gateway appliance. If you need redundancy, run two independent instances with separate policy documents and alert channels, or use CARP/VRRP at the appliance level (e.g., on OPNsense). FlowSight does not coordinate policy, state, or flow data across instances.
+- **CARP or VRRP failover**: High-availability protocols belong in the base firewall OS (OPNsense, pfSense, Linux). FlowSight consumes the gateway's state (pf rules, DNS responses); it does not generate them and cannot drive failover decisions. For HA, configure CARP/VRRP in your firewall, then run a separate FlowSight instance on each member.
 
 ## Licensing (done 2026-09-20)
 

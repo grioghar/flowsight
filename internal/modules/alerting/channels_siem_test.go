@@ -528,11 +528,11 @@ func TestSyslogUDPFormat(t *testing.T) {
 
 	ch := &Channel{
 		Config: map[string]string{
-			"host":      conn.LocalAddr().(*net.UDPAddr).IP.String(),
-			"port":      fmt.Sprintf("%d", conn.LocalAddr().(*net.UDPAddr).Port),
-			"protocol":  "udp",
-			"facility":  "local0",
-			"format":    "rfc5424",
+			"host":     conn.LocalAddr().(*net.UDPAddr).IP.String(),
+			"port":     fmt.Sprintf("%d", conn.LocalAddr().(*net.UDPAddr).Port),
+			"protocol": "udp",
+			"facility": "local0",
+			"format":   "rfc5424",
 		},
 	}
 
@@ -628,10 +628,10 @@ func TestSplunkHECFormat(t *testing.T) {
 
 	ch := &Channel{
 		Config: map[string]string{
-			"host":      hostPart,
-			"port":      portPart,
-			"token":     "test-hec-token-123",
-			"index":     "main",
+			"host":       hostPart,
+			"port":       portPart,
+			"token":      "test-hec-token-123",
+			"index":      "main",
 			"sourcetype": "_json",
 		},
 	}
@@ -682,10 +682,10 @@ func TestCloudWatchLogsFormat(t *testing.T) {
 
 	ch := &Channel{
 		Config: map[string]string{
-			"region":         "us-east-1",
-			"log_group":      "/flowsight/alerts",
-			"log_stream":     "alerts",
-			"access_key_id": "AKIAIOSFODNN7EXAMPLE",
+			"region":            "us-east-1",
+			"log_group":         "/flowsight/alerts",
+			"log_stream":        "alerts",
+			"access_key_id":     "AKIAIOSFODNN7EXAMPLE",
 			"secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
 		},
 	}
@@ -743,8 +743,8 @@ func TestWazuhAPIFormat(t *testing.T) {
 
 	ch := &Channel{
 		Config: map[string]string{
-			"host":    server.URL,
-			"user":    "wazuh_user",
+			"host":     server.URL,
+			"user":     "wazuh_user",
 			"password": "wazuh_pass",
 		},
 	}
