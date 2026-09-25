@@ -1110,12 +1110,47 @@ relationships.
 
 ### Reports
 
-Pick a report (network summary, per host, per application, web, DNS,
-security, policy effectiveness) and a window; **Preview** renders it in the
-browser. **Schedules** (Pro): the same reports by e-mail daily, weekly or
-monthly, to a list of recipients, through a channel from Alerting; *Run
-now* sends one immediately. **Export** (Pro): flows, DNS, alerts or hosts
-for the window as CSV.
+**Report Builder**: Create custom reports by selecting sections, setting
+filters, and choosing output formats. Each report is a reusable definition
+that can be run on-demand or scheduled.
+
+**Sections** (select one or more per report):
+- Executive Summary: High-level metrics (hosts, flows, bytes, alerts)
+- Traffic by Device: Flows and bytes per source device
+- Traffic by Zone: Aggregated activity by network zone
+- Traffic by Application: Ranking by application type
+- Traffic by Category: Content categories in use
+- Traffic by Site: Top destination domains
+- Blocked Activity: Policy violations and rejected requests
+- Egress Activity & DLP: Large outbound transfers, first-seen destinations
+- DNS Summary: Query counts, top domains, block rates
+- TLS Posture: Protocol versions, certificate trust, interception coverage
+- Scan Findings: Security findings from device identification
+- Device Inventory Changes: New devices, renames, zone moves
+- Alerting Deliveries: Notification delivery log
+- System Health: Uptime, memory, job failures
+- Security Alerts: IDS/IPS threats by severity and signature
+
+Each section honors **Filters** (source IP, application, category, domain
+pattern, verdict, severity) and supports **Group By** (device, zone,
+application, category, site, hour, day) with **Top N** limiting.
+
+**Formats** (select one or more): HTML, PDF, Markdown, JSON, CSV. Multi-format
+reports are stored separately and downloaded by format.
+
+**Scheduling**: Set cadence (hourly, daily, weekly, monthly) and time; enable
+scheduled delivery through configured alerting channels (email, webhook,
+Discord, Slack, ntfy). Scheduled reports run once per period; restarts do not
+trigger duplicate runs. Next-run times are tracked in the database.
+
+**Run History**: Recent runs are listed with status, size, and format-specific
+download links. Built-in definitions are read-only but can be duplicated and
+customized. Reports are retained per definition (keep_runs setting) and
+globally (max_total_mb), with oldest pruned first.
+
+**On-Disk Storage**: Reports are stored under `<DataDir>/reports/<definition>/`
+with metadata indexed in KV for fast lookup and retention enforcement. Downloaded
+reports are served with proper authentication and content types.
 
 ### Alerting
 

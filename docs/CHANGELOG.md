@@ -12,6 +12,26 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252007
+
+**Reporting engine with 15+ sections, multi-format output, and scheduling.**
+Reports are custom, reusable definitions that select from 15 section types
+(Executive Summary, Traffic by Zone/App/Category/Site, Blocked Activity,
+Egress Activity & DLP, DNS Summary, TLS Posture, Scan Findings, Device
+Inventory, Alerting Deliveries, System Health, Security Alerts). Each
+section honors filters (IP, app, category, domain, verdict, severity) and
+group_by (device, zone, app, category, site, hour, day) with top_n limiting.
+Reports are output to HTML, PDF, Markdown, JSON, or CSV; multi-format reports
+are stored separately. Built-in definitions (Daily Digest, Weekly Household,
+Monthly Executive) are read-only but duplicable. Scheduled delivery runs
+hourly, daily, weekly, or monthly at a specified time (UTC or local timezone)
+through alerting channels (email, Discord, Slack, ntfy, webhooks). Retention
+is configurable per definition (keep_runs, default 10) and globally (max_total_mb,
+default 500 MB) with oldest runs pruned automatically. Runs are stored on disk
+and indexed in KV for efficient access. Report downloads require the same
+authentication as all API calls. The Reports page has a definition builder,
+run history with format-specific downloads, and preview in-browser.
+
 ## 0.9.8r202609251946
 
 **Four pages renamed.** *Data out* is now **DLP**; *Deep inspection* is now
