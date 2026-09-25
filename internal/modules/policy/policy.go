@@ -106,6 +106,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/policy", m.apiGet, core.Doc("The policy document, its status and the last plan"))
 	ctx.Route("POST", "/api/policy", m.apiPut, core.Write(), core.Doc("Replace the whole policy document (validated first)"))
 	ctx.Route("GET", "/api/policy/plan", m.apiPlan, core.Doc("Compile onto every provider and show what would change"))
+	ctx.Route("GET", "/api/policy/matches", m.apiMatches, core.Params("name", "policy name", "hours", "window, default 24"),
+		core.Doc("What a policy's country rule matches: per device, the far ends in denied countries from the session table (names, domains, bytes), and the packets the firewall's log recorded for the rule"))
 	ctx.Route("POST", "/api/policy/apply", m.apiApply, core.Write(), core.Doc("Apply the plan now (requires enforce)"))
 	ctx.Route("POST", "/api/policy/policy", m.apiSavePolicy, core.Write(), core.Doc("Create or update one policy"))
 	ctx.Route("POST", "/api/policy/policy/delete", m.apiDeletePolicy, core.Write(), core.Doc("Delete one policy"))

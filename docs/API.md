@@ -125,6 +125,7 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 
 | Method | Path | What | Parameters |
 |---|---|---|---|
+| GET | `/api/firewall/hits` | Packets the policy rules matched, from the filter log (`policy`, `hours`, `limit`), with the log reader's state |  |
 | GET | `/api/firewall/table` | What the kernel holds for one policy table (`name`), and whether `ip` is in it |  |
 | GET | `/api/firewall/status` | Anchor state, tables and rule counters |  |
 
@@ -198,6 +199,7 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | POST | `/api/policy/group` | Create or update a group |  |
 | POST | `/api/policy/group/delete` | Delete a group |  |
 | POST | `/api/policy/import` | Replace the document from YAML or JSON text |  |
+| GET | `/api/policy/matches` | What a policy's country rule matches (`name`, `hours`): devices and their destinations from the session table, plus `logged` packets from the filter log |  |
 | GET | `/api/policy/plan` | Compile onto every provider and show what would change |  |
 | POST | `/api/policy/policy` | Create or update one policy |  |
 | POST | `/api/policy/policy/delete` | Delete one policy |  |

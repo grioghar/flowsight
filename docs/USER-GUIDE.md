@@ -818,6 +818,13 @@ plus any unmet requirement. **Apply** writes it (needs *Enforce policy* on
 in Settings › policy). **Export** and **Import** move the whole document as
 JSON or YAML.
 
+**Matches** (on a policy with a country rule) opens *Policy matches*: per
+device, the far ends in denied countries from the session table (names,
+domains, bytes, last seen, a Map button per destination), and beside it the
+packets the firewall's own log recorded for the rule, by device and
+destination. The first is computed the way the rule is compiled; the second
+is pf's ground truth, read from OPNsense's filter log.
+
 Community allows three policies; Pro removes the limit.
 
 ### Groups & Schedules

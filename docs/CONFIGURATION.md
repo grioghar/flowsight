@@ -169,6 +169,7 @@ FlowSight's own pf anchors: policy blocks, proxy redirects and dynamic address t
 | Key | Setting | Type | Default | Notes |
 |---|---|---|---|---|
 | `log_blocks` | Log blocked packets to pflog | bool | `true` |  |
+| `filter_log` | Filter log to read policy matches from | text | `/var/log/filter/latest.log` | Lines from FlowSight's policy anchor become the per-packet record behind Policies › Matches; empty turns the reader off |
 
 ### identity
 

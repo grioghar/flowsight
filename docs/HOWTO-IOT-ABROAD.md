@@ -87,6 +87,30 @@ document's *exclusions* (as it often is, to keep IoT out of web
 interception), tick **Apply even to hosts in the exclusions list** on the
 Who tab; the plan warns when exclusions would otherwise swallow the policy.
 
+## Step 4: see what the rule is matching, and from which device
+
+Press **Matches** on the policy's row in *Protect › Policies* (or the
+*matches* link beside the rule in the *Firewall tables and rules* card).
+The page has two parts:
+
+- **By device: where the traffic went** lists each device that talked to a
+  denied country in the window, with its sessions, bytes sent and the
+  countries; open a device for the destinations behind it (domain or name,
+  address, country, port and application, sessions, bytes, last seen), each
+  with a **Map** button for the route and a country pill that opens those
+  sessions. This is computed exactly the way the rule is compiled: the
+  policy's members after exclusions, the denied countries, anycast far ends
+  left out.
+- **Logged by the firewall rule** is pf's own record, read from OPNsense's
+  filter log: every packet the rule matched, by device and destination,
+  with names filled in from the session table where it knows them. It is
+  the ground truth for what the rule saw; it lags a few seconds and shows
+  packets, not sessions.
+
+In monitor mode both cards describe what *would* be blocked. Switch the
+action to block when the picture is right; the same page then shows what
+is being stopped.
+
 ## What to expect, and the limits
 
 - A device that cannot reach its cloud may retry hard or stop working. Start

@@ -12,6 +12,22 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252205
+
+**Where a country rule's packets go, and from which device.** *Protect ›
+Policies* gains a **Matches** button on every policy with a country rule,
+opening a page with two views. *By device: where the traffic went* comes
+from the session table, computed the way the rule is compiled (members
+after exclusions, denied countries, anycast left out): each device, its
+sessions and bytes, and the destinations behind it with domain, country,
+port and application, last seen and a Map button. *Logged by the firewall
+rule* is pf's own record: the firewall module now reads OPNsense's filter
+log every ten seconds, keeps the lines from FlowSight's policy anchor, maps
+rule numbers back to labels, and stores them for seven days
+(`GET /api/firewall/hits`; `GET /api/policy/matches` returns both views).
+Setting `filter_log` names the log. The rule rows in the *Firewall tables
+and rules* card link to the same page.
+
 ## 0.9.8r202609252156
 
 **Overview showed raw link tags.** The *Top applications* and *Top sites*

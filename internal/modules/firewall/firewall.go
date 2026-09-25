@@ -39,6 +39,14 @@ type Module struct {
 	geoTables          map[string]*TableInfo // geo table info
 	geoFilling         bool                  // a background fill is running
 	geoPending         bool                  // another fill was asked for meanwhile
+
+	// The filter log: where the last read stopped and what it has yielded.
+	logStarted                    bool
+	logOff, logSize, logAt        int64
+	logLines, logHits, logUnknown int64
+	logErr                        string
+	labels                        map[int]string // anchor rule number -> label
+	labelsAt                      time.Time
 }
 
 // TableInfo holds information about a pf table.
@@ -63,10 +71,13 @@ func (m *Module) Info() core.ModuleInfo {
 		Requires:     []string{"pf"},
 		After:        []string{"identity"},
 		Defaults: map[string]any{
+			"filter_log": "/var/log/filter/latest.log",
 			"log_blocks": true,
 		},
 		Schema: []core.SettingField{
 			{Key: "log_blocks", Label: "Log blocked packets to pflog", Type: "bool"},
+			{Key: "filter_log", Label: "Filter log to read policy matches from", Type: "text",
+				Help: "OPNsense writes pf's log here. Lines from FlowSight's policy anchor become the per-packet record behind Policies > Matches. Empty turns the reader off."},
 		},
 	}
 }
@@ -120,7 +131,14 @@ func (m *Module) Setup(ctx *core.Context) error {
 		// the database build, and refilled only when one of them moved.
 		m.loadGeoTableInfo()
 		time.AfterFunc(30*time.Second, func() { _ = m.refreshGeoTables() })
+		if err := ctx.Store.Exec(hitsSchema); err != nil {
+			return err
+		}
+		ctx.Every("filter-log", 10*time.Second, m.readLog)
+		ctx.Every("hits-prune", time.Hour, m.pruneHits, core.Delayed())
 	}
+	ctx.Route("GET", "/api/firewall/hits", m.apiHits, core.Params("policy", "only this policy's rules", "hours", "window, default 24", "limit", "rows, default 500"),
+		core.Doc("Packets the policy rules matched, from the firewall's own log: when, which policy, from where to where"))
 	ctx.Route("GET", "/api/firewall/status", m.apiStatus, core.Doc("Anchor state, tables and rule counters"))
 	ctx.Route("GET", "/api/firewall/table", m.apiTable, core.Params("name", "table in the policy anchor (fs_geo_<cc>, fs_geox_<policy>, fs_app_<policy>)", "ip", "optional address to test for membership"),
 		core.Doc("What the kernel holds for one policy table: address count, and whether a given address is in it"))

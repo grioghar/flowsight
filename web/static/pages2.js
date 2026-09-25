@@ -40,7 +40,7 @@
           { t: 'State', f: p => { const s = status[p.name] || {}; return (p.enabled ? (s.active === false ? pill('scheduled off', '') : pill('on', 'ok')) : pill('disabled', 'warn')) + (p.action === 'monitor' ? ' ' + pill('monitor', 'info') : '') + ((s.unmet || []).length ? ' ' + pill('unmet: ' + s.unmet.join(', '), 'bad') : '') + (s.warning ? ` <span class="pill bad" title="${esc(s.warning)}">all members excluded</span>` : ''); } },
           { t: 'Applies to', f: p => esc(who(p)) + (p.schedule ? ` <span class="muted small">· ${esc(p.schedule)}</span>` : '') },
           { t: 'Denies', f: summary },
-          { t: '', f: p => `<button class="btn small" data-edit="${esc(p.name)}">Edit</button> <button class="btn small danger" data-del="${esc(p.name)}">Delete</button>` }]), '') +
+          { t: '', f: p => `${((p.deny || {}).countries || []).length || ((p.deny || {}).countries_except || []).length ? `<a class="btn small" href="#policy-matches?name=${encodeURIComponent(p.name)}" title="Which devices are talking to denied countries, and where">Matches</a> ` : ''}<button class="btn small" data-edit="${esc(p.name)}">Edit</button> <button class="btn small danger" data-del="${esc(p.name)}">Delete</button>` }]), '') +
         (plan.providers ? card('Last plan', `<div class="small muted">${when(plan.at)} · ${plan.changes} provider(s) would change</div>` + (plan.providers || []).map(pp => `<div style="margin-top:8px"><b>${esc(pp.name)}</b> ${pp.error ? pill('error', 'bad') : pp.changed ? pill('changes', 'warn') : pill('in sync', 'ok')} <span class="muted small">${esc(pp.note || '')}</span>${pp.error ? `<div class="sev-high small">${esc(pp.error)}</div>` : ''}${pp.diff ? `<details><summary class="small">diff</summary><pre class="code">${FS.diffHtml(pp.diff.slice(0, 20000))}</pre></details>` : ''}</div>`).join('')) : '');
       // Country tables and the anchor's live counters: the proof that a
       // country rule exists in pf, what it holds, and whether it has matched.
@@ -62,7 +62,7 @@
             { t: 'Database', f: t => t.epoch ? new Date(t.epoch * 1000).toISOString().slice(0, 10) : '' },
             { t: 'Filled', f: t => t.updated ? ago(t.updated) : '' }]) : '') +
           (pc.length ? `<div style="margin-top:10px">${table(pc, [
-            { t: 'Rule', f: r => `<span class="mono small">${esc(r.rule)}</span>` },
+            { t: 'Rule', f: r => `<span class="mono small">${esc(r.rule)}</span>${/^flowsight:(.+):[^:]+$/.test(r.label) ? ` <a class="small" href="#policy-matches?name=${encodeURIComponent(r.label.replace(/^flowsight:(.+):[^:]+$/, '$1'))}">matches</a>` : ''}` },
             { t: 'Evaluated', f: r => num(r.evaluations), num: true },
             { t: 'Matched packets', f: r => `<b>${num(r.packets)}</b>`, num: true },
             { t: 'Bytes', f: r => bytes(r.bytes), num: true },
@@ -207,6 +207,52 @@
       }
     }, 50);
   };
+
+  // ------------------------------------------------------------- Policy matches
+  // Where a policy's country rule is matching: per device, the far ends in
+  // denied countries with names and bytes (from the session table, computed
+  // the way the rule is compiled), and beside it the packets the firewall
+  // itself logged for the rule.
+  FS.registerPage('policy-matches', {
+    title: 'Policy matches', refresh: 30,
+    async render(el, ctx) {
+      const name = ctx.params.name || '';
+      if (!name) { el.innerHTML = FS.err('Open this page from a policy\'s Matches button.'); return; }
+      const d = await get(`/api/policy/matches?name=${encodeURIComponent(name)}&${FS.since()}`);
+      if (d.error) { el.innerHTML = FS.err(d.error); return; }
+      const devices = d.devices || [];
+      const logged = d.logged || {};
+      const ldevs = logged.devices || [];
+      const rule = d.countries_except && d.countries_except.length ? `every country except ${esc(d.countries_except.join(', '))}${d.home_country && !d.countries_except.includes(d.home_country) ? ` (and ${esc(d.home_country)}, home)` : ''}` : (d.countries || []).length ? `countries ${esc(d.countries.join(', '))}` : 'no country rule';
+      const total = devices.reduce((a, x) => a + x.sessions, 0);
+      const destRows = (x) => table(x.destinations || [], [
+        { t: 'Destination', f: r => `<b>${esc(r.domain || r.name || r.ip)}</b>${(r.domain || r.name) ? `<div class="muted small mono">${esc(r.ip)}</div>` : ''}` },
+        { t: 'Country', f: r => `<a class="pill warn" href="#flows?ip=${encodeURIComponent(x.ip)}&country=${esc(r.country)}">${esc(r.country)}</a>`, sort: 'country' },
+        { t: 'Port / app', f: r => `${r.port || ''}${r.app ? ' · ' + esc(r.app) : ''}` },
+        { t: 'Sessions', f: r => num(r.sessions), num: true, sort: 'sessions' },
+        { t: 'Sent', f: r => bytes(r.bytes_out), num: true, sort: 'bytes_out' },
+        { t: 'Received', f: r => bytes(r.bytes_in), num: true, sort: 'bytes_in' },
+        { t: 'Last', f: r => ago(r.last_seen), sort: 'last_seen' },
+        { t: '', f: r => `<a class="btn small" href="#paths?dst=${encodeURIComponent(r.ip)}" title="The route to this far end on the map">Map</a>` }]);
+      el.innerHTML = `<div class="actions"><a class="btn" href="#policy">← Policies</a><span class="muted small">Policy <b>${esc(d.policy)}</b> · ${esc(d.action)} · ${rule} · ${num(d.members)} member network(s) · window ${FS.state.hours}h</span></div>
+        <div class="grid cols-3" style="margin-top:14px">
+          ${kpi('Devices', num(devices.length), 'talked to a denied country')}
+          ${kpi('Sessions', num(total), d.action === 'monitor' ? 'would be blocked' : 'blocked or attempted')}
+          ${kpi('Packets logged by the rule', num(logged.packets || 0), (logged.log && logged.log.error) ? 'log not readable: ' + esc(logged.log.error) : `from ${esc((logged.log || {}).path || 'the filter log')}`, (logged.log && logged.log.error) ? 'warn' : '')}
+        </div>
+        <div style="margin-top:14px">${card('By device: where the traffic went', devices.length ? devices.map(x => `<details ${devices.length <= 3 ? 'open' : ''} style="margin-bottom:8px"><summary style="cursor:pointer">${FS.hostLink(x.ip, x.name)} ${x.mac ? `<span class="muted small mono">${esc(x.mac)}</span>` : ''} · <b>${num(x.sessions)}</b> sessions · ${bytes(x.bytes_out)} sent · ${x.countries.map(c => `<span class="pill warn">${esc(c)}</span>`).join(' ')}</summary><div style="margin-top:8px">${destRows(x)}</div></details>`).join('') : `<div class="empty">No session from this policy's members reached a denied country in the last ${FS.state.hours}h${d.country_rule ? '' : ' (the policy has no country rule)'}. Anycast far ends are left out on purpose.</div>`,
+          'from the session table; anycast far ends left out, as in the rule')}</div>
+        <div style="margin-top:14px">${card('Logged by the firewall rule', ldevs.length ? ldevs.map(x => `<details style="margin-bottom:8px"><summary style="cursor:pointer">${FS.hostLink(x.ip, x.name)} · <b>${num(x.packets)}</b> packets</summary><div style="margin-top:8px">${table(x.destinations || [], [
+            { t: 'Destination', f: r => `<b>${esc(r.domain || r.name || r.ip)}</b>${(r.domain || r.name) ? `<div class="muted small mono">${esc(r.ip)}</div>` : ''}` },
+            { t: 'Country', f: r => r.country ? `<span class="pill warn">${esc(r.country)}</span>` : '' },
+            { t: 'Port', f: r => `${r.port || ''}${r.proto ? '/' + esc(r.proto) : ''}` },
+            { t: 'Packets', f: r => num(r.packets), num: true, sort: 'packets' },
+            { t: 'Last', f: r => ago(r.last), sort: 'last' },
+            { t: '', f: r => `<a class="btn small" href="#paths?dst=${encodeURIComponent(r.ip)}">Map</a>` }])}</div></details>`).join('') : `<div class="empty">${(logged.log && logged.log.error) ? 'The filter log could not be read: ' + esc(logged.log.error) : `Nothing logged for this rule yet. The rule counts a packet when a new connection to an address in the table starts; ${num((logged.log || {}).lines_read || 0)} log lines read so far.`}</div>`,
+          'exact, per packet, from pflog via the filter log; bare addresses, names filled in from the session table')}</div>
+        <div class="help" style="margin-top:12px">The first card is computed the way the rule is compiled: the policy's members after exclusions, the denied countries, anycast ranges left out. The second is what pf itself wrote to its log for the rule. They should agree in shape; the log lags by a few seconds and only shows packets, not names.</div>`;
+    }
+  });
 
   // ------------------------------------------------------------- Groups & Schedules
   FS.registerPage('groups', {
