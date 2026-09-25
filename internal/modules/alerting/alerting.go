@@ -84,9 +84,27 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.registerRoutes()
 
 	// Also keep old /api/alerting/status for backward compatibility
-	ctx.Route("GET", "/api/alerting/status", m.apiStatus, core.Doc("Channel status and recent notifications"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/alerting/notifications", m.apiNotifications, core.Doc("Recent notifications"),
-		core.Params("limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/alerting/status", m.apiStatus,
+		core.Doc("Query status of all channels and recent notification delivery events"),
+		core.Returns("System status", map[string]any{
+			"channels": []map[string]any{
+				{"name": "slack-alerts", "type": "slack", "enabled": true},
+			},
+			"rules": map[string]any{
+				"rule-1": map[string]any{"id": "rule-1", "name": "High CPU"},
+			},
+			"notifications": []map[string]any{
+				{"ts": 1790376243, "channel": "slack-alerts", "subject": "Alert"},
+			},
+		}))
+	ctx.Route("GET", "/api/alerting/notifications", m.apiNotifications,
+		core.Doc("Retrieve recent notification delivery history with optional limit"),
+		core.Query("limit", "integer", "Maximum results to return", false, 100),
+		core.Returns("Notifications list", map[string]any{
+			"notifications": []map[string]any{
+				{"ts": 1790376243, "channel": "slack-alerts", "subject": "Alert", "ok": true},
+			},
+		}))
 	ctx.Panel(core.Panel{ID: "alerts", Title: "Alerting", Group: "Administration", Order: 190, Icon: "alerts"})
 
 	return nil

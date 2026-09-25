@@ -93,7 +93,14 @@ func (m *Module) registerRoutes() {
 
 	// Channel type information
 	ctx.Route("GET", "/api/alerting/channel-types", m.apiChannelTypes,
-		core.Doc("List all notification channel types grouped by family, with configuration schemas"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("List all notification channel types grouped by family, with configuration schemas"),
+		core.Returns("Channel types by family", map[string]any{
+			"channel_types": map[string]any{
+				"Chat & Collaboration": []map[string]any{
+					{"type": "slack", "label": "Slack", "family": "Chat & Collaboration"},
+				},
+			},
+		}))
 	// Channel CRUD operations
 	ctx.Route("GET", "/api/alerting/channels", m.apiGetChannels,
 		core.Doc("List all configured notification channels"),
@@ -146,7 +153,7 @@ func (m *Module) registerRoutes() {
 
 	// Rule CRUD operations
 	ctx.Route("GET", "/api/alerting/rules", m.apiGetRules,
-		core.Doc("List all alert rules"),
+		core.Doc("Retrieve all configured alert rules with their conditions and channels"),
 		core.Returns("List of alert rules", map[string]any{
 			"rules": []map[string]any{
 				{"id": "rule-1", "name": "High CPU", "enabled": true},
@@ -155,24 +162,30 @@ func (m *Module) registerRoutes() {
 
 	ctx.Route("POST", "/api/alerting/rules", m.apiCreateRule,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Create a new alert rule"),
+		core.Doc("Create a new alert rule that evaluates conditions and sends notifications"),
 		core.Body(
 			core.Fld("name", "string", true, "Rule name", "High CPU Alert"),
 			core.Fld("condition", "string", true, "Alert condition", "cpu > 80"),
 			core.Fld("channels", "array", true, "Channel IDs to notify", []string{"ch-1"}),
 			core.Fld("enabled", "boolean", false, "Whether rule is enabled", true),
-		), core.Returns("Success", map[string]any{"ok": true}))
+		), core.Returns("Created rule", map[string]any{
+			"rule": map[string]any{"id": "rule-1", "name": "High CPU Alert", "enabled": true},
+		}))
 	ctx.Route("GET", "/api/alerting/rules/{id}", m.apiGetRule,
-		core.Doc("Get a specific alert rule"), core.PathParam("id", "string", "Resource ID", "123"),
-		core.PathParam("id", "string", "Rule ID", "rule-1"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Retrieve details of a specific alert rule by ID"), core.PathParam("id", "string", "Rule ID", "rule-1"),
+		core.Returns("Alert rule details", map[string]any{
+			"rule": map[string]any{"id": "rule-1", "name": "High CPU Alert", "enabled": true},
+		}))
 	ctx.Route("PUT", "/api/alerting/rules/{id}", m.apiUpdateRule,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Update an alert rule"), core.PathParam("id", "string", "Resource ID", "123"),
-		core.PathParam("id", "string", "Rule ID", "rule-1"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Update an existing alert rule with new conditions and settings"), core.PathParam("id", "string", "Rule ID", "rule-1"),
+		core.Returns("Updated rule", map[string]any{
+			"rule": map[string]any{"id": "rule-1", "name": "High CPU Alert", "enabled": true},
+		}))
 	ctx.Route("DELETE", "/api/alerting/rules/{id}", m.apiDeleteRule,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Delete an alert rule"), core.PathParam("id", "string", "Resource ID", "123"),
-		core.PathParam("id", "string", "Rule ID", "rule-1"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Remove an alert rule permanently from the system"), core.PathParam("id", "string", "Rule ID", "rule-1"),
+		core.Returns("Success", map[string]any{"ok": true}))
 	// Delivery log
 	ctx.Route("GET", "/api/alerting/deliveries", m.apiGetDeliveries,
 		core.Doc("Get notification delivery history"),
@@ -224,7 +237,8 @@ func (m *Module) registerRoutes() {
 		), core.Returns("Success", map[string]any{"ok": true}))
 	// RSS feed (token-protected)
 	ctx.Route("GET", "/api/alerting/feed.xml", m.apiAlertFeed,
-		core.Doc("RSS feed of recent alerts (requires token in Authorization header)"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("RSS feed of recent alerts with token-based authorization"),
+		core.Returns("XML feed", map[string]any{"feed": "<?xml version=\"1.0\"?><rss><channel><item><title>Sample Alert</title></item></channel></rss>"}))
 	// Apprise URL import
 	ctx.Route("POST", "/api/alerting/import-apprise", m.apiImportApprise,
 		core.Write(), core.Needs("alerting.notify"),
