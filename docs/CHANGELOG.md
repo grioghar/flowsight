@@ -12,6 +12,19 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252318
+
+**Anomaly detection: know when a device does something new.** A new Baseline
+module learns each device's normal behavior (countries, ports, destinations,
+activity patterns, DNS queries) over a configurable period (default: 7 days),
+then flags first-seen countries, ports, and destinations; detects beaconing
+(regular connections with constant payload size) and DNS tunneling (high
+entropy queries with high NXDOMAIN rates); and reports anomalies with the
+context ("first time 34:d2:70:98:9a:43 contacted IE; 21 days of history
+had US, CA only"). Findings are acknowledgeable, filterable by zone, and
+integrated with alerting rules. The Protect panel adds an Anomalies list and
+a per-device Baseline profile showing what is known about each host.
+
 ## 0.9.8r202609252307
 
 **No more "example.com" on every Cloudflare session.** With no SNI or Host

@@ -361,4 +361,24 @@
       const dl = FS.$('#ca-del', el); if (dl) dl.onclick = async () => { if (!await FS.confirm('Delete the inspection CA? Every policy with TLS inspection stops decrypting, and a new CA would have to be installed on devices again.')) return; const r = await post('/api/tls/ca/delete', {}); if (r.error) FS.toast(r.error, true); else FS.render(); };
     }
   });
+
+  // ------------------------------------------------------------- Anomalies
+  FS.registerPage('anomalies', {
+    title: 'Anomalies', refresh: 30,
+    async render(el, ctx) {
+      const d = await get('/api/baseline/anomalies');
+      if (d.error) { el.innerHTML = FS.err(d.error); return; }
+      const anomalies = d.anomalies || [];
+      const openAnomalies = anomalies.filter(a => !a.acked);
+      el.innerHTML = card('Open Anomalies', openAnomalies.length ? table(openAnomalies, [
+        { t: 'Device', f: r => `<b>${esc(r.device)}</b><div class="muted small mono">${esc(r.mac)}</div>` },
+        { t: 'Kind', f: r => pill(r.kind), sort: 'kind' },
+        { t: 'Finding', f: r => `<b>${esc(r.title)}</b><div class="muted small">${esc((r.detail || '').slice(0, 100))}</div>` },
+        { t: 'Severity', f: r => FS.sevPill(r.severity), sort: 'severity' },
+        { t: 'Since', f: r => ago(r.ts), sort: 'ts' },
+        { t: '', f: r => `<button class="btn small" data-ack="${r.id}">Ack</button>` }
+      ]) : FS.empty('No open anomalies'));
+      FS.$$('[data-ack]', el).forEach(b => b.onclick = async () => { await post('/api/baseline/ack', { id: Number(b.dataset.ack) }); FS.render(); });
+    }
+  });
 })();
