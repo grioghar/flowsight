@@ -227,11 +227,15 @@ Traffic priority. Moves the bottleneck off the carrier and onto this firewall wi
 
 ### reports
 
-HTML reports and CSV exports with scheduling.
+Flexible report generation with 15+ sections, multi-format output, and scheduling.
 
 | Key | Setting | Type | Default | Notes |
 |---|---|---|---|---|
-| `schedules` | Report schedules | list | `[]` | Configured report schedules. |
+| `definitions` | Report definitions | list | Built-ins | Custom report templates; built-in definitions are read-only. |
+| `keep_runs` | Keep last N runs per definition | number | `10` | Retention per definition; 0 = unlimited. |
+| `max_total_mb` | Max total storage (MB) | number | `500` | Global limit for all stored runs; oldest pruned first. |
+
+Reports are stored under `<DataDir>/reports/<definition>/<run>.<format>` with metadata indexed in KV. Scheduled delivery through alerting channels requires the alerting module.
 
 ### rulehygiene
 

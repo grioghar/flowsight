@@ -92,6 +92,35 @@ Nothing leaves the gateway except:
 
 There is no usage analytics, no crash reporting, no account.
 
+## Reports: Data Privacy and Access Control
+
+Reports generated from the store contain network traffic, DNS, application,
+and security data sensitive to your organization. 
+
+**On-Disk Storage**: Reports are stored under `<data>/reports/<definition>/`
+and are **readable only by the daemon process** (file mode 0640). Run metadata
+is kept in the KV store, indexed for fast lookup and retention enforcement.
+Reports are not accessible from the web API unless you are authenticated.
+
+**Scheduled Delivery**: Reports sent through notification channels (email, Slack,
+Discord, ntfy, webhooks) are delivered through the alerting module and require
+that you have configured the channel and specified its ID in the report's
+recipients list. No report is sent if no channel is configured. Delivery logs
+are kept in the notifications table.
+
+**Downloads**: Report downloads through the web API require the same
+authentication as all other API calls: loopback access (no token needed on
+OPNsense), API token from any other origin, or session authentication through
+the OPNsense GUI. Downloads are streamed from disk with proper content-type
+headers and file names.
+
+**Retention**: Reports are retained per definition (configurable `keep_runs`,
+default 10 most recent) and globally (configurable `max_total_mb`, default 500 MB).
+Oldest reports are pruned automatically when limits are exceeded, on a
+per-run basis whenever the scheduler fires. Built-in definitions are read-only
+but can be duplicated and customized. Reports are not included in backups by
+default; include `<data>/reports/` in your backup policy if needed.
+
 ## Decryption, ethically
 
 TLS inspection is a capability with real weight. FlowSight makes it

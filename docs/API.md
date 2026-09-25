@@ -186,11 +186,17 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/reports/export` | Export data as CSV | hours (window), kind (flows/dns/alerts/hosts) |
-| GET | `/api/reports/preview` | Generate and preview a report as HTML | hours (window) |
-| POST | `/api/reports/run` | Generate and send a report now |  |
-| GET | `/api/reports/schedules` | List report schedules |  |
-| POST | `/api/reports/schedules` | Replace report schedules |  |
+| GET | `/api/reports/definitions` | List all report definitions |  |
+| POST | `/api/reports/definitions` | Create a new report definition | JSON body: name, sections, filters, formats, schedule, recipients |
+| GET | `/api/reports/definitions/{id}` | Get a report definition |  |
+| PUT | `/api/reports/definitions/{id}` | Update a report definition | JSON body: same as create |
+| DELETE | `/api/reports/definitions/{id}` | Delete a report definition |  |
+| POST | `/api/reports/preview` | Generate and preview a report as HTML | JSON body: definition object; query: from, to, hours |
+| POST | `/api/reports/run/{id}` | Execute a report definition | query: from, to, hours |
+| GET | `/api/reports/runs` | List recent report runs | query: definition (optional, filter by definition ID) |
+| GET | `/api/reports/runs/{id}` | Get a report run details |  |
+| GET | `/api/reports/runs/{id}/download` | Download a report in specified format | query: format (html/pdf/json/markdown/csv) |
+| DELETE | `/api/reports/runs/{id}` | Delete a report run |  |
 
 ### rulehygiene
 

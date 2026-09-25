@@ -60,16 +60,56 @@
   FS.registerPage('reports', {
     title: 'Reports', refresh: 0,
     async render(el) {
-      const d = await get('/api/reports/schedules'); if (d.error) { el.innerHTML = FS.err(d.error); return; }
-      const scheds = d.schedules || [];
-      const link = (p) => FS.base ? FS.base + encodeURIComponent(p) : p;
-      el.innerHTML = `<div class="grid cols-2">
-        ${card('On demand', `<p class="small muted">A self-contained HTML report of the selected window: traffic, hosts, applications, web, DNS, threats, TLS and open findings. Export raw data as CSV.</p><div class="actions"><a class="btn primary" target="_blank" href="${link('/api/reports/preview?hours=' + FS.state.hours)}">Open report (${FS.state.hours}h)</a>${['flows', 'dns', 'alerts', 'hosts'].map(k => `<a class="btn" href="${link('/api/reports/export?kind=' + k + '&hours=' + FS.state.hours)}">${k}.csv</a>`).join('')}</div>`)}
-        ${card('Scheduled reports', `<div class="actions"><button class="btn primary" id="new">New schedule</button></div>` + table(scheds, [{ t: 'Name', f: x => `<b>${esc(x.name)}</b>${x.enabled ? '' : ' ' + pill('off', 'warn')}` }, { t: 'Cadence', f: x => `${esc(x.cadence)} at ${String(x.hour).padStart(2, '0')}:00, last ${x.window}h` }, { t: 'Recipients', f: x => esc((x.recipients || []).join(', ')) }, { t: '', f: x => `<button class="btn small" data-run="${esc(x.name)}">Send now</button> <button class="btn small danger" data-del="${esc(x.name)}">Delete</button>` }], { empty: 'No schedules. Reports are emailed through the email channel configured under Alerting.' }))}
+      const defs = await get('/api/reports/definitions'); if (defs.error) { el.innerHTML = FS.err(defs.error); return; }
+      const runs = await get('/api/reports/runs'); if (runs.error) { el.innerHTML = FS.err(runs.error); return; }
+      const channels = await get('/api/alerting/channels');
+      const definitions = defs.definitions || [];
+      const runsList = runs.runs || [];
+      const channelList = (channels.channels || []).map(c => c.name);
+
+      const allSections = ['executive_summary', 'traffic_by_device', 'traffic_by_zone', 'traffic_by_app', 'traffic_by_category', 'traffic_by_site', 'blocked_activity', 'egress_activity', 'dns_summary', 'scan_findings', 'tls_posture', 'device_inventory', 'alerting_deliveries', 'system_health', 'alerts'];
+      const sectionLabels = { executive_summary: 'Executive Summary', traffic_by_device: 'Traffic by Device', traffic_by_zone: 'Traffic by Zone', traffic_by_app: 'Traffic by Application', traffic_by_category: 'Traffic by Category', traffic_by_site: 'Traffic by Site', blocked_activity: 'Blocked Activity', egress_activity: 'Egress Activity & DLP', dns_summary: 'DNS Summary', scan_findings: 'Scan Findings', tls_posture: 'TLS Posture', device_inventory: 'Device Inventory', alerting_deliveries: 'Alerting Deliveries', system_health: 'System Health', alerts: 'Security Alerts' };
+
+      el.innerHTML = `<div class="grid cols-1">
+        ${card('Report Definitions', `<div class="actions"><button class="btn primary" id="new-def">New Definition</button></div>` + table(definitions, [{ t: 'Name', f: x => `<b>${esc(x.name)}</b>${x.read_only ? ' ' + pill('built-in', 'info') : ''}` }, { t: 'Sections', f: x => x.sections.length + ' selected' }, { t: 'Schedule', f: x => x.schedule && x.schedule.enabled ? esc(x.schedule.cadence + ' at ' + x.schedule.time_utc) : 'not scheduled' }, { t: '', f: x => `<button class="btn small" data-run="${esc(x.id)}">Run now</button> ${x.read_only ? '<button class="btn small" data-dup="${esc(x.id)}">Duplicate</button>' : `<button class="btn small" data-edit="${esc(x.id)}">Edit</button> <button class="btn small danger" data-del="${esc(x.id)}">Delete</button>`}` }], { empty: 'No definitions yet.' }))}
+      </div>
+      <div style="margin-top:14px">${card('Recent Runs', table(runsList.slice(0, 20), [{ t: 'Definition', k: 'definition' }, { t: 'Status', f: x => pill(x.status, x.status === 'done' ? 'ok' : x.status === 'failed' ? 'bad' : 'info') }, { t: 'Started', f: x => when(x.started_at), sort: 'started_at' }, { t: 'Size', f: x => bytes(Object.values(x.sizes || {}).reduce((a,b)=>a+b,0)) }, { t: 'Formats', f: x => (x.formats || []).map(f => pill(f, 'info')).join(' ') }, { t: '', f: x => x.formats.map(f => `<a class="btn small" href="/api/reports/runs/${esc(x.id)}/download?format=${f}">${f}</a>`).join(' ') }], { empty: 'No runs yet.' }))}
       </div>`;
-      FS.$('#new', el).onclick = () => FS.modal(`<h2>New scheduled report</h2><form class="f"><label>Name</label><input type="text" name="name" required><div class="row"><div><label>Cadence</label><select name="cadence"><option>daily</option><option>weekly</option><option>monthly</option></select></div><div><label>Hour (0-23)</label><input type="number" name="hour" value="7" min="0" max="23"></div></div><div class="row"><div><label>Window (hours)</label><input type="number" name="window" value="24"></div><div><label>Recipients</label><input type="text" name="recipients" placeholder="a@example.com, b@example.com"></div></div><div class="actions"><button class="btn primary">Save</button><button type="button" class="btn" data-close>Cancel</button></div></form>`, (b) => { FS.$('form', b).onsubmit = async (e) => { e.preventDefault(); const f = e.target; const s = { name: f.name.value.trim(), cadence: f.cadence.value, hour: Number(f.hour.value), window: Number(f.window.value), recipients: f.recipients.value.split(',').map(x => x.trim()).filter(Boolean), enabled: true }; const r = await post('/api/reports/schedules', { schedules: [...scheds.filter(x => x.name !== s.name), s] }); if (r.error) FS.toast(r.error, true); else { FS.closeModal(); FS.render(); } }; });
-      FS.$$('[data-del]', el).forEach(b => b.onclick = async () => { const r = await post('/api/reports/schedules', { schedules: scheds.filter(x => x.name !== b.dataset.del) }); if (r.error) FS.toast(r.error, true); else FS.render(); });
-      FS.$$('[data-run]', el).forEach(b => b.onclick = async () => { const r = await post('/api/reports/run?name=' + encodeURIComponent(b.dataset.run), { name: b.dataset.run }); FS.toast(r.error || 'Report sent', !!r.error); });
+
+      const editDef = (id) => {
+        const def = definitions.find(x => x.id === id) || { name: '', sections: [], filters: {}, formats: ['html'], schedule: { enabled: false, cadence: 'daily', time_utc: '09:00' }, recipients: [] };
+        const sections_html = allSections.map(s => `<label><input type="checkbox" name="section" value="${s}" ${def.sections.includes(s) ? 'checked' : ''}> ${esc(sectionLabels[s] || s)}</label>`).join('<br>');
+        const modal_html = `<h2>${id ? 'Edit Definition' : 'New Definition'}</h2>
+          <form class="f">
+            <label>Name</label><input type="text" name="name" value="${esc(def.name)}" required>
+            <label>Sections (select one or more)</label><div style="border:1px solid #ccc;padding:10px;max-height:150px;overflow-y:auto">${sections_html}</div>
+            <label>Formats</label><div><label><input type="checkbox" name="format" value="html" ${def.formats.includes('html') ? 'checked' : ''}> HTML</label><label><input type="checkbox" name="format" value="pdf" ${def.formats.includes('pdf') ? 'checked' : ''}> PDF</label><label><input type="checkbox" name="format" value="markdown" ${def.formats.includes('markdown') ? 'checked' : ''}> Markdown</label><label><input type="checkbox" name="format" value="json" ${def.formats.includes('json') ? 'checked' : ''}> JSON</label><label><input type="checkbox" name="format" value="csv" ${def.formats.includes('csv') ? 'checked' : ''}> CSV</label></div>
+            <div class="row"><div><label>Cadence</label><select name="cadence"><option ${def.schedule.cadence === 'hourly' ? 'selected' : ''}>hourly</option><option ${def.schedule.cadence === 'daily' ? 'selected' : ''}>daily</option><option ${def.schedule.cadence === 'weekly' ? 'selected' : ''}>weekly</option><option ${def.schedule.cadence === 'monthly' ? 'selected' : ''}>monthly</option></select></div><div><label>Time (HH:MM UTC)</label><input type="text" name="time" value="${def.schedule.time_utc}" placeholder="09:00"></div></div>
+            <label>Delivery channels</label><div>${channelList.map(c => `<label><input type="checkbox" name="recipient" value="${c}" ${def.recipients.includes(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('<br>')}</div>
+            <label><input type="checkbox" name="enabled" ${def.schedule.enabled ? 'checked' : ''}> Enable scheduling</label>
+            <div class="actions"><button class="btn primary">Save</button><button type="button" class="btn" data-close>Cancel</button></div>
+          </form>`;
+        FS.modal(modal_html, (b) => {
+          FS.$('form', b).onsubmit = async (e) => {
+            e.preventDefault();
+            const f = e.target;
+            const sections = Array.from(FS.$$('[name="section"]', b)).filter(x => x.checked).map(x => x.value);
+            const formats = Array.from(FS.$$('[name="format"]', b)).filter(x => x.checked).map(x => x.value);
+            const recipients = Array.from(FS.$$('[name="recipient"]', b)).filter(x => x.checked).map(x => x.value);
+            const d = { name: f.name.value, sections, formats, schedule: { enabled: FS.$('[name="enabled"]', b).checked, cadence: f.cadence.value, time_utc: f.time.value, timezone: 'UTC' }, recipients };
+            if (id) { d.id = id; }
+            const r = await post('/api/reports/definitions' + (id ? '/' + id : ''), d);
+            if (r.error) FS.toast(r.error, true);
+            else { FS.closeModal(); FS.render(); }
+          };
+        });
+      };
+
+      FS.$('#new-def', el).onclick = () => editDef(null);
+      FS.$$('[data-edit]', el).forEach(b => b.onclick = () => editDef(b.dataset.edit));
+      FS.$$('[data-dup]', el).forEach(b => b.onclick = async () => { const d = definitions.find(x => x.id === b.dataset.dup); if (d) { d.id = undefined; d.read_only = false; editDef(null); } });
+      FS.$$('[data-del]', el).forEach(b => b.onclick = async () => { if (!await FS.confirm('Delete this definition?')) return; const r = await post('/api/reports/definitions/' + b.dataset.del, {}, 'DELETE'); if (r.error) FS.toast(r.error, true); else FS.render(); });
+      FS.$$('[data-run]', el).forEach(b => b.onclick = async () => { const r = await post('/api/reports/run/' + b.dataset.run, {}); if (r.error) FS.toast(r.error, true); else { FS.toast('Report generated'); setTimeout(FS.render, 2000); } });
     }
   });
 
