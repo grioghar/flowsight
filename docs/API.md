@@ -320,6 +320,17 @@ Active network scanning for local devices only: ICMP, TCP/UDP probes, service de
 | POST | `/api/scan/cancel` | Cancel a running scan job | job_id (identifier) |
 | POST | `/api/scan/sweep` | Start a sweep of all devices seen in the last 7 days | |
 
+### setup
+
+First-run configuration wizard.
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/setup/state` | Wizard state, completion status, detected platform facts (binaries, interfaces, license, API settings, discovered services) | |
+| POST | `/api/setup/apply` | Apply settings for one step (saves to module config files) | step (1-12), values (step-specific form data) |
+| POST | `/api/setup/test` | Test connectivity for a step (ntopng, Pi-hole, Proxmox) | step (3, 4, or 8), values (test credentials) |
+| POST | `/api/setup/reset` | Reset wizard progress (clears completion flag) | |
+
 ## Proxmox
 
 ### GET /api/proxmox/inventory

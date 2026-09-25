@@ -1108,6 +1108,36 @@ relationships.
 
 ## Administration
 
+### Setup wizard
+
+A guided 12-step wizard for initial configuration after installation. Open it the first time you log in, or anytime under **Administration › Setup wizard**.
+
+**Step 1: Welcome & license.** Optionally activate a Pro or Business license key.
+
+**Step 2: Site basics.** Installation name (shows in the sidebar), data retention in days, and the Go memory limit (default 256 MB).
+
+**Step 3: Traffic source.** Where to read network traffic. ntopng URL and credentials if authentication is required. The wizard detects ntopng's presence and can test the connection.
+
+**Step 4: DNS source.** Where to read DNS queries. Pi-hole address and API token (optional; empty means use the local Unbound resolver). The wizard scans for Pi-hole on the gateway's subnet and tests connectivity.
+
+**Step 5: Interception.** Whether to redirect web traffic through the transparent proxy for server names and blocking. Off by default. Choose which interfaces (empty means all).
+
+**Step 6: Identity & zones.** Delegated to **Settings › identity**: review auto-detected local networks and name the zones.
+
+**Step 7: Security.** Enable IDS (Suricata) and TLS probing (record server certificates without decrypting).
+
+**Step 8: Inventory.** Proxmox host, API token ID, secret, and server certificate fingerprint for VM/LXC integration. The wizard can probe for Proxmox and test the connection.
+
+**Step 9: Alerting.** Delegated to **Settings › alerting**: add a notification channel (e-mail, webhook, Discord, Slack, ntfy).
+
+**Step 10: Updates.** Manifest URL (leave empty for the official manifest) and whether to auto-apply updates.
+
+**Step 11: API access.** Shows the API bind address (localhost or LAN) and token status. Bind, port and token are file-only settings; edit the config file to change them.
+
+**Step 12: Review & finish.** Marks the wizard complete so the banner on the Overview disappears.
+
+Each step is saved immediately. You can skip steps or re-run the wizard anytime to change settings later. The wizard never touches OPNsense firewall rules, SSH, or the GUI listener.
+
 ### Reports
 
 Pick a report (network summary, per host, per application, web, DNS,
