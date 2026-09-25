@@ -32,8 +32,9 @@ function fs_api_token()
     }
     $tok = "";
     $cfg = @json_decode(@file_get_contents("/usr/local/etc/flowsight/flowsight.json"), true);
-    if (is_array($cfg) && !empty($cfg["core"]["api_token"]) && is_string($cfg["core"]["api_token"])) {
-        $tok = $cfg["core"]["api_token"];
+    /* Core keys (bind, port, api_token) live at the top level of the file. */
+    if (is_array($cfg) && !empty($cfg["api_token"]) && is_string($cfg["api_token"])) {
+        $tok = $cfg["api_token"];
     }
     return $tok;
 }

@@ -12,6 +12,12 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251853
+
+**Token read from the right place.** The OPNsense page looked for the API
+token under a `core` section of the daemon's config; the daemon's own keys
+(`bind`, `port`, `api_token`) are top-level. Plugin file only.
+
 ## 0.9.8r202609251808
 
 **The GUI keeps working when the API gets a token.** Setting `api_token`
