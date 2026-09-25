@@ -12,6 +12,31 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609250000
+
+**Alerting system complete: 54+ notification channels, flexible rules engine, delivery guarantees.**
+
+New in alerting:
+
+- **54+ notification channels** grouped by family: 11 chat (Slack, Discord, Teams, Telegram, Mattermost, etc), 5 email (SMTP, SendGrid, Mailgun, SES, Postmark), 7 SMS/voice (Twilio, Vonage, Telnyx, AWS SNS, etc), 8 incident management (PagerDuty, Opsgenie, Splunk On-Call, Squadcast, etc), 14 SIEM/logging (Splunk HEC, Elastic, Datadog, Loki, Sentinel, etc), and 3 generic (Webhook, MQTT, RSS).
+- **Rules engine**: Match alerts by severity (info/low/medium/high/critical), module, category, device IP/MAC, or zone. Route to one or more channels. Cooldown to prevent alert fatigue. Digest bundling for low-severity alerts (periodic summaries). Escalation to additional channels if unacknowledged after N minutes. Quiet hours per channel.
+- **Delivery engine**: Retry with exponential backoff (3 attempts, up to 2s delay). Rate limiting per (channel, alert_key). Deduplication within 10-minute window. Delivery log with status, latency, errors.
+- **Maintenance mode**: Suppress all alerts during maintenance windows.
+- **Channel setup wizard**: Dynamic schema forms grouped by family. Test message to verify connectivity before enabling.
+- **Formatter library**: PlainText, SMS (160-char with link), JSON, Slack Block Kit, Teams Adaptive Cards, CEF, LEEF, Go templates.
+- **Signature & encryption**: HMAC-SHA256 for webhooks. AWS SigV4 for AWS services. Credentials encrypted at rest.
+- **New API routes**: GET/POST/PUT/DELETE for channels and rules, delivery log, maintenance, simulation, RSS feed, Apprise import.
+- **Documentation**: USER-GUIDE with per-channel setup table. API reference. CONFIGURATION with schema and examples. SECURITY covering credential handling, outbound connections, no-exec guarantee.
+- **Tests**: 26 tests covering formatters (PlainText, SMS, JSON, Slack, Teams, CEF, LEEF, Template), delivery engine (retry, rate limit, dedup, logging), rules engine (matching, digest, escalation, ack prevention).
+
+Breaking change: Legacy rule format (Rule struct) is deprecated in favor of RuleConfig. Old rules still work via fallback; migrate via the UI or API.
+
+Upgrade steps:
+1. Channels created in the old system (email, webhook, discord, slack, ntfy) remain and work unchanged.
+2. Rules created in the old system (map[string]Rule) remain and evaluate; new RuleConfig takes precedence if both exist.
+3. Create new channels and rules via the updated Alerting page to use full feature set (digest, escalation, quiet hours).
+4. RSS feed and Apprise import are not yet wired into CLI; use the UI.
+
 ## 0.9.8r202609251946
 
 **Four pages renamed.** *Data out* is now **DLP**; *Deep inspection* is now

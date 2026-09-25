@@ -24,13 +24,41 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 
 ### alerting
 
+**Channel types and families**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| POST | `/api/alerting/channels` | Replace notification channels |  |
-| POST | `/api/alerting/channels/test` | Send test message to a channel |  |
-| GET | `/api/alerting/notifications` | Recent notifications | limit (rows) |
-| POST | `/api/alerting/rules` | Replace alert rules |  |
-| GET | `/api/alerting/status` | Channel status and recent notifications |  |
+| GET | `/api/alerting/channel-types` | All channel types grouped by family with schemas | none |
+
+**Channels (CRUD)**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/alerting/channels` | List all notification channels | none |
+| GET | `/api/alerting/channels/{id}` | Get a specific channel | none |
+| POST | `/api/alerting/channels` | Create a new channel | name, type, enabled, config |
+| PUT | `/api/alerting/channels/{id}` | Update a channel | name, type, enabled, config |
+| DELETE | `/api/alerting/channels/{id}` | Delete a channel | none |
+| POST | `/api/alerting/channels/{id}/test` | Send test message to channel | none |
+
+**Rules (CRUD)**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/alerting/rules` | List all alert rules | none |
+| GET | `/api/alerting/rules/{id}` | Get a specific rule | none |
+| POST | `/api/alerting/rules` | Create a new rule | id, name, enabled, severity, module, category, device, zone, channels, cooldown, digest_minutes, escalation |
+| PUT | `/api/alerting/rules/{id}` | Update a rule | name, enabled, severity, module, category, device, zone, channels, cooldown, digest_minutes, escalation |
+| DELETE | `/api/alerting/rules/{id}` | Delete a rule | none |
+
+**Delivery & operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/alerting/deliveries` | Delivery log (recent alert sends) | channel (filter), limit (default 50) |
+| POST | `/api/alerting/ack/{alert_key}` | Acknowledge an alert (prevents escalation) | none |
+| POST | `/api/alerting/resolve/{alert_key}` | Mark alert as resolved | none |
+| GET | `/api/alerting/maintenance` | Get maintenance mode status | none |
+| POST | `/api/alerting/maintenance` | Set maintenance mode | enabled, minutes (duration), reason |
+| POST | `/api/alerting/simulate` | Send test alerts to all enabled channels | severity, title, text |
+| POST | `/api/alerting/import-apprise` | Import channel from Apprise URL | url |
+| GET | `/api/alerting/feed.xml` | RSS feed of recent alerts (token-protected) | token (query param) |
 
 ### appcontrol
 

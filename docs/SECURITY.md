@@ -398,3 +398,79 @@ Proxmox nodes and guests live on private networks:
 - Traffic analysis only covers routed inter-subnet traffic (source: "observed")
 - Agent socket queries (source: "sockets") provide visibility into guest-local connections
 - Declared dependencies (source: "declared") capture startup order, storage, and network config relationships
+
+## Alerting Module: Notification Delivery Security
+
+### Credential Handling
+
+- **Secrets are masked in API responses**: Passwords, API keys, tokens, and bearer credentials are replaced with `***` after initial save
+- **Secrets are stored encrypted**: Channel credentials are stored in the SQLite database with at-rest encryption (pragma key)
+- **No secrets in logs**: Delivery attempts are logged with status and latency, never with credentials or payloads
+- **No secrets in URLs**: API calls and payload data never embed credentials in query strings
+
+### Outbound Connections
+
+The alerting module makes outbound connections **only** to endpoints you explicitly configure:
+
+- **SMTP** to configured mail servers (port 25, 465, 587 depending on TLS mode)
+- **HTTPS** to webhook URLs you provide
+- **HTTPS** to SaaS providers (Slack, Discord, PagerDuty, Datadog, Splunk, etc.) at the endpoints you configure
+- **MQTT** to brokers at the host:port you specify
+- **UDP/TCP Syslog** to syslog servers
+- **HTTP/HTTPS** RSS feed generation (read-only, internal)
+
+All outbound connections respect:
+- **Timeout**: 15 seconds per channel send (configurable)
+- **Retry**: 3 attempts with exponential backoff (100ms, 200ms, 400ms)
+- **Rate limiting**: Per (channel, alert_key) pair to prevent alert storms
+- **Deduplication**: 10-minute window to drop identical alerts from same rule
+
+### Signing & Authentication
+
+- **HMAC-SHA256**: Webhook channels support optional HMAC-SHA256 signatures over the request body; secret is derived from the webhook config and never logged
+- **AWS SigV4**: SNS, SES, CloudWatch channels use AWS Signature Version 4; credentials are stored encrypted
+- **API tokens**: External APIs (PagerDuty, Opsgenie, Datadog, etc.) store tokens encrypted; never transmitted in URL parameters
+
+### No Arbitrary Execution
+
+- The alerting module does **not** execute shell commands, scripts, or plugins
+- Webhooks accept only **HTTP/HTTPS POST/PUT** to endpoints you configure
+- Templates use **Go's `text/template`** (read-only, no exec functions)
+- Alert content is formatted (JSON, CEF, LEEF, plain text) but never evaluated
+
+### Data Sent in Alerts
+
+Alerts include:
+- **Title, severity, timestamp, source module, category**
+- **Device context** (IP, MAC, hostname) if present in the alert
+- **Alert body** (description, evidence, findings)
+- **Link** (relative to FlowSight base URL for click-through)
+
+Alerts do **not** include:
+- Authentication credentials
+- Raw packet payloads or session keys
+- Private hostnames or internal IP ranges (unless part of your alert rules)
+- Configuration details, API tokens, or system secrets
+
+### RSS Feed (Optional)
+
+The RSS feed (`/api/alerting/feed.xml`) is **token-protected**:
+- Requires a token query parameter to access
+- Token is the `api_token` from settings or a per-feed secret (if configured)
+- Feed contains recent 100 alerts with same content as alert notifications
+- Feed is returned as XML with Content-Type: application/rss+xml
+- No authentication beyond the token in the query string
+
+### Maintenance Mode
+
+When enabled, all outbound alerts are suppressed until the deadline:
+- Stored in the KV store with a Unix timestamp (0 = indefinitely)
+- Useful during maintenance windows or incident response
+- Does **not** delete or suppress alerts internally—they still generate log entries
+- After maintenance ends, alerts resume normal delivery
+
+### Secrets Not in Maintenance or Quiet Hours
+
+- Configuration of maintenance mode, quiet hours, and escalation rules does **not** require credentials
+- These features are rule-based and operate on already-configured channels
+- Changing quiet hours or escalation does **not** re-validate channel credentials
