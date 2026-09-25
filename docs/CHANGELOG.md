@@ -12,6 +12,14 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252254
+
+**Report runs no longer panic on a long PDF.** The built-in PDF writer kept
+room for ten objects, so a report of more than four pages crashed the run
+(`index out of range`), and what it wrote for shorter ones had a broken
+cross-reference table and nested text objects. Rewritten: any number of
+pages, a correct xref, one text block per line, lines wrapped to the page.
+
 ## 0.9.8r202609252251
 
 **Loopback is never named after a blocked domain.** A blocklist that answers

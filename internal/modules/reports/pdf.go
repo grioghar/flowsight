@@ -37,11 +37,35 @@ func (p *SimplePDF) AddHeading(text string) {
 	p.curY -= 30
 }
 
-// AddText adds a line of text.
+// AddText adds a line of text, wrapped to the page's width.
 func (p *SimplePDF) AddText(text string) {
-	p.newPageIfNeeded()
-	p.currentPage.WriteString(fmt.Sprintf("BT /F1 12 Tf 72 %.0f Td (%s) Tj ET\n", p.curY, escapeForPDF(text)))
-	p.curY -= 15
+	for _, line := range wrapText(text, 92) {
+		p.newPageIfNeeded()
+		p.currentPage.WriteString(fmt.Sprintf("BT /F1 12 Tf 72 %.0f Td (%s) Tj ET\n", p.curY, escapeForPDF(line)))
+		p.curY -= 15
+	}
+}
+
+// wrapText breaks a line on spaces so it fits the column; a single word
+// longer than the column is cut.
+func wrapText(s string, width int) []string {
+	s = strings.TrimSpace(s)
+	if len(s) <= width {
+		return []string{s}
+	}
+	var out []string
+	for len(s) > width {
+		cut := strings.LastIndex(s[:width], " ")
+		if cut < width/2 {
+			cut = width
+		}
+		out = append(out, strings.TrimSpace(s[:cut]))
+		s = strings.TrimSpace(s[cut:])
+	}
+	if s != "" {
+		out = append(out, s)
+	}
+	return out
 }
 
 // AddTable adds a simple table.
@@ -89,64 +113,47 @@ func (p *SimplePDF) newPageIfNeeded() {
 	}
 }
 
-// Bytes returns the PDF as bytes (very minimal PDF).
+// Bytes returns the PDF: one content stream per page, a correct xref for
+// every object, and each page's text as its own BT/ET blocks (a text
+// object cannot nest, so the pages are not wrapped in another one).
 func (p *SimplePDF) Bytes() []byte {
 	if p.currentPage != nil {
 		p.currentPage.WriteString(fmt.Sprintf("BT /F1 10 Tf 72 %.0f Td (Page %d) Tj ET\n", p.margin-10, p.pageNum))
 		p.pages = append(p.pages, p.currentPage.Bytes())
+		p.currentPage = nil
 	}
-
-	// Create minimal PDF structure
+	if len(p.pages) == 0 {
+		p.pages = append(p.pages, []byte("BT /F1 12 Tf 72 720 Td (Empty report) Tj ET\n"))
+	}
+	n := len(p.pages)
+	objCount := 2 + 2*n // catalog, pages, n page objects, n content streams
+	offsets := make([]int64, objCount+1)
 	var pdf bytes.Buffer
 	pdf.WriteString("%PDF-1.4\n")
-
-	// Objects
-	objOffsets := make([]int64, 10)
-
-	// Object 1: Catalog
-	objOffsets[1] = int64(pdf.Len())
+	offsets[1] = int64(pdf.Len())
 	fmt.Fprintf(&pdf, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
-
-	// Object 2: Pages
-	objOffsets[2] = int64(pdf.Len())
+	offsets[2] = int64(pdf.Len())
 	fmt.Fprintf(&pdf, "2 0 obj\n<< /Type /Pages /Kids [")
-	for i := 0; i < len(p.pages); i++ {
+	for i := 0; i < n; i++ {
 		fmt.Fprintf(&pdf, "%d 0 R ", 3+i)
 	}
-	fmt.Fprintf(&pdf, "] /Count %d >>\nendobj\n", len(p.pages))
-
-	// Objects 3+: Page objects
+	fmt.Fprintf(&pdf, "] /Count %d >>\nendobj\n", n)
 	for i := range p.pages {
-		objOffsets[3+i] = int64(pdf.Len())
-		contentObjNum := 3 + len(p.pages) + i
+		offsets[3+i] = int64(pdf.Len())
 		fmt.Fprintf(&pdf, "%d 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.0f %.0f] /Contents %d 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>\nendobj\n",
-			3+i, p.pageWidth, p.pageHeight, contentObjNum)
+			3+i, p.pageWidth, p.pageHeight, 3+n+i)
 	}
-
-	// Content stream objects
-	for i, pageContent := range p.pages {
-		contentObjNum := 3 + len(p.pages) + i
-		objOffsets[contentObjNum] = int64(pdf.Len())
-		content := fmt.Sprintf("q\nBT\n%sET\nQ\n", string(pageContent))
-		fmt.Fprintf(&pdf, "%d 0 obj\n<< /Length %d >>\nstream\n%sstream\nendobj\n",
-			contentObjNum, len(content), content)
+	for i, content := range p.pages {
+		offsets[3+n+i] = int64(pdf.Len())
+		fmt.Fprintf(&pdf, "%d 0 obj\n<< /Length %d >>\nstream\n%sendstream\nendobj\n", 3+n+i, len(content), content)
 	}
-
-	// Xref
-	xrefOffset := pdf.Len()
-	fmt.Fprintf(&pdf, "xref\n0 %d\n", 3+2*len(p.pages))
+	xref := pdf.Len()
+	fmt.Fprintf(&pdf, "xref\n0 %d\n", objCount+1)
 	fmt.Fprintf(&pdf, "0000000000 65535 f \n")
-	for i := 1; i < 3+2*len(p.pages); i++ {
-		if i-1 < len(objOffsets) && objOffsets[i-1] > 0 {
-			fmt.Fprintf(&pdf, "%010d 00000 n \n", objOffsets[i-1])
-		}
+	for i := 1; i <= objCount; i++ {
+		fmt.Fprintf(&pdf, "%010d 00000 n \n", offsets[i])
 	}
-
-	// Trailer
-	fmt.Fprintf(&pdf, "trailer\n<< /Size %d /Root 1 0 R >>\n", 3+2*len(p.pages))
-	fmt.Fprintf(&pdf, "startxref\n%d\n", xrefOffset)
-	fmt.Fprintf(&pdf, "%%%%EOF\n")
-
+	fmt.Fprintf(&pdf, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", objCount+1, xref)
 	return pdf.Bytes()
 }
 

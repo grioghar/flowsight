@@ -1,6 +1,7 @@
 package reports
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -18,5 +19,29 @@ func TestMarkdownToPDFCarriesTheReport(t *testing.T) {
 	}
 	if len(pdf) < 1000 {
 		t.Fatalf("pdf suspiciously small: %d bytes", len(pdf))
+	}
+}
+
+func TestPDFManyPagesIsWellFormed(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("# Big\n\n")
+	for i := 0; i < 400; i++ {
+		b.WriteString("| Row | Value |\n|---|---|\n| a very long cell that goes on and on to force wrapping of the line so it does not run off the right edge of the page at all | 1 |\n\n")
+	}
+	pdf := string(markdownToPDF("Big", b.String()))
+	pages := strings.Count(pdf, "/Type /Page ")
+	if pages < 5 {
+		t.Fatalf("expected many pages, got %d", pages)
+	}
+	if strings.Count(pdf, "endstream") != pages || !strings.Contains(pdf, "startxref") {
+		t.Fatalf("streams %d for %d pages", strings.Count(pdf, "endstream"), pages)
+	}
+	// Every object the xref announces has an entry.
+	var size int
+	if _, err := fmt.Sscanf(pdf[strings.LastIndex(pdf, "/Size "):], "/Size %d", &size); err != nil || size != 3+2*pages {
+		t.Fatalf("xref size %d for %d pages (%v)", size, pages, err)
+	}
+	if strings.Count(pdf, " 00000 n \n") != size-1 {
+		t.Fatalf("xref entries %d, want %d", strings.Count(pdf, " 00000 n \n"), size-1)
 	}
 }
