@@ -475,6 +475,16 @@ func (m *Module) extractMACs(config map[string]interface{}) []string {
 	return macs
 }
 
+// setInventory swaps in a finished poll under the lock and nothing else:
+// no network, no calls that take the lock again.
+func (m *Module) setInventory(inventory *Inventory) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.inventory = inventory
+	m.lastPollTime = time.Now().Unix()
+	m.lastPollError = strings.Join(inventory.Errors, "; ")
+}
+
 func (m *Module) doPoll() error {
 	m.polling.Lock()
 	defer m.polling.Unlock()
@@ -507,13 +517,12 @@ func (m *Module) doPoll() error {
 	// Enrichment: UpsertHosts and notes write
 	m.enrichment(inventory, excludeVMIDs, identity)
 
-	// Save inventory
-	m.mu.Lock()
-	m.inventory = inventory
+	// The socket probe talks to the network and takes the module lock
+	// itself, so it runs before the lock is held, never inside it.
 	m.probeSockets(inventory)
-	m.lastPollTime = time.Now().Unix()
-	m.lastPollError = strings.Join(inventory.Errors, "; ")
-	m.mu.Unlock()
+
+	// Save inventory
+	m.setInventory(inventory)
 
 	m.ctx.Store.KVSet("proxmox.inventory", inventory)
 
