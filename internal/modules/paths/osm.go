@@ -165,14 +165,15 @@ func overpassToGeoJSON(raw []byte) ([]byte, int, error) {
 
 // osmState is what the status card shows.
 type osmState struct {
-	On      bool    `json:"on"`
-	Ways    int     `json:"ways"`
-	Regions int     `json:"regions_loaded"`
-	Of      int     `json:"regions_total"`
-	Next    string  `json:"next_region,omitempty"`
-	Error   string  `json:"error,omitempty"`
-	Until   int64   `json:"backing_off_until,omitempty"`
-	Weight  float64 `json:"weight"`
+	On         bool    `json:"on"`
+	Ways       int     `json:"ways"`
+	Regions    int     `json:"regions_loaded"`
+	Of         int     `json:"regions_total"`
+	Next       string  `json:"next_region,omitempty"`
+	Error      string  `json:"error,omitempty"`
+	Until      int64   `json:"backing_off_until,omitempty"`
+	Weight     float64 `json:"weight"`
+	PublicNote string  `json:"public_note,omitempty"`
 }
 
 // nextOSMBox is the region most worth fetching: stale (missing or a month
@@ -247,6 +248,9 @@ func (m *Module) refreshOSM() error {
 	if m.osmIsLocal() {
 		perRun = 12
 	}
+	m.mu.Lock()
+	m.osmPublicUsed = 0
+	m.mu.Unlock()
 	for i := 0; i < perRun; i++ {
 		b, ok := m.nextOSMBox()
 		if !ok {
@@ -291,14 +295,37 @@ func (m *Module) fetchOSMBox(b osmBox) error {
 		u = defaultOverpassURL
 	}
 	n, err := m.fetchOSMBoxFrom(u, b)
-	if err == nil && n == 0 && m.osmIsLocal() {
+	if err != nil {
+		return err
+	}
+	if n == 0 && m.osmIsLocal() && m.publicAllowed() {
+		// The public service keeps its own pace: one region per run, and
+		// a refusal backs off the public service alone. The local answer
+		// (empty) already stands on disk; local fetching carries on.
+		m.mu.Lock()
+		m.osmPublicUsed++
+		m.mu.Unlock()
 		if _, err2 := m.fetchOSMBoxFrom(defaultOverpassURL, b); err2 != nil {
-			// The local answer (empty) already stands on disk; the public
-			// service's refusal only delays the next region.
-			return err2
+			wait := time.Hour
+			if strings.Contains(err2.Error(), "429") {
+				wait = 6 * time.Hour
+			}
+			m.mu.Lock()
+			m.osmPublicUntil = time.Now().Add(wait)
+			m.osm.PublicNote = "public Overpass: " + err2.Error() + "; local regions continue"
+			m.mu.Unlock()
 		}
 	}
-	return err
+	return nil
+}
+
+// publicAllowed says whether the public service may be asked right now:
+// not while it is backing off, and at most once per run when it is only
+// the fallback behind a private server.
+func (m *Module) publicAllowed() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return time.Now().After(m.osmPublicUntil) && m.osmPublicUsed < 1
 }
 
 func (m *Module) fetchOSMBoxFrom(u string, b osmBox) (int, error) {

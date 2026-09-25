@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251610
+
+**The public fallback keeps the public pace.** The first fast pass against
+a private Overpass fetched seven Arctic regions in ten seconds, each empty
+locally, each falling through to the public service, until the public
+service answered 429 and the whole job backed off for six hours, local
+fetching included. The public service is now asked at most once per run
+when it is only the fallback, and its refusal backs off the public service
+alone; regions keep coming from the private server. The sources card says
+when the public fallback is resting.
+
 ## 0.9.8r202609251547
 
 **A private Overpass fills the map in hours and never pretends.** With your

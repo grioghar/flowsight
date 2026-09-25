@@ -53,6 +53,8 @@ type Module struct {
 	osmNets        []cableNet // OpenStreetMap telecom lines, at half weight
 	osm            osmState
 	osmUntil       time.Time      // do not ask Overpass again before this
+	osmPublicUntil time.Time      // the public service, when it is only the fallback
+	osmPublicUsed  int            // public fallbacks used in the current run
 	hopBoxes       map[string]int // placed hops per OSM region, from the last graph
 	providers      *providerIndex // the clouds' published ranges
 	provider       providerState
