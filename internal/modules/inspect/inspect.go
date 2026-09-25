@@ -42,8 +42,16 @@ type Module struct {
 	synFloodThresh   int
 	portScanThresh   int
 
+	// TLS observations for ECH detection (5-tuple/3-tuple -> ECH flag, expires after 1 min)
+	tlsObservations map[string]tlsObservation // key: src:dst:dstport or src:dst:dstport:proto
+
 	// Data directory
 	dataDir string
+}
+
+type tlsObservation struct {
+	ECH       bool
+	Timestamp time.Time
 }
 
 type PFState struct {
@@ -142,6 +150,7 @@ type TLSInfo struct {
 	Dst       string    `json:"dst"`
 	CertCN    string    `json:"cert_cn,omitempty"`
 	CertSAN   []string  `json:"cert_san,omitempty"`
+	ECH       bool      `json:"ech,omitempty"` // encrypted_client_hello extension detected
 	Timestamp time.Time `json:"timestamp"`
 }
 
@@ -244,6 +253,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 
 	m.captures = make(map[string]*CaptureInfo)
+	m.tlsObservations = make(map[string]tlsObservation)
 	m.states = []*PFState{}
 
 	// Load existing captures from disk
@@ -279,6 +289,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// Schedule state polling job
 	ctx.Every("state_poller", time.Duration(m.statePollSeconds)*time.Second, m.pollStates)
+
+	// Publish TLS observation service for visibility module to query ECH
+	ctx.Publish("tls_observations", m)
 
 	return nil
 }
@@ -943,4 +956,36 @@ func asBool(v any, def bool) bool {
 		return x == "true" || x == "1" || x == "yes"
 	}
 	return def
+}
+
+// recordTLSObservation stores ECH detection for a flow (3-tuple: src, dst, dstport)
+// for the visibility module to query. Observations expire after 1 minute.
+func (m *Module) recordTLSObservation(src, dst string, dstPort int, ech bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := fmt.Sprintf("%s:%s:%d", src, dst, dstPort)
+	m.tlsObservations[key] = tlsObservation{ECH: ech, Timestamp: time.Now()}
+}
+
+// queryTLSObservation checks if a 3-tuple had ECH in the last minute
+func (m *Module) queryTLSObservation(src, dst string, dstPort int) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	key := fmt.Sprintf("%s:%s:%d", src, dst, dstPort)
+	if obs, ok := m.tlsObservations[key]; ok {
+		if time.Since(obs.Timestamp) < time.Minute {
+			return obs.ECH
+		}
+	}
+	return false
+}
+
+// TLSObservationService allows other modules to query TLS observations
+type TLSObservationService interface {
+	HasECH(src, dst string, dstPort int) bool
+}
+
+// HasECH returns true if a TLS connection to (dst:dstPort) from src had ECH
+func (m *Module) HasECH(src, dst string, dstPort int) bool {
+	return m.queryTLSObservation(src, dst, dstPort)
 }
