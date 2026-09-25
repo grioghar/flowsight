@@ -179,6 +179,11 @@ func (m *Module) registerRoutes() {
 	ctx.Route("PUT", "/api/alerting/rules/{id}", m.apiUpdateRule,
 		core.Write(), core.Needs("alerting.notify"),
 		core.Doc("Update an existing alert rule with new conditions and settings"), core.PathParam("id", "string", "Rule ID", "rule-1"),
+		core.Body(
+			core.Fld("name", "string", false, "Updated rule name", "High CPU Alert"),
+			core.Fld("condition", "string", false, "Updated alert condition", "cpu > 80"),
+			core.Fld("enabled", "boolean", false, "Whether rule is enabled", true),
+		),
 		core.Returns("Updated rule", map[string]any{
 			"rule": map[string]any{"id": "rule-1", "name": "High CPU Alert", "enabled": true},
 		}))

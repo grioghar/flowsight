@@ -80,15 +80,42 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// Routes.
 	ctx.Route("GET", "/api/rulehygiene/summary", m.apiSummary, core.Needs("firewall.analyse"),
-		core.Doc("Risk score, finding counts, rules analysed, ruleset loaded since"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Summary of firewall rule health including risk score and analysis statistics"),
+		core.Returns("Rule hygiene summary", map[string]any{
+			"risk_score": 35,
+			"finding_count": 10,
+			"rules_analyzed": 250,
+			"ruleset_loaded_since": 1790376243,
+		}))
 	ctx.Route("GET", "/api/rulehygiene/rules", m.apiRules, core.Needs("firewall.analyse"),
-		core.Doc("Every rule with counters, description, interface and findings"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Complete list of firewall rules with hit counters, descriptions and associated findings"),
+		core.Returns("Rules list with analysis", map[string]any{
+			"rules": []map[string]any{
+				{"id": "rule-1", "description": "Allow SSH", "hits": 100, "findings": []string{"unused"}},
+			},
+		}))
 	ctx.Route("GET", "/api/rulehygiene/findings", m.apiFindings, core.Needs("firewall.analyse"),
-		core.Doc("Open findings"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Open findings from firewall rule analysis including policy recommendations"),
+		core.Returns("Current findings", map[string]any{
+			"findings": []map[string]any{
+				{"type": "unused-rule", "rule_id": "rule-1", "severity": "low"},
+			},
+		}))
 	ctx.Route("GET", "/api/rulehygiene/changes", m.apiChanges, core.Needs("firewall.analyse"),
-		core.Doc("Configuration changes from the changes table"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Recent configuration changes and rule modifications tracked from firewall system"),
+		core.Returns("Configuration changes", map[string]any{
+			"changes": []map[string]any{
+				{"timestamp": 1790376243, "rule_id": "rule-1", "action": "modified"},
+			},
+		}))
 	ctx.Route("POST", "/api/rulehygiene/run", m.apiRun, core.Needs("firewall.analyse"),
-		core.Write(), core.Doc("Run analysis now"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Write(),
+		core.Doc("Trigger immediate firewall rule analysis to detect policy issues and cleanup opportunities"),
+		core.Body(),
+		core.Returns("Run result", map[string]any{
+			"ok": true,
+			"message": "Analysis started",
+		}))
 	ctx.Panel(core.Panel{
 		ID:      "firewall",
 		Title:   "Firewall Analysis Engine (FAE)",

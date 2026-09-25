@@ -83,13 +83,42 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.loadSeen()
 	every := time.Duration(core.Int(ctx.Settings(), "refresh_seconds", 30)) * time.Second
 	ctx.Every("refresh", every, m.refresh)
-	ctx.Route("GET", "/api/identity/hosts", m.apiHosts, core.Doc("Known hosts with names, MACs, vendors and last activity"),
-		core.Params("hours", "activity window", "all", "include inactive"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/identity/lookup", m.apiLookup, core.Doc("Name, MAC and vendor for one address"),
-		core.Params("ip", "address"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/identity/leases", m.apiLeases, core.Doc("Current DHCP leases"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("POST", "/api/identity/name", m.apiSetName, core.Write(), core.Doc("Assign a display name to an address"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("DELETE", "/api/identity/name/{ip}", m.apiDeleteNameByIP, core.Write(), core.Doc("Delete a name override by IP"), core.PathParam("ip", "string", "IP address", "192.168.1.10"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/identity/hosts", m.apiHosts,
+		core.Query("hours", "integer", "Activity window in hours to consider as active (default 24)", false, 24),
+		core.Query("all", "boolean", "Include inactive hosts that are no longer seen (default false)", false, false),
+		core.Doc("List all known hosts with their names, MAC addresses, vendors and last activity time"),
+		core.Returns("Hosts list", map[string]any{
+			"hosts": []map[string]any{
+				{"ip": "192.168.1.10", "mac": "aa:bb:cc:dd:ee:ff", "name": "MacBook", "vendor": "Apple", "last_activity": 1790376243},
+			},
+		}))
+	ctx.Route("GET", "/api/identity/lookup", m.apiLookup,
+		core.Query("ip", "string", "IP address to look up", true, "192.168.1.10"),
+		core.Doc("Lookup details for a specific IP address including MAC, vendor and display name"),
+		core.Returns("Host lookup details", map[string]any{
+			"ip": "192.168.1.10",
+			"mac": "aa:bb:cc:dd:ee:ff",
+			"name": "MacBook",
+			"vendor": "Apple",
+		}))
+	ctx.Route("GET", "/api/identity/leases", m.apiLeases,
+		core.Doc("List all current DHCP leases issued by the gateway DHCP server"),
+		core.Returns("Active DHCP leases", map[string]any{
+			"leases": []map[string]any{
+				{"ip": "192.168.1.10", "mac": "aa:bb:cc:dd:ee:ff", "hostname": "macbook", "expires": 1790376243},
+			},
+		}))
+	ctx.Route("POST", "/api/identity/name", m.apiSetName, core.Write(),
+		core.Doc("Assign or update a custom display name for a network device by IP address"),
+		core.Body(
+			core.Fld("ip", "string", true, "Device IP address", "192.168.1.10"),
+			core.Fld("name", "string", true, "Display name to assign", "MacBook"),
+		),
+		core.Returns("Name assignment result", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/identity/name/{ip}", m.apiDeleteNameByIP, core.Write(),
+		core.PathParam("ip", "string", "Device IP address", "192.168.1.10"),
+		core.Doc("Remove a custom name override and revert to automatic identification for a device"),
+		core.Returns("Name deletion result", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "hosts", Title: "IP Addresses", Group: "Inventory", Order: 20, Icon: "hosts"})
 	ctx.Panel(core.Panel{ID: "host", Title: "IP address", Group: "Inventory", Order: 21, Detail: true})
 	return nil

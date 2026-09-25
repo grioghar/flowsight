@@ -60,11 +60,38 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.evePath = path
 	every := time.Duration(core.Int(ctx.Settings(), "poll_seconds", 5)) * time.Second
 	ctx.Every("tail", every, m.poll)
-	ctx.Route("GET", "/api/ids/summary", m.apiSummary, core.Doc("Alert counts by severity, category, signature and host"),
-		core.Params("hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/ids/alerts", m.apiAlerts, core.Doc("Recent alerts"),
-		core.Params("hours", "window", "severity", "filter", "ip", "either end", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("POST", "/api/ids/alerts/ack", m.apiAck, core.Write(), core.Doc("Acknowledge alerts"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/ids/summary", m.apiSummary,
+		core.Query("hours", "integer", "Time window in hours for alert analysis (default 24)", false, 24),
+		core.Doc("Get summary of IDS alerts grouped by severity, category, signature and source host"),
+		core.Returns("Alert summary", map[string]any{
+			"counts": map[string]any{
+				"critical": 2,
+				"high": 5,
+				"medium": 10,
+			},
+			"by_category": map[string]any{
+				"trojan": 3,
+				"exploit": 2,
+			},
+		}))
+	ctx.Route("GET", "/api/ids/alerts", m.apiAlerts,
+		core.Query("hours", "integer", "Time window in hours for alert retrieval (default 24)", false, 24),
+		core.Query("severity", "string", "Filter by alert severity (critical, high, medium, low)", false, "high"),
+		core.Query("ip", "string", "Filter by source or destination IP address", false, "192.168.1.10"),
+		core.Query("unacked", "boolean", "Show only unacknowledged alerts", false, false),
+		core.Query("limit", "integer", "Maximum alerts to return (default 500)", false, 500),
+		core.Doc("List recent IDS alerts with filtering by severity, IP address and acknowledgment status"),
+		core.Returns("Alerts list", map[string]any{
+			"alerts": []map[string]any{
+				{"id": "alert-1", "severity": "high", "category": "trojan", "src_ip": "203.0.113.1", "dst_ip": "192.168.1.10", "timestamp": 1790376243},
+			},
+		}))
+	ctx.Route("POST", "/api/ids/alerts/ack", m.apiAck, core.Write(),
+		core.Doc("Acknowledge one or multiple IDS alerts to mark them as reviewed"),
+		core.Body(
+			core.Fld("alert_ids", "array", true, "List of alert IDs to acknowledge", []string{"alert-1"}),
+		),
+		core.Returns("Acknowledgment result", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "threats", Title: "Threats", Group: "Protect", Order: 60, Icon: "threats"})
 	return nil
 }

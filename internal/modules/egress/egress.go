@@ -196,7 +196,13 @@ func (m *Module) Setup(ctx *core.Context) error {
 			},
 		}))
 	ctx.Route("POST", "/api/egress/stop", m.apiStop, core.Write(), core.Needs("egress.watch"),
-		core.Doc("Drop a transfer that is running ({local, peer, port}); the connection is killed at the firewall"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Terminate an active outbound transfer connection at the firewall gateway"),
+		core.Body(
+			core.Fld("local", "string", true, "Local source IP address", "192.168.1.10"),
+			core.Fld("peer", "string", true, "Remote peer IP address", "8.8.8.8"),
+			core.Fld("port", "integer", true, "Remote port number", 443),
+		),
+		core.Returns("Stop result", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "egress", Title: "DLP", Group: "Protect", Order: 72, Icon: "egress", Feature: "egress.watch"})
 	ctx.Publish("egress", m)
 	return nil

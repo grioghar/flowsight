@@ -132,13 +132,25 @@ func (m *Module) Setup(ctx *core.Context) error {
 			},
 		}))
 	ctx.Route("POST", "/api/license/activate", m.apiActivate, core.Write(),
-		core.Doc("Activate an activation key against the license server"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Activate an activation key or license code through the online license server"),
+		core.Body(
+			core.Fld("key", "string", true, "License activation key or code", "XXXX-XXXX-XXXX-XXXX"),
+		),
+		core.Returns("Activation result", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/install", m.apiInstall, core.Write(),
-		core.Doc("Install a signed license file (offline)"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Install a signed offline license file for air-gapped deployments"),
+		core.Body(
+			core.Fld("license", "string", true, "Signed license file content", "-----BEGIN LICENSE-----..."),
+		),
+		core.Returns("Installation result", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/refresh", m.apiRefresh, core.Write(),
-		core.Doc("Refresh the online lease now"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Refresh online license lease status with the license server immediately"),
+		core.Body(),
+		core.Returns("Refresh result", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/remove", m.apiRemove, core.Write(),
-		core.Doc("Remove the license and return to Community (tells the server, when it was an online activation)"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Remove current license and revert to Community tier after notifying server"),
+		core.Body(),
+		core.Returns("Removal result", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "license", Title: "License", Group: "Administration", Order: 250, Icon: "license"})
 	return nil
 }
