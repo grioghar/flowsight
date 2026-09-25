@@ -126,7 +126,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/netflow/status", m.apiStatus,
 		core.Doc("Per-exporter status: protocol, records, flows, drops, templates, last seen, bytes"))
 
-	ctx.Panel(core.Panel{ID: "netflow_status", Title: "Flow sources", Group: "Monitor", Order: 35, Icon: "flows"})
+	ctx.Panel(core.Panel{ID: "flowsources", Title: "Flow sources", Group: "Monitor", Order: 35, Icon: "flows"})
 
 	ctx.Every("reap_exporters", 10*time.Minute, m.reapExporters, core.Delayed())
 

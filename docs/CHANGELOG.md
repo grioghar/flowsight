@@ -12,7 +12,7 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8r202609252328
+## 0.9.8r202609252331
 
 **Extend visibility beyond the gateway with NetFlow, IPFIX, and sFlow.** A new
 netflow module collects flows from switches, routers, and other devices via

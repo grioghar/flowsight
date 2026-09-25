@@ -362,37 +362,26 @@
       const dl = FS.$('#ca-del', el); if (dl) dl.onclick = async () => { if (!await FS.confirm('Delete the inspection CA? Every policy with TLS inspection stops decrypting, and a new CA would have to be installed on devices again.')) return; const r = await post('/api/tls/ca/delete', {}); if (r.error) FS.toast(r.error, true); else FS.render(); };
     }
   });
-})();
 
-  // --------- Flow sources (NetFlow, IPFIX, sFlow exporters)
+  // Flow sources - NetFlow, IPFIX, sFlow exporters
   FS.registerPage('flowsources', {
     title: 'Flow sources', refresh: 10,
     async render(el) {
       const st = await get('/api/netflow/status');
       if (st.error) { el.innerHTML = FS.err('Flow sources unavailable: ' + st.error); return; }
-      
       const exporters = st.exporters || [];
-      el.innerHTML = `
-        <div class="help">
-          <b>Add a switch or router as a flow source.</b> Any device that exports NetFlow v5/v9, IPFIX, or sFlow v5 
-          can point flows here to extend visibility beyond the gateway. Configure the exporter to send to FlowSight at 
-          <span class="mono">${window.location.hostname}:2055</span> (or <span class="mono">:6343</span> for sFlow).
-          See the how-to guide: <a href="#" target="_blank">Add a switch or another router as a flow source</a>.
-        </div>
-        <div style="margin-top:14px">
-          ${exporters.length ? 
-            card('Connected exporters', table(exporters, [
-              { t: 'Address', k: 'address' },
-              { t: 'Protocol', f: r => esc(r.protocol) },
-              { t: 'Records', f: r => num(r.records_total), num: true },
-              { t: 'Flows', f: r => num(r.flows_total), num: true },
-              { t: 'Dropped', f: r => r.drops_total ? `<span style="color:var(--sev-high)">${num(r.drops_total)}</span>` : '—', num: true },
-              { t: 'Templates', f: r => num(r.templates) },
-              { t: 'Last seen', f: r => ago(r.last_seen) }
-            ])) 
-            : '<div class="empty">No exporters connected</div>'}
-        </div>
-      `;
+      const cols = [
+        { t: 'Address', k: 'address' },
+        { t: 'Protocol', k: 'protocol' },
+        { t: 'Records', f: r => num(r.records_total), num: true },
+        { t: 'Flows', f: r => num(r.flows_total), num: true },
+        { t: 'Dropped', f: r => num(r.drops_total), num: true },
+        { t: 'Templates', f: r => num(r.templates) },
+        { t: 'Last seen', f: r => ago(r.last_seen) }
+      ];
+      el.innerHTML = exporters.length
+        ? card('Connected exporters', table(exporters, cols))
+        : card('Connected exporters', '<div class="empty">No exporters connected</div>');
     }
   });
 })();
