@@ -1154,6 +1154,16 @@ headers are supported in addition to session cookies.
 
 ## Keyboard and browser notes
 
+**Arranging cards.** Every card on every page can be moved: drag it by its
+heading (the grip at the left of the heading is the handle) to a new place
+among its neighbours. The arrangement is kept in this browser, per page, and
+survives refreshes. Click the grip for a menu: move earlier or later, *Save
+this page's layout as default*, *Reset to default*, or forget the default and
+go back to the built-in order. While a page differs from its default a
+*Reset layout* button shows in the header. On a touch screen use the grip
+menu rather than dragging.
+
+
 The interface has no build step and no external resources; it works
 offline and inside the OPNsense GUI frame. It refreshes pages that show
 live data every few seconds while the tab is visible, and stops when it is

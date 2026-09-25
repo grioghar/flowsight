@@ -12,6 +12,16 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251624
+
+**Cards go where you put them.** Every card on every page can be dragged
+by its heading to a new place among its neighbours; the arrangement is kept
+per page in the browser and survives refreshes. The grip on each heading
+opens a menu to move a card without dragging, to save the page's current
+arrangement as its default, to reset to that default, or to forget it and
+return to the built-in order. A *Reset layout* button shows in the header
+while a page differs from its default.
+
 ## 0.9.8r202609251615
 
 **A session's path, one click away.** Every row on the Sessions page with

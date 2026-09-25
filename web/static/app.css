@@ -629,3 +629,9 @@ tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .pathmap .hop.provider { stroke: #a855f7; stroke-width: 1.2; }
 .lg .provider { stroke: #a855f7; stroke-width: 1.2; fill: none; }
 
+
+/* card layout: drag by the heading */
+.card h3 .grip { cursor: grab; color: var(--muted); opacity: .45; font-size: 14px; line-height: 1; padding: 0 2px; user-select: none; }
+.card h3 .grip:hover { opacity: 1; }
+.card.dragging { opacity: .5; outline: 2px dashed var(--line); }
+#layout:empty { display: none; }

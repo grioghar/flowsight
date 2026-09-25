@@ -113,7 +113,7 @@
     const scroller = document.scrollingElement || document.documentElement;
     const wasY = same ? (window.scrollY || scroller.scrollTop || 0) : 0;
     if (same) view.style.minHeight = view.offsetHeight + 'px';
-    try { await def.render(view, { arg, params }); FS.enrichIn(view); } catch (e) { view.innerHTML = FS.err('Page failed: ' + e.message); console.error(e); }
+    try { await def.render(view, { arg, params }); FS.enrichIn(view); FS.layout.apply(view); } catch (e) { view.innerHTML = FS.err('Page failed: ' + e.message); console.error(e); }
     if (same) {
       if (wasY) scroller.scrollTop = wasY;
       requestAnimationFrame(() => { view.style.minHeight = ''; if (FS.reportHeight) FS.reportHeight(); });

@@ -29,6 +29,7 @@ FS.setInfinite = (on) => { FS.infiniteScroll = !!on; try { localStorage.setItem(
 FS.setAutoRefresh = (on) => { FS.autoRefresh = !!on; try { localStorage.setItem('fs.autorefresh', on ? '1' : '0'); } catch (e) { } };
 FS.refreshHeld = () => {
   if (!FS.autoRefresh) return true;
+  if (FS.layout && FS.layout.dragging) return true;
   const m = document.getElementById('modal'); if (m && !m.hidden) return true;
   const a = document.activeElement;
   if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.id !== 'search') return true;
@@ -634,6 +635,120 @@ FS.pages = {};
 FS.registerPage = (id, def) => { FS.pages[id] = def; };
 
 // Query helpers for hash routes: #flows?ip=1.2.3.4
+// --------------------------------------------------------------- card layout
+// Every card on every page can be dragged to a new place among its
+// neighbours (by its heading), and the arrangement is remembered per page
+// in this browser. "Save as default" keeps the current arrangement as the
+// one "Reset" returns to; without one, Reset restores the page's built-in
+// order. Cards are matched by their heading text, so a page that renders
+// again, or renders a different number of rows, keeps the arrangement.
+FS.layout = (() => {
+  const L = { dragging: false };
+  const store = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+  const load = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } };
+  const page = () => (FS.state && FS.state.page) || 'page';
+  const keyOf = (card) => { const h = card.querySelector && card.querySelector(':scope > h3'); const t = h ? (h.textContent || '').replace(/[⠇☰⋮]/g, '').trim().toLowerCase() : ''; return t || 'card'; };
+  // Containers whose direct children include at least two cards.
+  const groups = (root) => {
+    const out = [];
+    const all = root.querySelectorAll ? Array.from(root.querySelectorAll('.card')) : [];
+    const parents = new Set(all.map(c => c.parentNode).filter(Boolean));
+    if (root.querySelector && Array.from(root.children || []).filter(c => c.classList && c.classList.contains('card')).length > 1) parents.add(root);
+    parents.forEach(p => { const cards = Array.from(p.children || []).filter(c => c.classList && c.classList.contains('card')); if (cards.length > 1) out.push({ parent: p, cards }); });
+    return out;
+  };
+  // Unique keys within one container: a second "Hosts" becomes "hosts#2".
+  const keys = (cards) => { const seen = {}; return cards.map(c => { const k = keyOf(c); seen[k] = (seen[k] || 0) + 1; return seen[k] > 1 ? `${k}#${seen[k]}` : k; }); };
+  // Pure: the order to render, given the built-in keys and a saved order.
+  // Saved keys that still exist come first in saved order; the rest keep
+  // their built-in relative order.
+  L.order = (built, saved) => {
+    if (!saved || !saved.length) return built.slice();
+    const have = new Set(built);
+    const first = saved.filter(k => have.has(k));
+    const rest = built.filter(k => !first.includes(k));
+    return first.concat(rest);
+  };
+  const saveKey = () => 'fs.layout.' + page();
+  const defKey = () => 'fs.layoutDefault.' + page();
+  const current = (root) => groups(root).map(g => keys(g.cards));
+  const save = (root) => store(saveKey(), current(root));
+  L.apply = (root) => {
+    if (!root || !root.querySelectorAll) return;
+    const saved = load(saveKey()) || load(defKey());
+    if (saved) {
+      groups(root).forEach((g, i) => {
+        const ks = keys(g.cards); const want = L.order(ks, saved[i] || []);
+        if (want.join('|') === ks.join('|')) return;
+        const byKey = {}; g.cards.forEach((c, j) => { byKey[ks[j]] = c; });
+        want.forEach(k => { if (byKey[k]) g.parent.appendChild(byKey[k]); });
+      });
+    }
+    L.arm(root);
+    L.chip();
+  };
+  // Drag by the heading; a grip shows where to take hold.
+  L.arm = (root) => {
+    groups(root).forEach(g => g.cards.forEach(card => {
+      if (card.dataset && card.dataset.layoutArmed) return;
+      if (card.dataset) card.dataset.layoutArmed = '1';
+      const h = card.querySelector(':scope > h3'); if (!h) return;
+      const grip = document.createElement('span'); grip.className = 'grip'; grip.title = 'Drag to move this card. Click for more.'; grip.textContent = '⠇';
+      h.insertBefore(grip, h.firstChild);
+      card.setAttribute('draggable', 'true');
+      card.addEventListener('dragstart', (e) => {
+        // Only from the heading: text and links inside the card stay selectable.
+        if (!h.contains(e.target)) { e.preventDefault(); return; }
+        L.dragging = card; card.classList.add('dragging');
+        try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', keyOf(card)); } catch (x) { }
+      });
+      card.addEventListener('dragend', () => { card.classList.remove('dragging'); L.dragging = false; save(root); L.chip(); });
+      card.addEventListener('dragover', (e) => {
+        const d = L.dragging; if (!d || d === card || d.parentNode !== card.parentNode) return;
+        e.preventDefault();
+        const r = card.getBoundingClientRect(); const before = (e.clientX - r.left) / (r.width || 1) + (e.clientY - r.top) / (r.height || 1) < 1;
+        card.parentNode.insertBefore(d, before ? card : card.nextSibling);
+      });
+      grip.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); L.menu(card, root); });
+    }));
+  };
+  // A small menu for touch screens and for the defaults.
+  L.menu = (card, root) => {
+    const sib = Array.from(card.parentNode.children).filter(c => c.classList && c.classList.contains('card'));
+    const i = sib.indexOf(card);
+    const html = `<h2>Arrange</h2><p class="small muted">${FS.esc(keyOf(card))}</p><div class="actions" style="flex-wrap:wrap">
+      <button class="btn" data-a="up" ${i <= 0 ? 'disabled' : ''}>Move earlier</button>
+      <button class="btn" data-a="down" ${i >= sib.length - 1 ? 'disabled' : ''}>Move later</button>
+      <button class="btn" data-a="first" ${i <= 0 ? 'disabled' : ''}>Move first</button>
+      <button class="btn" data-a="default">Save this page's layout as default</button>
+      <button class="btn" data-a="reset">Reset to default</button>
+      <button class="btn" data-a="builtin">Forget default (built-in order)</button>
+      <button type="button" class="btn" onclick="FS.closeModal()">Close</button></div>
+      <div class="help">Drag any card by its heading to move it. The arrangement is kept in this browser, per page.</div>`;
+    FS.modal(html, (b) => {
+      FS.$$('[data-a]', b).forEach(btn => btn.onclick = () => {
+        const a = btn.dataset.a;
+        if (a === 'up' && i > 0) card.parentNode.insertBefore(card, sib[i - 1]);
+        if (a === 'down' && i < sib.length - 1) card.parentNode.insertBefore(sib[i + 1], card);
+        if (a === 'first') card.parentNode.insertBefore(card, sib[0]);
+        if (a === 'default') { store(defKey(), current(root)); store(saveKey(), null); FS.toast('Saved as the default layout for this page'); }
+        if (a === 'reset') { store(saveKey(), null); FS.toast(load(defKey()) ? 'Layout reset to your default' : 'Layout reset to the built-in order'); }
+        if (a === 'builtin') { store(defKey(), null); store(saveKey(), null); FS.toast('Default forgotten; built-in order restored'); }
+        if (a === 'up' || a === 'down' || a === 'first') save(root);
+        FS.closeModal(); FS.render();
+      });
+    });
+  };
+  // A chip in the header while the page differs from its default.
+  L.chip = () => {
+    const el = document.getElementById && document.getElementById('layout'); if (!el) return;
+    const custom = !!load(saveKey());
+    el.innerHTML = custom ? `<button type="button" class="btn small" title="Put this page's cards back where they were">Reset layout</button>` : '';
+    const b = el.querySelector && el.querySelector('button'); if (b) b.onclick = () => { store(saveKey(), null); FS.render(); };
+  };
+  return L;
+})();
+
 FS.parseHash = () => { const h = location.hash.replace(/^#/, '') || 'overview'; const [pathPart, q] = h.split('?'); const parts = pathPart.split('/'); const params = {}; (q || '').split('&').forEach(kv => { if (!kv) return; const [k, v] = kv.split('='); params[decodeURIComponent(k)] = decodeURIComponent(v || ''); }); return { page: parts[0], arg: parts.slice(1).map(decodeURIComponent).join('/'), params }; };
 FS.go = (hash) => { location.hash = hash; };
 
