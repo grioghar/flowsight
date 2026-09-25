@@ -24,6 +24,7 @@
         if (dd.domains && dd.domains.length) bits.push(`domains: ${dd.domains.slice(0, 4).join(', ')}${dd.domains.length > 4 ? ` +${dd.domains.length - 4}` : ''}`);
         if (dd.tlds && dd.tlds.length) bits.push(`TLDs: .${dd.tlds.join(', .')}`);
         if (dd.ports && dd.ports.length) bits.push(`ports: ${dd.ports.join(', ')}`);
+        if (dd.countries && dd.countries.length) bits.push(`countries: ${dd.countries.join(', ')}`);
         if (dd.internet) bits.push('no internet');
         if (p.safe_search) bits.push('safe search');
         if (p.youtube) bits.push('YouTube ' + p.youtube);
@@ -63,7 +64,7 @@
       <div class="row"><div><label>Name</label><input type="text" name="name" value="${esc(pol.name)}" required></div><div><label>Action</label><select name="action"><option ${pol.action === 'block' ? 'selected' : ''} value="block">block</option><option ${pol.action === 'monitor' ? 'selected' : ''} value="monitor">monitor (log only)</option></select></div></div>
       <label>Description</label><input type="text" name="description" value="${esc(pol.description || '')}">
       <div class="check"><input type="checkbox" name="enabled" ${pol.enabled ? 'checked' : ''}><span>Enabled</span></div>
-      <div class="tabs"><button type="button" class="on" data-tab="who">Who</button><button type="button" data-tab="what">What to deny</button><button type="button" data-tab="web">Web & DNS</button><button type="button" data-tab="tls">TLS</button></div>
+      <div class="tabs"><button type="button" class="on" data-tab="who">Who</button><button type="button" data-tab="what">What to deny</button><button type="button" data-tab="countries">Countries</button><button type="button" data-tab="web">Web & DNS</button><button type="button" data-tab="tls">TLS</button></div>
       <div data-pane="who">
         <div class="check"><input type="checkbox" name="all" ${pol.match.all ? 'checked' : ''}><span>Everyone on the local networks</span></div>
         <label>Groups</label><select name="groups" multiple size="${Math.min(6, Math.max(2, groups.length))}">${opts(groups, pol.match.groups)}</select><div class="help">Manage groups under Groups &amp; Schedules.</div>
@@ -76,6 +77,16 @@
         <label>Ports</label><textarea name="ports" placeholder="tcp/25&#10;udp/1000-2000&#10;any/6881-6889">${esc(list(pol.deny.ports))}</textarea>
         <div class="check"><input type="checkbox" name="internet" ${pol.deny.internet ? 'checked' : ''}><span>No internet access at all (local networks stay reachable)</span></div>
         <label>Allowed applications (exceptions)</label><textarea name="allow_apps">${esc(list(pol.allow.apps))}</textarea>
+      </div>
+      <div data-pane="countries" hidden>
+        <div id="countries-loading" class="small muted">Loading country list…</div>
+        <div id="countries-list" hidden>
+          <label>Block traffic to these countries</label>
+          <input type="text" id="countries-search" name="countries-search" placeholder="Search countries…" style="margin-bottom:8px">
+          <select name="countries" multiple size="8" id="countries-select">${opts((pol.deny.countries || []), pol.deny.countries)}</select>
+          <div class="help">Select countries to block outbound traffic. Requires country lookup enabled in enrich settings.</div>
+        </div>
+        <div id="countries-error" hidden class="sev-high small"></div>
       </div>
       <div data-pane="web" hidden>
         <label>Web categories</label><select name="categories" multiple size="8">${opts(webCats, pol.deny.categories)}</select>
@@ -92,13 +103,41 @@
       </div>
       <div class="actions"><button class="btn primary">Save</button><button type="button" class="btn" data-close>Cancel</button></div></form>`, (b) => {
       FS.$$('.tabs button', b).forEach(t => t.onclick = () => { FS.$$('.tabs button', b).forEach(x => x.classList.remove('on')); t.classList.add('on'); FS.$$('[data-pane]', b).forEach(p => p.hidden = p.dataset.pane !== t.dataset.tab); });
+      // Load countries list asynchronously for the countries select.
+      (async () => {
+        const r = await get('/api/enrich/countries');
+        const loading = FS.$('#countries-loading', b);
+        const list = FS.$('#countries-list', b);
+        const err = FS.$('#countries-error', b);
+        const select = FS.$('#countries-select', b);
+        const search = FS.$('#countries-search', b);
+        if (r.error) {
+          if (loading) loading.hidden = true;
+          if (err) { err.hidden = false; err.textContent = r.error; }
+          return;
+        }
+        const countries = r.countries || [];
+        const opts = countries.map(c => `<option value="${esc(c.code)}" ${(pol.deny && pol.deny.countries && pol.deny.countries.includes(c.code)) ? 'selected' : ''}>${esc(c.code)} – ${esc(c.name)} (${c.prefixes} network(s))</option>`).join('');
+        select.innerHTML = opts;
+        if (loading) loading.hidden = true;
+        if (list) list.hidden = false;
+        // Live search in countries list
+        if (search) {
+          search.oninput = () => {
+            const q = search.value.toLowerCase();
+            FS.$$('option', select).forEach(opt => {
+              opt.hidden = !opt.textContent.toLowerCase().includes(q);
+            });
+          };
+        }
+      })();
       FS.$('form', b).onsubmit = async (e) => {
         e.preventDefault(); const f = e.target;
         const lines = (n) => f[n].value.split(/\n|,/).map(x => x.trim()).filter(Boolean);
         const multi = (n) => Array.from(f[n].selectedOptions).map(o => o.value);
         const out = { name: f.name.value.trim(), description: f.description.value.trim(), enabled: f.enabled.checked, action: f.action.value,
           match: { all: f.all.checked, groups: multi('groups'), members: lines('members') }, schedule: f.schedule.value,
-          deny: { apps: lines('apps'), app_categories: multi('app_categories'), ports: lines('ports'), internet: f.internet.checked, categories: multi('categories'), domains: lines('domains'), tlds: lines('tlds') },
+          deny: { apps: lines('apps'), app_categories: multi('app_categories'), ports: lines('ports'), internet: f.internet.checked, categories: multi('categories'), domains: lines('domains'), tlds: lines('tlds'), countries: multi('countries') },
           allow: { apps: lines('allow_apps'), domains: lines('allow_domains') }, tls: { inspect: f.inspect.checked, bypass: lines('bypass') },
           safe_search: f.safe_search.checked, youtube: f.youtube.value };
         const r = await post('/api/policy/policy', { original: isNew ? '' : pol.name, policy: out });
@@ -112,7 +151,18 @@
     const [d, caps] = await Promise.all([get('/api/policy'), get('/api/policy/capabilities')]);
     const doc = Object.assign({ groups: {}, schedules: {}, policies: [] }, d.document || {}); doc.policies = doc.policies || []; doc.groups = doc.groups || {}; doc.schedules = doc.schedules || {};
     FS.policyEditor(null, doc, caps);
-    setTimeout(() => { const f = FS.$('#modal form'); if (!f) return; if (deny.apps) { f.apps.value = deny.apps.join('\n'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); } }, 50);
+    setTimeout(() => { const f = FS.$('#modal form'); if (!f) return;
+      if (deny.apps) { f.apps.value = deny.apps.join('\n'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); }
+      if (deny.countries) {
+        // Pre-fill countries tab (will need to wait for countries to load)
+        setTimeout(() => { if (f['countries-select']) { Array.from(f['countries-select'].options).forEach(o => { o.selected = deny.countries.includes(o.value); }); } }, 200);
+      }
+      if (deny.members) {
+        // Pre-fill members in the Who tab
+        f.members.value = (deny.members || []).join('\n');
+        FS.$$('.tabs button', f)[0].click();
+      }
+    }, 50);
   };
 
   // ------------------------------------------------------------- Groups & Schedules
