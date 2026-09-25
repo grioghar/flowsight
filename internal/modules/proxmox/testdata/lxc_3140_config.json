@@ -1,0 +1,1 @@
+{"arch":"amd64","cores":4,"digest":"465cb6b24300b12484b2e3a829ef3ebec11927cd","features":"nesting=1,keyctl=1","hostname":"overpass","memory":8192,"net0":"name=eth0,bridge=vmbr0,hwaddr=BC:24:11:DA:5F:E5,ip=dhcp,type=veth","onboot":1,"ostype":"debian","rootfs":"SATA-2TB:vm-3140-disk-0,size=80G","swap":1024,"unprivileged":1}

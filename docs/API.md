@@ -319,3 +319,152 @@ Active network scanning for local devices only: ICMP, TCP/UDP probes, service de
 | GET | `/api/scan/results` | Latest results for all IPs scanned recently | hours (window, default 24) |
 | POST | `/api/scan/cancel` | Cancel a running scan job | job_id (identifier) |
 | POST | `/api/scan/sweep` | Start a sweep of all devices seen in the last 7 days | |
+
+## Proxmox
+
+### GET /api/proxmox/inventory
+
+Returns nodes and guests.
+
+**Response:**
+```json
+{
+  "nodes": [
+    {
+      "name": "proxmox",
+      "pve_version": "pve-manager/9.2.20/...",
+      "cpu": 0,
+      "mem_percent": 50,
+      "uptime": 278430,
+      "load": "17.94",
+      "rootfs_pct": 56,
+      "kernel": "7.0.14-17-pve"
+    }
+  ],
+  "guests": [
+    {
+      "vmid": 102,
+      "type": "qemu",
+      "node": "proxmox",
+      "name": "opnsense",
+      "status": "running",
+      "tags": ["net", "spof"],
+      "macs": ["bc:24:11:94:97:32"],
+      "ips": ["192.168.1.1"],
+      "os": "FreeBSD 15.1-RELEASE-p3",
+      "hostname": "OPNsense.internal",
+      "cores": 4,
+      "memory": 8192,
+      "uptime": 1234567,
+      "agent_state": "responding",
+      "description": "...",
+      "notes_synced_at": 1695312345
+    }
+  ]
+}
+```
+
+### GET /api/proxmox/status
+
+Returns connection health and last poll stats.
+
+**Response:**
+```json
+{
+  "last_poll": 1695312345,
+  "error": "",
+  "node_count": 1,
+  "guest_count": 5
+}
+```
+
+### POST /api/proxmox/poll
+
+Trigger immediate polling.
+
+**Response:**
+```json
+{"polling": true}
+```
+
+### GET /api/proxmox/guest?vmid=102&node=proxmox
+
+Get details for a specific guest.
+
+**Response:** Single Guest object (see inventory response).
+
+### GET /api/proxmox/map?hours=24
+
+Get dependency map with traffic edges and requirements.
+
+**Response:**
+```json
+{
+  "guests": [...],
+  "edges": [
+    {
+      "from": 102,
+      "to": 100,
+      "port": 443,
+      "proto": "tcp",
+      "flows": 1000,
+      "bytes": 5000000,
+      "source": "observed"
+    }
+  ],
+  "external": [
+    {
+      "guest": 102,
+      "destination": "example.com",
+      "name": "example.com",
+      "bytes": 1000000
+    }
+  ],
+  "requirements": {
+    "102:proxmox": {
+      "vmid": 102,
+      "node": "proxmox",
+      "startup_order": 1,
+      "cores": 4,
+      "memory": 8192,
+      "depends_on": [...]
+    }
+  }
+}
+```
+
+### GET /api/proxmox/requirements?vmid=102&node=proxmox
+
+Get detailed requirements for a guest.
+
+**Response:** Single Requirements object with storage, bridges, startup order, dependencies, external connections.
+
+### GET /api/proxmox/notes/preview?vmid=102&node=proxmox
+
+Get preview of notes block that would be written.
+
+**Response:**
+```json
+{
+  "block": "<!-- flowsight:begin -->\n**FlowSight:** opnsense\n..."
+}
+```
+
+### POST /api/proxmox/notes/write
+
+Write notes to one or all guests.
+
+**Request:**
+```json
+{
+  "vmid": 102,
+  "node": "proxmox"
+}
+```
+
+**Response:**
+```json
+{"written": true}
+```
+
+All routes require the Proxmox module to be configured with valid hosts and API credentials.

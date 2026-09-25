@@ -12,6 +12,25 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251643
+
+**Proxmox: the hypervisors join the inventory.** A new *Proxmox* page under
+Inventory. With a least-privilege API token, FlowSight polls each node for
+its health and every VM and container: configuration, status, hardware
+addresses, and what the QEMU guest agent reports (addresses, operating
+system, hostname). Guests' addresses gain their names, maker and OS in
+FlowSight, and the Devices and host pages show node, type, VM ID and guest
+name. With *write notes* on, each guest's Notes in Proxmox carries a
+FlowSight block between markers (name, class, zone, addresses, traffic,
+scan results, link back), rewritten only when it changes and never
+overwriting your own text. The *Map* tab draws how guests talk to each
+other: observed traffic from the gateway, declared relationships from the
+configuration (startup order, storage, bridges), and, opt-in, what each VM
+reports from the inside through one fixed `ss` command via the guest
+agent; click a guest for its requirements, export as JSON or Markdown.
+Connections to Proxmox are never unverified: the certificate fingerprint
+is pinned or the system roots are used.
+
 ## 0.9.8r202609251624
 
 **Cards go where you put them.** Every card on every page can be dragged
