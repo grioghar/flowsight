@@ -34,6 +34,13 @@ FS.registerPage('space', {
         </div>
 
         <div class="space-content">
+          <!-- Tab buttons for mobile -->
+          <div class="space-tabs">
+            <button class="space-tab-btn active" data-tab="3d">3D Scan</button>
+            <button class="space-tab-btn" data-tab="plan">Plan</button>
+            <button class="space-tab-btn" data-tab="palette">Devices</button>
+          </div>
+
           <!-- Plan pane (2D) -->
           <div id="space-plan" class="space-pane space-plan">
             <div class="space-toolbar">
@@ -54,7 +61,7 @@ FS.registerPage('space', {
           </div>
 
           <!-- 3D pane (WebGL) -->
-          <div id="space-3d" class="space-pane space-3d">
+          <div id="space-3d" class="space-pane space-3d active">
             <div class="space-toolbar">
               <button id="btn-3d-upload-scan" class="btn-icon" title="Upload scan (GLB, OBJ, PLY, RoomPlan JSON)">⬆ Scan</button>
               <button id="btn-3d-level" class="btn-icon" title="Level the scan to floor (click 3 floor points)">📐 Level</button>
@@ -97,11 +104,18 @@ FS.registerPage('space', {
         .space-device-item-label { font-weight: 500; font-size: 12px; }
         .space-device-item-addr { font-size: 11px; color: var(--text-muted); }
 
+        .space-toast { position: fixed; bottom: 20px; left: 20px; background: rgba(0,0,0,0.9); color: white; padding: 12px 16px; border-radius: 4px; z-index: 1000; font-size: 12px; max-width: 300px; }
+        .space-toast.error { background: rgba(200,0,0,0.9); }
+        .space-tabs { display: none; padding: 0 12px; border-bottom: 1px solid var(--bg-alt); gap: 0; }
+        .space-tab-btn { padding: 8px 12px; border: none; background: transparent; cursor: pointer; font-size: 12px; border-bottom: 2px solid transparent; }
+        .space-tab-btn.active { border-bottom-color: var(--accent-base); }
+
         @media (max-width: 768px) {
           .space-content { grid-template-columns: 1fr; }
           .space-pane { display: none; }
           .space-pane.active { display: flex; }
-          .space-pane { border-right: none; border-bottom: 1px solid var(--bg-alt); }
+          .space-pane { border-right: none; border-bottom: none; }
+          .space-tabs { display: flex; }
         }
       </style>
     `;
@@ -123,6 +137,48 @@ FS.registerPage('space', {
     // Palette pane: device list
     initPalettePane(devicesList, devices, layout);
 
+    // Mobile tab switching
+    const tabBtns = el.querySelectorAll('.space-tab-btn');
+    const panes = el.querySelectorAll('.space-pane');
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabName = btn.dataset.tab;
+
+        // Hide all panes
+        panes.forEach(p => p.classList.remove('active'));
+
+        // Show selected pane
+        let selectedPane;
+        if (tabName === '3d') {
+          selectedPane = el.querySelector('#space-3d');
+        } else if (tabName === 'plan') {
+          selectedPane = el.querySelector('#space-plan');
+        } else if (tabName === 'palette') {
+          selectedPane = el.querySelector('#space-palette');
+        }
+
+        if (selectedPane) {
+          selectedPane.classList.add('active');
+        }
+
+        // Update active tab button
+        tabBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    // Show toast for network errors
+    const originalGet = FS.get;
+    FS.get = async function(...args) {
+      try {
+        return await originalGet(...args);
+      } catch (e) {
+        showToast(`Network error: ${e.message}`, 'error');
+        throw e;
+      }
+    };
+
     // Store in FS for subsequent interactions
     FS.space = {
       layout,
@@ -130,9 +186,24 @@ FS.registerPage('space', {
       records,
       planCanvas,
       canvas3d,
+      showToast: showToast
     };
   }
 });
+
+// Toast notification system
+function showToast(msg, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `space-toast ${type}`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
 
 // === Plan Pane (2D Canvas) ===
 
