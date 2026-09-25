@@ -461,7 +461,7 @@ func (m *Module) extractTLS(packet gopacket.Packet, timestamp time.Time, analysi
 	// Check for ClientHello (0x01) at offset 5 (TLS record header is 5 bytes)
 	if len(tcp.Payload) > 5 && tcp.Payload[5] == 0x01 {
 		// This is a ClientHello
-		sni := m.parseTLSClientHello(tcp.Payload)
+		extData := m.parseTLSExtensions(tcp.Payload)
 		var srcIP, dstIP string
 		if ipv4, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4); ok {
 			srcIP = ipv4.SrcIP.String()
@@ -475,36 +475,166 @@ func (m *Module) extractTLS(packet gopacket.Packet, timestamp time.Time, analysi
 		h := md5.Sum(tcp.Payload)
 		ja3 := hex.EncodeToString(h[:])
 
-		analysis.TLSHandshakes = append(analysis.TLSHandshakes, TLSInfo{
-			SNI:       sni,
+		tlsInfo := TLSInfo{
+			SNI:       extData.SNI,
 			JA3:       ja3,
 			Src:       srcIP,
 			Dst:       dstIP,
+			ECH:       extData.ECH,
 			Timestamp: timestamp,
-		})
+		}
+		analysis.TLSHandshakes = append(analysis.TLSHandshakes, tlsInfo)
+
+		// Record observation for visibility module (TLS with ECH is visible as "ech")
+		if tcp.DstPort > 0 {
+			m.recordTLSObservation(srcIP, dstIP, int(tcp.DstPort), extData.ECH)
+		}
 	}
 }
 
+// tlsExtensionData holds SNI and ECH detection from a ClientHello
+type tlsExtensionData struct {
+	SNI string
+	ECH bool
+}
+
 func (m *Module) parseTLSClientHello(payload []byte) string {
-	// Very simplified TLS ClientHello SNI extraction
-	// In a real implementation, would properly parse the TLS record and extensions
+	data := m.parseTLSExtensions(payload)
+	return data.SNI
+}
+
+// parseTLSExtensions extracts SNI and detects ECH from a ClientHello
+func (m *Module) parseTLSExtensions(payload []byte) tlsExtensionData {
+	// ClientHello structure (RFC 5246, 7.4.1.2):
+	// struct {
+	//     uint16 record_type = 22;
+	//     uint16 version;
+	//     uint16 length;
+	//     uint8 msg_type = 1;  // ClientHello
+	//     uint24 length;
+	//     uint16 version;
+	//     uint32 random;
+	//     uint8 session_id_length;
+	//     uint8 session_id[session_id_length];
+	//     uint16 cipher_suites_length;
+	//     uint8 cipher_suites[cipher_suites_length];
+	//     uint8 compression_methods_length;
+	//     uint8 compression_methods[compression_methods_length];
+	//     uint16 extensions_length;
+	//     Extension extensions[extensions_length];
+	// }
+
+	result := tlsExtensionData{}
 	if len(payload) < 50 {
+		return result
+	}
+
+	// Skip to extensions: minimum ClientHello is ~44 bytes before extensions
+	// but we need to account for variable-length fields
+	offset := 5 // Skip TLS record header (type + version)
+	if offset+1 >= len(payload) || payload[offset] != 0x01 {
+		return result // Not a ClientHello
+	}
+	offset++ // Skip handshake message type
+
+	// Skip to after fixed fields + variable-length session_id
+	offset += 3 + 2 + 32 // message length (3) + version (2) + random (32)
+	if offset >= len(payload) {
+		return result
+	}
+
+	sessionIDLen := int(payload[offset])
+	offset++
+	offset += sessionIDLen
+
+	if offset+2 >= len(payload) {
+		return result
+	}
+
+	// Skip cipher suites
+	cipherLen := int(payload[offset])<<8 | int(payload[offset+1])
+	offset += 2 + cipherLen
+
+	if offset >= len(payload) {
+		return result
+	}
+
+	// Skip compression methods
+	compLen := int(payload[offset])
+	offset++
+	offset += compLen
+
+	if offset+2 > len(payload) {
+		return result
+	}
+
+	// Parse extensions
+	extLen := int(payload[offset])<<8 | int(payload[offset+1])
+	offset += 2
+
+	extEnd := offset + extLen
+	if extEnd > len(payload) {
+		extEnd = len(payload)
+	}
+
+	// Walk through extensions
+	for offset+4 <= extEnd {
+		extType := int(payload[offset])<<8 | int(payload[offset+1])
+		offset += 2
+		dataLen := int(payload[offset])<<8 | int(payload[offset+1])
+		offset += 2
+
+		if offset+dataLen > extEnd {
+			break
+		}
+
+		extData := payload[offset : offset+dataLen]
+
+		// Extension type 0x0000 = server_name (SNI)
+		if extType == 0x0000 && result.SNI == "" {
+			result.SNI = m.extractSNIFromExtension(extData)
+		}
+
+		// Extension type 0xfe0d = encrypted_client_hello (ECH)
+		// Also check for GREASE-ECH (pattern 0x?a?a where ? is any hex digit)
+		if extType == 0xfe0d || (extType&0x0f0f == 0x0a0a) {
+			result.ECH = true
+		}
+
+		offset += dataLen
+	}
+
+	return result
+}
+
+func (m *Module) extractSNIFromExtension(data []byte) string {
+	// SNI extension format:
+	// uint16 extensions_length;
+	// struct {
+	//     NameType name_type;  // 0 = host_name
+	//     uint16 name_length;
+	//     uint8 name[name_length];
+	// } ServerNameList;
+
+	if len(data) < 5 {
 		return ""
 	}
 
-	// Look for the SNI extension marker (0x00, 0x00 = server_name)
-	for i := 0; i < len(payload)-10; i++ {
-		if payload[i] == 0x00 && payload[i+1] == 0x00 && i+5 < len(payload) {
-			// Check if this looks like an SNI extension
-			nameLen := int(payload[i+4])
-			if nameLen > 0 && nameLen < 256 && i+5+nameLen <= len(payload) {
-				name := string(payload[i+5 : i+5+nameLen])
-				// Validate it's printable ASCII
-				if isValidHostname(name) {
-					return name
-				}
-			}
-		}
+	offset := 2 // Skip extensions length
+	if offset+1 >= len(data) || data[offset] != 0x00 {
+		return "" // Not host_name type
+	}
+	offset++
+
+	nameLen := int(data[offset])<<8 | int(data[offset+1])
+	offset += 2
+	if offset+nameLen > len(data) || nameLen < 1 || nameLen > 255 {
+		return ""
+	}
+
+	name := string(data[offset : offset+nameLen])
+	if isValidHostname(name) {
+		return name
 	}
 	return ""
 }

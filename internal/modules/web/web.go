@@ -506,7 +506,8 @@ func (m *Module) pollLog() error {
 			SrcIP: client, DstIP: nzs(server), DstPort: sport, Proto: proto, Domain: domain,
 			DomainSource: map[bool]string{true: "sni", false: map[bool]string{true: "http_host", false: ""}[domain != ""]}[sni != ""],
 			BytesIn:      bytesOut, BytesOut: bytesIn, Duration: dur / 1000, Verdict: verdict,
-			Source: "squid", TLSVersion: tlsver, TLSSNI: sni, App: "", Category: ""}
+			Source: "squid", TLSVersion: tlsver, TLSSNI: sni, App: "", Category: "",
+			Visibility: "inspected"}
 		if m.cats != nil && domain != "" {
 			if cs := m.cats.Classify(domain); len(cs) > 0 {
 				fl.Category = cs[0]

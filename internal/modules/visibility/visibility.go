@@ -148,9 +148,17 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/visibility/host", m.apiHost, core.Doc("Everything about one host"),
 		core.Params("ip", "address", "hours", "window"))
 	ctx.Route("GET", "/api/visibility/catalog", m.apiCatalog, core.Doc("Known applications and categories"))
+	ctx.Route("GET", "/api/visibility/visibility", m.apiVisibilityBreakdown, core.Doc("Visibility breakdown for a device over a window"),
+		core.Params("ip", "address", "hours", "window"))
 	ctx.Panel(core.Panel{ID: "overview", Title: "Overview", Group: "Monitor", Order: 1, Icon: "overview"})
 	ctx.Panel(core.Panel{ID: "flows", Title: "Sessions", Group: "Monitor", Order: 30, Icon: "flows"})
 	ctx.Panel(core.Panel{ID: "apps", Title: "Applications", Group: "Monitor", Order: 40, Icon: "apps"})
+
+	// Schedule dark traffic checking
+	ctx.Every("check_dark_traffic", 30*time.Minute, func() error {
+		return m.checkDarkTraffic(24)
+	})
+
 	return nil
 }
 
@@ -569,10 +577,71 @@ func (m *Module) decodeFlow(f obj, ifname string, now int64) (core.Flow, bool) {
 	if e := f.str("encrypted"); e == "true" && fl.TLSVersion == "" {
 		fl.TLSVersion = "TLS"
 	}
+	// Derive visibility: whether and how the flow is readable
+	fl.Visibility = m.deriveVisibility(fl, l7)
+
 	if fl.SrcIP == "" || fl.DstIP == "" {
 		return core.Flow{}, false
 	}
 	return fl, true
+}
+
+// deriveVisibility determines why a flow is or is not readable.
+func (m *Module) deriveVisibility(fl core.Flow, l7 string) string {
+	// DNS: always readable
+	if fl.Proto == "udp" && (fl.DstPort == 53 || strings.Contains(strings.ToLower(l7), "dns")) {
+		return "dns"
+	}
+	// QUIC: encrypted, usually no server name available
+	if fl.Proto == "udp" && fl.DstPort == 443 && strings.Contains(strings.ToLower(l7), "quic") {
+		if fl.Domain != "" {
+			return "quic"
+		}
+		return "quic"
+	}
+	// Plain HTTP: unencrypted
+	if fl.DstPort == 80 || (strings.ToLower(fl.App) == "http" && fl.TLSVersion == "") {
+		return "http"
+	}
+	// TLS encrypted
+	if fl.TLSVersion != "" {
+		// If we have a domain/SNI, it came from ClientHello
+		if fl.Domain != "" {
+			return "sni"
+		}
+		// Check if ECH was detected by the inspect module
+		tlsObs, ok := m.ctx.Service("tls_observations").(interface {
+			HasECH(src, dst string, dstPort int) bool
+		})
+		if ok && tlsObs.HasECH(fl.SrcIP, fl.DstIP, fl.DstPort) {
+			return "ech"
+		}
+		// Otherwise encrypted with no visible name
+		return "opaque"
+	}
+	// Plain unencrypted traffic
+	if !isLikelyEncrypted(l7, fl.DstPort) {
+		return "plain"
+	}
+	// Default to opaque for unknown encrypted protocols
+	return "opaque"
+}
+
+// isLikelyEncrypted checks if a protocol or port suggests encrypted traffic
+func isLikelyEncrypted(l7 string, dstPort int) bool {
+	lower := strings.ToLower(l7)
+	// Known encrypted protocols
+	if strings.Contains(lower, "tls") || strings.Contains(lower, "ssl") ||
+		strings.Contains(lower, "quic") || strings.Contains(lower, "https") ||
+		strings.Contains(lower, "ssh") || strings.Contains(lower, "wireguard") ||
+		strings.Contains(lower, "tailscale") {
+		return true
+	}
+	// Common encrypted ports
+	if dstPort == 443 || dstPort == 8443 || dstPort == 22 {
+		return true
+	}
+	return false
 }
 
 // ---------------------------------------------------------------- API
@@ -622,7 +691,7 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 		return nil, err
 	}
 	q := `SELECT id,ts,end_ts,src_ip,src_port,dst_ip,dst_port,proto,app,category,domain,domain_source,bytes_in,bytes_out,
-		duration,verdict,policy,source,iface,tls_version,tls_sni,country,country_source,anycast FROM flows WHERE COALESCE(end_ts,ts)>=?`
+		duration,verdict,policy,source,iface,tls_version,tls_sni,country,country_source,anycast,visibility FROM flows WHERE COALESCE(end_ts,ts)>=?`
 	args := []any{time.Now().Unix() - int64(minutes)*60}
 	if ip != "" {
 		q += ` AND (src_ip=? OR dst_ip=?)`
@@ -643,6 +712,10 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 	}
 	if r.Q("blocked", "") != "" {
 		q += ` AND verdict='blocked'`
+	}
+	if vis, _ := r.QSafe("visibility", "", 16); vis != "" {
+		q += ` AND visibility=?`
+		args = append(args, vis)
 	}
 	// Where the far end is. "country=DE" is one country; "abroad=1" is any
 	// country other than the one this gateway sits in.
@@ -1501,4 +1574,73 @@ func (m *Module) foldHostsByDevice(rows []map[string]any, limit int) []map[strin
 		out = out[:limit]
 	}
 	return out
+}
+
+// apiVisibilityBreakdown returns visibility breakdown for a device
+func (m *Module) apiVisibilityBreakdown(r *core.Req) (any, error) {
+	ip := r.Q("ip", "")
+	if net.ParseIP(ip) == nil {
+		return nil, core.BadRequest("ip must be an address")
+	}
+	hours := r.QInt("hours", 24, 1, 24*30*12)
+	since := time.Now().Unix() - int64(hours)*3600
+
+	st := m.ctx.Store
+	// Count flows by visibility
+	visibilities := []string{"inspected", "sni", "http", "quic", "ech", "opaque", "dns", "plain"}
+	counts := make(map[string]int64)
+	for _, vis := range visibilities {
+		count := st.Int(`SELECT COUNT(*) FROM flows WHERE src_ip=? AND ts>=? AND visibility=?`,
+			ip, since, vis)
+		if count > 0 {
+			counts[vis] = count
+		}
+	}
+
+	return map[string]any{
+		"ip":         ip,
+		"hours":      hours,
+		"visibility": counts,
+	}, nil
+}
+
+// checkDarkTraffic checks if any device has dark traffic above threshold and creates findings
+func (m *Module) checkDarkTraffic(hours int) error {
+	threshold := 50 // Default 50% threshold
+	minSessions := int64(50)
+
+	st := m.ctx.Store
+	since := time.Now().Unix() - int64(hours)*3600
+
+	// Get all devices and their dark traffic breakdown
+	devices, _ := st.Rows(`SELECT src_ip, COUNT(*) as total_flows FROM flows WHERE ts>=?
+		GROUP BY src_ip`, since)
+
+	keep := make(map[string]bool)
+	for _, d := range devices {
+		ip := d["src_ip"].(string)
+		totalFlows := int64(d["total_flows"].(float64))
+		if totalFlows < minSessions {
+			continue
+		}
+
+		// Count dark traffic (opaque + ech + quic)
+		darkFlows := st.Int(`SELECT COUNT(*) FROM flows WHERE src_ip=? AND ts>=? AND
+			(visibility='opaque' OR visibility='ech' OR visibility='quic')`,
+			ip, since)
+
+		darkPct := int(darkFlows * 100 / totalFlows)
+		if darkPct >= threshold {
+			fp := "visibility:dark_traffic:" + ip
+			keep[fp] = true
+			title := fmt.Sprintf("Device %s: %d%% dark traffic", ip, darkPct)
+			detail := fmt.Sprintf("Over the last %d hours, %d of %d sessions (%d%%) are encrypted with no name visible (opaque, ECH, or QUIC).",
+				hours, darkFlows, totalFlows, darkPct)
+			st.AddFinding("visibility", "dark_traffic", "info", ip, title, detail, fp)
+		}
+	}
+
+	// Resolve findings for devices no longer exceeding threshold
+	_, err := st.ResolveFindings("visibility", keep)
+	return err
 }

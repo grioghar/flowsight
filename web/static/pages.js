@@ -134,9 +134,10 @@
     title: 'Host', refresh: 30,
     async render(el, ctx) {
       const ip = ctx.arg; if (!ip) { el.innerHTML = FS.err('no host given'); return; }
-      const [d, scanData] = await Promise.all([
+      const [d, scanData, visData] = await Promise.all([
         get(`/api/visibility/host?ip=${encodeURIComponent(ip)}&${FS.since()}`),
-        get(`/api/scan/result?ip=${encodeURIComponent(ip)}`)
+        get(`/api/scan/result?ip=${encodeURIComponent(ip)}`),
+        get(`/api/visibility/visibility?ip=${encodeURIComponent(ip)}&${FS.since()}`)
       ]);
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
       const h = d.host || {}, dev = d.device || {}, t = d.totals || {}, dt = d.dns_totals || {};
@@ -162,6 +163,11 @@
         ${card('Blocked queries', table(d.dns_blocked || [], [{ t: 'When', f: r => when(r.ts), sort: 'ts' }, { t: 'Domain', f: r => domainLink(r.domain) }, { t: 'Type', k: 'qtype' }, { t: 'List', f: r => pill(r.list || 'blocked', 'bad') }, { t: 'Via', f: r => `<span class="small muted">${esc((r.source || 'unbound').replace('pihole:', 'pi-hole '))}</span>` }]), `<a href="#dns?client=${encodeURIComponent(ip)}&blocked=1">all blocked for this host</a>`)}
         ${card('TLS', table(d.tls || [], [{ t: 'Server name', k: 'sni' }, { t: 'Version', k: 'version' }, { t: 'Mode', f: r => pill(r.mode || 'splice', r.mode === 'bump' ? 'warn' : r.mode === 'terminate' ? 'bad' : ''), sort: 'mode' }, { t: 'Sessions', k: 'sessions', num: true }]))}
       </div>
+      ${visData && !visData.error ? `<div style="margin-top:14px">${card('What FlowSight can see for this device', (() => {
+        const vis = visData.visibility || {}; const labels = { inspected: 'Inspected by FlowSight: content and names fully visible', sni: 'TLS with server name: names from ClientHello, content not inspected', http: 'Plain HTTP: names and content visible', quic: 'QUIC encrypted: names unknown, encryption end-to-end', ech: 'Encrypted Client Hello: names encrypted by design', opaque: 'Encrypted with no visible name: cannot steer traffic to these destinations', dns: 'DNS transactions: names and answers visible', plain: 'Other unencrypted traffic' };
+        const entries = Object.entries(vis).filter(([_, count]) => count > 0).map(([k, count]) => `<div style="margin:8px 0"><b>${esc(k)}</b> (${count} sessions): ${esc(labels[k] || 'Unknown')}<br><a href="#flows?ip=${encodeURIComponent(ip)}&visibility=${esc(k)}" class="small">see these sessions →</a></div>`).join('');
+        return entries || '<span class="muted">No visibility data</span>';
+      })())}</div>` : ''}
       <div style="margin-top:14px">${card('Recent flows', table(d.flows || [], [{ t: 'When', f: r => when(r.end_ts || r.ts), sort: 'ts' }, { t: 'Destination', f: r => `${FS.ipTag(r.dst_ip, r.dst_name)}:${r.dst_port} <span class="muted small">${esc(r.proto)}</span>`, sort: 'dst_ip' }, { t: 'Application', f: r => `${esc(r.app || '')} <span class="muted small">${esc(r.category || '')}</span>`, sort: 'app' }, { t: 'Site', f: r => esc(r.domain || ''), sort: 'domain' }, { t: 'Down', f: r => bytes(r.bytes_in), num: true, sort: 'bytes_in' }, { t: 'Up', f: r => bytes(r.bytes_out), num: true, sort: 'bytes_out' }, { t: 'Verdict', f: r => FS.verdictPill(r.verdict) + (r.policy ? ` <span class="muted small">${esc(r.policy)}</span>` : ''), sort: 'verdict' }]))}</div>
       <div class="grid cols-2" style="margin-top:14px">
         ${card('Alerts', table(d.alerts || [], [{ t: 'When', f: r => when(r.ts), sort: 'ts' }, { t: 'Severity', f: r => FS.sevPill(r.severity), sort: 'severity' }, { t: 'Signature', k: 'signature' }, { t: 'Peer', f: r => r.src_ip === ip ? esc(r.dst_ip) : esc(r.src_ip) }]))}
@@ -184,13 +190,15 @@
       if (p.ip) qs.set('ip', p.ip); if (p.app) qs.set('app', p.app); if (p.blocked) qs.set('blocked', '1');
       if (p.country) qs.set('country', p.country); if (p.abroad) qs.set('abroad', '1'); if (p.anycast) qs.set('anycast', '1');
       if (p.source) qs.set('source', p.source);
+      if (p.visibility) qs.set('visibility', p.visibility);
       const d = await get('/api/visibility/flows?' + qs);
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
       let rows = d.flows || [];
       if (p.domain) rows = rows.filter(f => (f.domain || '').includes(p.domain));
+      if (p.visibility) rows = rows.filter(f => f.visibility === p.visibility);
       const filt = (k, v) => v ? `<span class="chip"${k === 'country' ? ` title="${esc(FS.countryName(v))}"` : ''}>${esc(k)}: ${esc(v)} <button data-k="${esc(k)}">×</button></span>` : '';
       const home = d.home_country || '';
-      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${filt('country', p.country)}${filt('source', p.source)}${p.abroad ? filt('only', 'outside ' + (home || 'home')) : ''}${p.anycast ? filt('only', 'anycast') : ''}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?abroad=1${p.ip ? '&ip=' + p.ip : ''}" title="${home ? 'Sessions whose far end is outside ' + esc(home) : 'Sessions whose far end is outside this country (needs the country database under Settings › enrich)'}">Outside ${esc(home || 'the country')}${home ? ` <span class="muted small">(${esc(FS.countryName(home))})</span>` : ''}</a><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
+      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${filt('country', p.country)}${filt('source', p.source)}${filt('visibility', p.visibility)}${p.abroad ? filt('only', 'outside ' + (home || 'home')) : ''}${p.anycast ? filt('only', 'anycast') : ''}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?abroad=1${p.ip ? '&ip=' + p.ip : ''}" title="${home ? 'Sessions whose far end is outside ' + esc(home) : 'Sessions whose far end is outside this country (needs the country database under Settings › enrich)'}">Outside ${esc(home || 'the country')}${home ? ` <span class="muted small">(${esc(FS.countryName(home))})</span>` : ''}</a><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
         card(`${rows.length} sessions`, table(rows, [
           { t: 'When', f: r => when(r.end_ts || r.ts), sort: 'ts' },
           { t: 'Client', f: r => hostLink(r.src_ip, r.src_name), sort: 'src_ip' },
@@ -202,6 +210,10 @@
           { t: 'Duration', f: r => dur(r.duration), num: true, sort: 'duration' },
           { t: 'Verdict', f: r => FS.verdictPill(r.verdict) + (r.policy ? ` <span class="muted small">${esc(r.policy)}</span>` : ''), sort: 'verdict' },
           { t: 'Source', k: 'source' },
+          { t: 'Readable', f: r => {
+            const v = r.visibility || ''; const titles = { inspected: 'Inspected by FlowSight', sni: 'TLS with server name visible', http: 'Plain HTTP', quic: 'QUIC encrypted', ech: 'Encrypted Client Hello', opaque: 'Encrypted, name unknown', dns: 'DNS transaction', plain: 'Unencrypted' };
+            return v ? `<span class="muted small" title="${esc(titles[v] || v)}">${esc(v)}</span>` : '';
+          }, sort: 'visibility' },
           // The path this session takes: the map narrowed to this client and
           // this destination, one traceroute, nothing else. Local-to-local
           // sessions have no path across the internet to show.
