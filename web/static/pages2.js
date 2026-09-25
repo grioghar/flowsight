@@ -191,10 +191,8 @@
     FS.policyEditor(null, doc, caps);
     setTimeout(() => {
       const f = FS.$('#modal form'); if (!f) return;
-      if (deny.apps) { f.apps.value = deny.apps.join('
-'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); }
-      if (deny.members && f.members) { f.members.value = deny.members.join('
-'); }
+      if (deny.apps) { f.apps.value = deny.apps.join('\n'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); }
+      if (deny.members && f.members) { f.members.value = deny.members.join('\n'); }
       if (deny.countries && deny.countries.length) {
         if (!f.name.value) f.name.value = 'block-' + deny.countries.join('-').toLowerCase();
         // The country list loads after the form opens; select once it is there.

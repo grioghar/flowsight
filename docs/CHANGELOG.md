@@ -12,6 +12,14 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252154
+
+**Policies, Categories and Groups & Schedules were blank since 0.9.8r202609252049.**
+A merge left a real line break inside a quoted string in the script that
+holds those three pages, so the file failed to parse and none of them
+registered. Fixed, and the interface checks now parse every script the UI
+loads, so a broken file fails the build instead of the page.
+
 ## 0.9.8r202609252144
 
 **Kernel address count, second attempt.** For a table inside an anchor,
