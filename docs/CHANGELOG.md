@@ -12,6 +12,15 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251918
+
+**Guest-agent answers read through the API's wrapper.** The live API wraps
+every answer in a `data` object; the guest-agent parsers were written
+against unwrapped captures, so every VM read as "agent not responding".
+Both shapes are read now. The map computed each guest's external
+dependencies with its own scan of the day's rollup, 57 scans per page load;
+it now runs the one query and hands each guest its share.
+
 ## 0.9.8r202609251912
 
 **VMs get their addresses; the Proxmox map answers.** Proxmox 9 sends a

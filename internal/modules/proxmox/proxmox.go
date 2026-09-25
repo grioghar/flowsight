@@ -280,6 +280,18 @@ func (l *looseString) UnmarshalJSON(b []byte) error {
 
 func (l looseString) String() string { return string(l) }
 
+// unwrapData returns the object inside {"data": ...} when the API wrapped
+// its answer, else the body as it came (pvesh output is unwrapped).
+func unwrapData(body []byte) []byte {
+	var w struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal(body, &w) == nil && len(w.Data) > 0 && string(w.Data) != "null" {
+		return w.Data
+	}
+	return body
+}
+
 // agentEnabled reads the qemu "agent" config value in both of its forms.
 func agentEnabled(v string) bool {
 	v = strings.TrimSpace(v)
@@ -659,7 +671,7 @@ func (m *Module) pollHost(hostURL string, inv *Inventory, excludeVMIDs map[strin
 						if agentEnabled(qConfig.Data.Agent.String()) {
 							netBody, _ := m.get(hostURL, fmt.Sprintf("/api2/json/nodes/%s/qemu/%d/agent/network-get-interfaces", nodeData.Node, qData.VMID))
 							var agentNet pveAgentNetworkResp
-							if err := json.Unmarshal(netBody, &agentNet); err == nil && agentNet.Result != nil {
+							if err := json.Unmarshal(unwrapData(netBody), &agentNet); err == nil && agentNet.Result != nil {
 								for _, iface := range agentNet.Result {
 									if iface.HardwareAddress != "" && iface.HardwareAddress != "00:00:00:00:00:00" {
 										g.MACs = append(g.MACs, strings.ToLower(iface.HardwareAddress))
@@ -680,14 +692,14 @@ func (m *Module) pollHost(hostURL string, inv *Inventory, excludeVMIDs map[strin
 							// Agent hostname
 							hostnameBody, _ := m.get(hostURL, fmt.Sprintf("/api2/json/nodes/%s/qemu/%d/agent/get-host-name", nodeData.Node, qData.VMID))
 							var agentHostname pveAgentHostname
-							if err := json.Unmarshal(hostnameBody, &agentHostname); err == nil && agentHostname.Result.HostName != "" {
+							if err := json.Unmarshal(unwrapData(hostnameBody), &agentHostname); err == nil && agentHostname.Result.HostName != "" {
 								g.Hostname = agentHostname.Result.HostName
 							}
 
 							// Agent osinfo
 							osinfoBody, _ := m.get(hostURL, fmt.Sprintf("/api2/json/nodes/%s/qemu/%d/agent/get-osinfo", nodeData.Node, qData.VMID))
 							var agentOS pveAgentOSInfo
-							if err := json.Unmarshal(osinfoBody, &agentOS); err == nil && agentOS.Result.KernelRelease != "" {
+							if err := json.Unmarshal(unwrapData(osinfoBody), &agentOS); err == nil && agentOS.Result.KernelRelease != "" {
 								g.OS = agentOS.Result.KernelRelease
 								if agentOS.Result.KernelVersion != "" {
 									g.OS += " (" + agentOS.Result.KernelVersion + ")"

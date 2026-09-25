@@ -74,7 +74,7 @@ func TestBuildRequirements(t *testing.T) {
 		{From: 100, To: 102, Port: 22, Proto: "tcp", Flows: 50, Bytes: 25000, Source: "observed"},
 	}
 
-	req := m.buildRequirements(&guest, guestByVMID, edges, 24)
+	req := m.buildRequirements(&guest, guestByVMID, edges, nil)
 
 	if req.VMID != 102 {
 		t.Errorf("expected VMID 102, got %d", req.VMID)

@@ -126,7 +126,7 @@ func (m *Module) apiMap(r *core.Req) (any, error) {
 
 	// Build requirements for each guest
 	for _, guest := range m.inventory.Guests {
-		req := m.buildRequirements(&guest, guestByVMID, resp.Edges, hours)
+		req := m.buildRequirements(&guest, guestByVMID, resp.Edges, resp.External)
 		key := fmt.Sprintf("%d:%s", guest.VMID, guest.Node)
 		resp.Requirements[key] = req
 	}
@@ -172,7 +172,12 @@ func (m *Module) apiRequirements(r *core.Req) (any, error) {
 	edges = append(edges, m.getDeclaredEdges(guestByVMID)...)
 	edges = append(edges, m.socketEdges(ipToGuest)...)
 
-	req := m.buildRequirements(&guest, guestByVMID, edges, hours)
+	guestIPMap := map[string]int{}
+	for _, ip := range guest.IPs {
+		guestIPMap[ip] = guest.VMID
+	}
+	external := m.getExternalDeps(hours, guestIPMap, guestByVMID)
+	req := m.buildRequirements(&guest, guestByVMID, edges, external)
 	return req, nil
 }
 
@@ -367,7 +372,7 @@ func (m *Module) getExternalDeps(hours int, ipToGuest map[string]int, guestByVMI
 	return deps
 }
 
-func (m *Module) buildRequirements(guest *Guest, guestByVMID map[int]*Guest, edges []Edge, hours int) Requirements {
+func (m *Module) buildRequirements(guest *Guest, guestByVMID map[int]*Guest, edges []Edge, external []ExternalDep) Requirements {
 	req := Requirements{
 		VMID:       guest.VMID,
 		Node:       guest.Node,
@@ -405,14 +410,12 @@ func (m *Module) buildRequirements(guest *Guest, guestByVMID map[int]*Guest, edg
 	req.DependsOn = dedupeRelations(req.DependsOn, guestByVMID)
 	req.DependentOn = dedupeRelations(req.DependentOn, guestByVMID)
 
-	// Get external dependencies for this guest
-	if len(guest.IPs) > 0 {
-		// Build a map of just this guest's IPs
-		guestIPMap := make(map[string]int)
-		for _, ip := range guest.IPs {
-			guestIPMap[ip] = guest.VMID
+	// External dependencies come from the one query the caller already ran
+	// for every guest; a query per guest scanned the day's rollup 57 times.
+	for _, d := range external {
+		if d.Guest == guest.VMID {
+			req.ExternalDeps = append(req.ExternalDeps, d)
 		}
-		req.ExternalDeps = m.getExternalDeps(hours, guestIPMap, guestByVMID)
 	}
 
 	return req
