@@ -12,6 +12,19 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251939
+
+**Activity, not volume; and who did it.** Applications, top sites and
+categories were ranked by bytes moved, which made one backup the story of
+the day. They now rank by sessions, and every row says which hosts did it:
+the count of hosts and the three most active, named and linked (to the host,
+or straight to that host's sessions of that application), plus when it was
+last seen. Bytes stay as an aside. This applies to the Overview's top
+hosts, applications, categories and sites, the Applications page (with its
+by-category chart) and the host page's application and site cards.
+`/api/visibility/top` and `/api/visibility/apps` carry `hosts`, `last_seen`
+and `top_hosts`.
+
 ## 0.9.8r202609251931
 
 **Notes write-back, whole.** The block written into a guest's Proxmox Notes

@@ -598,6 +598,62 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 	return map[string]any{"flows": rows}, nil
 }
 
+// topHostsBy answers "who does this": for each key (an app, a category, a
+// site) the hosts that used it most, by sessions, named. Bytes ride along.
+// keyExpr is the SQL expression that yields the key from the rollup row.
+func (m *Module) topHostsBy(table, keyExpr string, keys []string, since int64, per int) map[string][]map[string]any {
+	out := map[string][]map[string]any{}
+	if len(keys) == 0 {
+		return out
+	}
+	ph := strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")
+	args := []any{since}
+	for _, k := range keys {
+		args = append(args, k)
+	}
+	rows, err := m.ctx.Store.Rows(`SELECT `+keyExpr+` AS k, src_ip AS ip, SUM(flows) AS flows, SUM(bytes_in) AS bytes_in,
+		SUM(bytes_out) AS bytes_out, MAX(bucket) AS last_seen FROM `+table+` WHERE bucket>=? AND `+keyExpr+` IN (`+ph+`)
+		GROUP BY 1, 2 ORDER BY 1, flows DESC`, args...)
+	if err != nil {
+		return out
+	}
+	for _, r := range rows {
+		k, _ := r["k"].(string)
+		if len(out[k]) >= per {
+			continue
+		}
+		ip, _ := r["ip"].(string)
+		if n := m.name(ip); n != "" {
+			r["name"] = n
+		}
+		delete(r, "k")
+		out[k] = append(out[k], r)
+	}
+	return out
+}
+
+// attachTopHosts puts top_hosts on each row, keyed by keyCol.
+func attachTopHosts(rows []map[string]any, keyCol string, top map[string][]map[string]any) {
+	for _, r := range rows {
+		k, _ := r[keyCol].(string)
+		if th := top[k]; th != nil {
+			r["top_hosts"] = th
+		} else {
+			r["top_hosts"] = []map[string]any{}
+		}
+	}
+}
+
+func keysOf(rows []map[string]any, col string) []string {
+	var ks []string
+	for _, r := range rows {
+		if k, _ := r[col].(string); k != "" {
+			ks = append(ks, k)
+		}
+	}
+	return ks
+}
+
 func (m *Module) decorate(rows []map[string]any, ipKey, nameKey string) {
 	for _, row := range rows {
 		ip, _ := row[ipKey].(string)
@@ -615,13 +671,13 @@ func (m *Module) apiApps(r *core.Req) (any, error) {
 	}
 	q := `SELECT app, MAX(category) AS category, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out,
 		SUM(flows) AS flows, SUM(CASE WHEN verdict='blocked' THEN flows ELSE 0 END) AS blocked,
-		COUNT(DISTINCT src_ip) AS hosts FROM rollup_app WHERE bucket>=?`
+		COUNT(DISTINCT src_ip) AS hosts, MAX(bucket) AS last_seen FROM rollup_app WHERE bucket>=?`
 	args := []any{since}
 	if ip != "" {
 		q += ` AND src_ip=?`
 		args = append(args, ip)
 	}
-	q += ` GROUP BY app ORDER BY bytes_in+bytes_out DESC LIMIT 500`
+	q += ` GROUP BY app ORDER BY flows DESC LIMIT 500`
 	rows, err := m.ctx.Store.Rows(q, args...)
 	if err != nil {
 		return nil, err
@@ -664,9 +720,20 @@ func (m *Module) apiApps(r *core.Req) (any, error) {
 		}
 	}
 	m.mu.Unlock()
+	// Activity first: sessions, then bytes as the tie-break.
 	sort.Slice(rows, func(i, j int) bool {
+		if toI(rows[i]["flows"]) != toI(rows[j]["flows"]) {
+			return toI(rows[i]["flows"]) > toI(rows[j]["flows"])
+		}
 		return toI(rows[i]["bytes_in"])+toI(rows[i]["bytes_out"]) > toI(rows[j]["bytes_in"])+toI(rows[j]["bytes_out"])
 	})
+	if ip == "" {
+		top := rows
+		if len(top) > 60 {
+			top = top[:60]
+		}
+		attachTopHosts(rows, "app", m.topHostsBy("rollup_app", "app", keysOf(top, "app"), since, 3))
+	}
 	return map[string]any{"apps": rows}, nil
 }
 
@@ -686,22 +753,31 @@ func (m *Module) apiTop(r *core.Req) (any, error) {
 	since := r.Since(24)
 	limit := r.QInt("limit", 15, 1, 200)
 	st := m.ctx.Store
+	// Ranked by activity (sessions), not bytes: one backup moving a terabyte
+	// is not what the household is doing. Bytes ride along for the tooltip,
+	// and every row says which hosts did it.
 	hosts, err := st.Rows(`SELECT src_ip AS ip, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out,
-		SUM(flows) AS flows, SUM(CASE WHEN verdict='blocked' THEN flows ELSE 0 END) AS blocked
-		FROM rollup_app WHERE bucket>=? GROUP BY src_ip ORDER BY bytes_in+bytes_out DESC LIMIT ?`, since, limit)
+		SUM(flows) AS flows, SUM(CASE WHEN verdict='blocked' THEN flows ELSE 0 END) AS blocked, MAX(bucket) AS last_seen,
+		COUNT(DISTINCT app) AS apps
+		FROM rollup_app WHERE bucket>=? GROUP BY src_ip ORDER BY flows DESC LIMIT ?`, since, limit)
 	if err != nil {
 		return nil, err
 	}
 	m.decorate(hosts, "ip", "name")
 	apps, _ := st.Rows(`SELECT app, MAX(category) AS category, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out,
-		SUM(flows) AS flows FROM rollup_app WHERE bucket>=? GROUP BY app ORDER BY bytes_in+bytes_out DESC LIMIT ?`,
+		SUM(flows) AS flows, COUNT(DISTINCT src_ip) AS hosts, MAX(bucket) AS last_seen
+		FROM rollup_app WHERE bucket>=? GROUP BY app ORDER BY flows DESC LIMIT ?`,
 		since, limit)
+	attachTopHosts(apps, "app", m.topHostsBy("rollup_app", "app", keysOf(apps, "app"), since, 3))
 	cats, _ := st.Rows(`SELECT COALESCE(NULLIF(category,''),'Unknown') AS category, SUM(bytes_in) AS bytes_in,
-		SUM(bytes_out) AS bytes_out, SUM(flows) AS flows FROM rollup_app WHERE bucket>=? GROUP BY 1
-		ORDER BY bytes_in+bytes_out DESC LIMIT ?`, since, limit)
+		SUM(bytes_out) AS bytes_out, SUM(flows) AS flows, COUNT(DISTINCT src_ip) AS hosts, MAX(bucket) AS last_seen
+		FROM rollup_app WHERE bucket>=? GROUP BY 1
+		ORDER BY flows DESC LIMIT ?`, since, limit)
+	attachTopHosts(cats, "category", m.topHostsBy("rollup_app", "COALESCE(NULLIF(category,''),'Unknown')", keysOf(cats, "category"), since, 3))
 	domains, _ := st.Rows(`SELECT domain, MAX(category) AS category, SUM(bytes_in) AS bytes_in,
-		SUM(bytes_out) AS bytes_out, SUM(flows) AS flows, COUNT(DISTINCT src_ip) AS hosts
-		FROM rollup_domain WHERE bucket>=? GROUP BY domain ORDER BY bytes_in+bytes_out DESC LIMIT ?`, since, limit)
+		SUM(bytes_out) AS bytes_out, SUM(flows) AS flows, COUNT(DISTINCT src_ip) AS hosts, MAX(bucket) AS last_seen
+		FROM rollup_domain WHERE bucket>=? GROUP BY domain ORDER BY flows DESC LIMIT ?`, since, limit)
+	attachTopHosts(domains, "domain", m.topHostsBy("rollup_domain", "domain", keysOf(domains, "domain"), since, 3))
 	m.endpointsFor(domains, since)
 	dsts, _ := st.Rows(`SELECT dst_ip AS ip, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out,
 		SUM(flows) AS flows, COUNT(DISTINCT src_ip) AS hosts FROM rollup_dst WHERE bucket>=?

@@ -86,9 +86,14 @@ there is no path across the internet to show.
 
 ### Applications
 
-Applications ranked by traffic and by hosts using them, with the nDPI
-category. Click one for the hosts and the sessions. The catalogue used for
-policy (names and categories) is the same one nDPI reports.
+Applications ranked by activity: sessions first, then who did it. Each row
+shows the number of sessions, how many hosts used the application and the
+three that used it most (each a link to those sessions), when it was last
+seen, blocked sessions, and the bytes as an aside rather than the ranking.
+The Overview's top hosts, applications, categories and sites and the host
+page's cards rank the same way: a backup moving a terabyte is not what the
+household is doing. The catalogue used for policy (names and categories) is
+the same one nDPI reports.
 
 ### Web
 

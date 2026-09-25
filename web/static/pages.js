@@ -4,6 +4,14 @@
   const { esc, num, bytes, bps, dur, ago, when, pill, card, kpi, table, bars, chart, donut, hostLink, domainLink, get, post } = FS;
 
   // ------------------------------------------------------------- Overview
+  // Activity, not volume: a bar is sessions, and its subtitle says which
+  // hosts did it, with the bytes as an aside.
+  const sessions = (n) => num(n) + ' sessions';
+  const whoDid = (r) => {
+    const who = (r.top_hosts || []).map(h => `<a href="#host/${encodeURIComponent(h.ip)}">${esc(h.name || h.ip)}</a>`).join(', ');
+    const more = (r.hosts || 0) > (r.top_hosts || []).length ? ` +${num((r.hosts || 0) - (r.top_hosts || []).length)}` : '';
+    return `${r.category ? esc(r.category) + ' · ' : ''}${who || (r.hosts ? num(r.hosts) + ' hosts' : '')}${more} · ${bytes((r.bytes_in || 0) + (r.bytes_out || 0))}`;
+  };
   FS.registerPage('overview', {
     title: 'Overview', refresh: 15,
     async render(el) {
@@ -31,15 +39,15 @@
           : [{ name: 'bps', points: (ts.throughput_bps || []).map(p => [p.t, p.v]) }], { fmt: bps, area: true, tall: true }) + FS.legend(['inbound (download)', 'outbound (upload)']), 'inbound and outbound')}
       </div>
       <div class="grid cols-3" style="margin-top:14px">
-        ${card('Top hosts', bars((top.hosts || []).map(h => ({ label: h.name || h.ip, sub: h.name ? h.ip : '', value: (h.bytes_in || 0) + (h.bytes_out || 0), href: '#host/' + h.ip })), bytes))}
-        ${card('Top applications', bars((top.apps || []).map(a => ({ label: a.app, sub: a.category, value: (a.bytes_in || 0) + (a.bytes_out || 0), href: '#flows?app=' + encodeURIComponent(a.app) })), bytes))}
-        ${card('Top categories', donut((top.categories || []).map(c => ({ label: c.category, value: (c.bytes_in || 0) + (c.bytes_out || 0) })), bytes))}
+        ${card('Top hosts', bars((top.hosts || []).map(h => ({ label: h.name || h.ip, sub: `${h.name ? h.ip + ' · ' : ''}${num(h.apps || 0)} apps · ${bytes((h.bytes_in || 0) + (h.bytes_out || 0))}`, value: h.flows || 0, href: '#host/' + h.ip })), sessions), 'by sessions')}
+        ${card('Top applications', bars((top.apps || []).map(a => ({ label: a.app, sub: whoDid(a), value: a.flows || 0, href: '#flows?app=' + encodeURIComponent(a.app) })), sessions), 'by sessions')}
+        ${card('Top categories', donut((top.categories || []).map(c => ({ label: c.category, value: c.flows || 0 })), sessions), 'by sessions')}
       </div>
       <div class="grid cols-3" style="margin-top:14px">
-        ${card('Top sites', bars((top.domains || []).map(d => ({ label: d.domain, sub: d.category || '', value: (d.bytes_in || 0) + (d.bytes_out || 0), href: '#flows?domain=' + encodeURIComponent(d.domain),
+        ${card('Top sites', bars((top.domains || []).map(d => ({ label: d.domain, sub: whoDid(d), value: d.flows || 0, href: '#flows?domain=' + encodeURIComponent(d.domain),
           // Where the site's traffic actually went, on the map: the endpoint
           // with a measured route when there is one, else the busiest.
-          extra: d.dst_ip ? ` <a class="maplink${d.traced ? '' : ' untraced'}" href="#paths?dst=${encodeURIComponent(d.dst_ip)}" title="${d.traced ? 'Route to ' + FS.esc(d.dst_ip) + ' on the map' : FS.esc(d.dst_ip) + ' on the map \u2014 not traced yet; the map will trace it when it can'}">map</a>` : '' })), bytes),
+          extra: d.dst_ip ? ` <a class="maplink${d.traced ? '' : ' untraced'}" href="#paths?dst=${encodeURIComponent(d.dst_ip)}" title="${d.traced ? 'Route to ' + FS.esc(d.dst_ip) + ' on the map' : FS.esc(d.dst_ip) + ' on the map \u2014 not traced yet; the map will trace it when it can'}">map</a>` : '' })), sessions), 'by sessions',
           'map: the route to the endpoint that served the site')}
         ${card('Blocked', bars((top.blocked || []).map(b => ({ label: (b.name || b.ip) + ' → ' + b.app, value: b.flows, href: '#host/' + b.ip }))) )}
         ${card('DNS', dns.error ? FS.err(dns.error) : `<div class="kv"><dt>Queries</dt><dd>${num((dns.totals || {}).queries)}</dd><dt>Blocked</dt><dd>${num((dns.totals || {}).blocked)} (${FS.pct((dns.totals || {}).blocked, (dns.totals || {}).queries)})</dd><dt>Clients</dt><dd>${num((dns.totals || {}).clients)}</dd><dt>Domains</dt><dd>${num((dns.totals || {}).domains)}</dd></div><div style="margin-top:8px">${bars((dns.blocked || []).slice(0, 5).map(d => ({ label: d.domain, value: d.queries, sub: d.list })))}</div>`)}
@@ -119,8 +127,8 @@
       <div style="margin-top:14px">${card('Activity', chart([{ name: 'download', points: (d.timeline || []).map(p => [p.t, p.bytes_in]) }, { name: 'upload', points: (d.timeline || []).map(p => [p.t, p.bytes_out]) }, { name: 'blocked', points: (d.timeline || []).map(p => [p.t, p.blocked]) , color: '#dc2626'}], { fmt: bytes, area: true, tall: true }) + FS.legend(['download', 'upload', 'blocked flows']))}</div>
       ${scan ? `<div style="margin-top:14px">${card('Identification', `<div class="small muted">Scanned ${ago(scan.finished)}</div>` + (scan.os_guesses && scan.os_guesses.length ? `<div><b>OS:</b> ${scan.os_guesses.map(g => esc(g.os)).join(', ')}</div>` : '') + (scan.open_ports && scan.open_ports.length ? `<div><b>Ports:</b> ${scan.open_ports.map(p => p.port).join(', ')}</div>` : '') + (scan.nmap_enhanced ? '<div class="small muted">via nmap</div>' : ''))}</div>` : ''}
       <div class="grid cols-3" style="margin-top:14px">
-        ${card('Applications', bars((d.apps || []).map(a => ({ label: a.app, sub: a.category, value: (a.bytes_in || 0) + (a.bytes_out || 0) })), bytes))}
-        ${card('Sites', bars((d.domains || []).map(a => ({ label: a.domain, sub: a.category || '', value: (a.bytes_in || 0) + (a.bytes_out || 0), href: '#flows?ip=' + ip + '&domain=' + encodeURIComponent(a.domain) })), bytes))}
+        ${card('Applications', bars((d.apps || []).map(a => ({ label: a.app, sub: `${a.category || ''}${a.category ? ' · ' : ''}${bytes((a.bytes_in || 0) + (a.bytes_out || 0))}`, value: a.flows || 0 })), sessions), 'by sessions')}
+        ${card('Sites', bars((d.domains || []).map(a => ({ label: a.domain, sub: `${a.category || ''}${a.category ? ' · ' : ''}${bytes((a.bytes_in || 0) + (a.bytes_out || 0))}`, value: a.flows || 0, href: '#flows?ip=' + ip + '&domain=' + encodeURIComponent(a.domain) })), sessions), 'by sessions')}
         ${card('Destinations', bars((d.destinations || []).map(a => ({ label: a.name || a.ip, sub: `${a.ip}:${a.port}/${a.proto}`, value: (a.bytes_in || 0) + (a.bytes_out || 0) })), bytes))}
       </div>
       <div class="grid cols-2" style="margin-top:14px">
@@ -178,16 +186,18 @@
       const d = await get(`/api/visibility/apps?${FS.since()}`);
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
       const rows = d.apps || [];
-      const byCat = {}; rows.forEach(a => { const c = a.category || 'Unknown'; byCat[c] = (byCat[c] || 0) + (a.bytes_in || 0) + (a.bytes_out || 0); });
+      const byCat = {}; rows.forEach(a => { const c = a.category || 'Unknown'; byCat[c] = (byCat[c] || 0) + (a.flows || 0); });
       const breedPill = b => b ? pill(b, { Safe: 'ok', Acceptable: 'ok', Fun: 'info', Unsafe: 'warn', Dangerous: 'bad', Potentially_Dangerous: 'warn' }[b] || '') : '';
       el.innerHTML = `<div class="two">${card('Applications', table(rows, [
         { t: 'Application', f: r => `<a href="#flows?app=${encodeURIComponent(r.app)}">${esc(r.app)}</a>`, sort: 'app' },
         { t: 'Category', k: 'category' }, { t: 'Breed', f: r => breedPill(r.breed), sort: 'breed' },
-        { t: 'Hosts', k: 'hosts', num: true }, { t: 'Flows', f: r => num(r.flows), num: true, sort: 'flows' },
+        { t: 'Sessions', f: r => num(r.flows), num: true, sort: 'flows' },
+        { t: 'Who', f: r => `${num(r.hosts || 0)} host${r.hosts === 1 ? '' : 's'}${(r.top_hosts || []).length ? `<div class="small">${(r.top_hosts || []).map(h => `<a href="#flows?app=${encodeURIComponent(r.app)}&ip=${encodeURIComponent(h.ip)}" title="${num(h.flows)} sessions">${esc(h.name || h.ip)}</a>`).join(', ')}</div>` : ''}`, sort: 'hosts' },
+        { t: 'Last seen', f: r => r.last_seen ? ago(r.last_seen) : '', sort: 'last_seen' },
         { t: 'Blocked', f: r => r.blocked ? `<span class="sev-high">${num(r.blocked)}</span>` : '0', num: true, sort: 'blocked' },
         { t: 'Down', f: r => bytes(r.bytes_in), num: true, sort: 'bytes_in' }, { t: 'Up', f: r => bytes(r.bytes_out), num: true, sort: 'bytes_out' },
         { t: 'Block', f: r => `<button class="btn small" data-app="${esc(r.app)}">policy…</button>` }]))}
-      <div class="stack">${card('By category', donut(Object.entries(byCat).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value), bytes))}${card('About', `<p class="small muted">Applications are identified by nDPI on the first packets of each flow. Breed is nDPI's own risk grouping. Use <b>policy…</b> to deny an application for a group of devices; enforcement is at the firewall and needs no inline engine.</p>`)}</div></div>`;
+      <div class="stack">${card('By category', donut(Object.entries(byCat).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value), sessions), 'by sessions')}${card('About', `<p class="small muted">Applications are identified by nDPI on the first packets of each flow. Breed is nDPI's own risk grouping. Use <b>policy…</b> to deny an application for a group of devices; enforcement is at the firewall and needs no inline engine.</p>`)}</div></div>`;
       FS.$$('button[data-app]', el).forEach(b => b.onclick = () => FS.quickPolicy({ apps: [b.dataset.app] }));
     }
   });
