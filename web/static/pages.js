@@ -161,7 +161,11 @@
           { t: 'Down', f: r => bytes(r.bytes_in), num: true, sort: 'bytes_in' }, { t: 'Up', f: r => bytes(r.bytes_out), num: true, sort: 'bytes_out' },
           { t: 'Duration', f: r => dur(r.duration), num: true, sort: 'duration' },
           { t: 'Verdict', f: r => FS.verdictPill(r.verdict) + (r.policy ? ` <span class="muted small">${esc(r.policy)}</span>` : ''), sort: 'verdict' },
-          { t: 'Source', k: 'source' }]));
+          { t: 'Source', k: 'source' },
+          // The path this session takes: the map narrowed to this client and
+          // this destination, one traceroute, nothing else. Local-to-local
+          // sessions have no path across the internet to show.
+          { t: '', f: r => FS.isPrivateIP(r.dst_ip) || !r.dst_ip ? '' : `<a class="btn small" href="#paths?dst=${encodeURIComponent(r.dst_ip)}&device=${encodeURIComponent(r.src_ip || '')}" title="Show this session's path on the map: ${esc(r.src_name || r.src_ip)} to ${esc(r.dst_name || r.dst_ip)}">Map</a>` }]));
       FS.$$('#win button', el).forEach(b => b.onclick = () => { p.minutes = b.dataset.m; FS.go('#flows?' + new URLSearchParams(p)); });
       FS.$$('.chip button', el).forEach(b => b.onclick = () => { delete p[b.dataset.k === 'only' ? 'blocked' : b.dataset.k]; FS.go('#flows?' + new URLSearchParams(p)); });
     }

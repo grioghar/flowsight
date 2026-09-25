@@ -39,6 +39,16 @@ FS.refreshHeld = () => {
 FS.issuerName = (dn) => { const g = (k) => ((dn || '').match(new RegExp('(?:^|[;,]\\s*)' + k + '=([^;,]+)')) || [])[1] || ''; const o = g('O'), cn = g('CN'); return o && cn && o !== cn ? `${o} · ${cn}` : (cn || o || dn || ''); };
 FS.tierName = (t) => ({ community: 'Community', pro: 'Pro', business: 'Business' })[t] || t;
 FS.lockCard = (d) => `<div class="card lock"><h3>${FS.esc(FS.tierName(d.required || 'pro'))} feature</h3><p>${FS.esc(d.error || '')}</p><div class="actions"><a class="btn primary" href="#license">See license options</a></div></div>`;
+// Addresses that never leave the building: RFC 1918, link-local, loopback,
+// carrier-grade NAT, IPv6 unique-local and link-local.
+FS.isPrivateIP = (ip) => {
+  if (!ip) return false;
+  const s = String(ip).toLowerCase();
+  if (s.includes(':')) return s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe80') || s === '::1' || s.startsWith('::ffff:') && FS.isPrivateIP(s.slice(7));
+  const m = s.match(/^(\d+)\.(\d+)\./); if (!m) return false;
+  const a = +m[1], b = +m[2];
+  return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+};
 FS.get = (p) => FS.api(p);
 FS.post = (p, body) => FS.api(p, { body: body || {} });
 

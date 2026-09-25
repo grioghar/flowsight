@@ -12,6 +12,13 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251615
+
+**A session's path, one click away.** Every row on the Sessions page with
+an internet destination has a *Map* button that opens the Map narrowed to
+that session: the client device and the traceroute to that destination,
+nothing else. Local-to-local sessions have no button.
+
 ## 0.9.8r202609251610
 
 **The public fallback keeps the public pace.** The first fast pass against

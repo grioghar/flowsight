@@ -79,6 +79,10 @@ DNS or from the proxy once interception is on), protocol and port, bytes
 each way, duration, verdict (observed or blocked and by which policy), TLS
 version and SNI when known. Filter by host, domain, application or verdict.
 Sessions come from ntopng every few seconds and from the proxy log.
+The **Map** button at the end of a row opens the Map narrowed to that
+session alone: the client device and the route to that destination, one
+traceroute. Sessions between two local addresses have no button, since
+there is no path across the internet to show.
 
 ### Applications
 
