@@ -19,6 +19,7 @@ func TestNameInfoPrecedence(t *testing.T) {
 	m := &Module{
 		ctx:     &core.Context{Store: st},
 		names:   map[string]string{},
+		sources: map[string]nameSource{},
 		macs:    map[string]string{},
 		ips:     map[string][]string{},
 		leases:  map[string]Lease{},
@@ -50,6 +51,8 @@ func TestNameInfoPrecedence(t *testing.T) {
 		Hostname: "DHCPDevice",
 		Source:   "dnsmasq",
 	}
+	m.names[testIP] = "DHCPDevice"
+	m.sources[testIP] = nameSource{name: "DHCPDevice", source: "dhcp_hostname", confidence: 0.88}
 	info = m.NameInfo(testIP)
 	if info.Source != "dhcp_hostname" || info.Confidence != 0.88 {
 		t.Errorf("dhcp should have source='dhcp_hostname', confidence=0.88; got source=%q, confidence=%g", info.Source, info.Confidence)
@@ -57,8 +60,9 @@ func TestNameInfoPrecedence(t *testing.T) {
 
 	// Test 3: static reservation should beat device table but lose to DHCP
 	m.leases = map[string]Lease{}
+	m.names[testIP] = "ReservedDevice"
+	m.sources[testIP] = nameSource{name: "ReservedDevice", source: "reservation", confidence: 0.80}
 	m.static[testIP] = "ReservedDevice"
-	m.names[testIP] = "DeviceTableName"
 	info = m.NameInfo(testIP)
 	if info.Source != "reservation" || info.Confidence != 0.80 {
 		t.Errorf("reservation should have source='reservation', confidence=0.80; got source=%q, confidence=%g", info.Source, info.Confidence)
@@ -67,6 +71,7 @@ func TestNameInfoPrecedence(t *testing.T) {
 	// Test 4: device table (enrollment) should be lower than static
 	m.static = map[string]string{}
 	m.names[testIP] = "EnrolledDevice"
+	m.sources[testIP] = nameSource{name: "EnrolledDevice", source: "device_table", confidence: 0.70}
 	info = m.NameInfo(testIP)
 	if info.Source != "device_table" || info.Confidence < 0.68 || info.Confidence > 0.72 {
 		t.Errorf("device_table should have source='device_table', confidence around 0.70; got source=%q, confidence=%g", info.Source, info.Confidence)
@@ -76,6 +81,7 @@ func TestNameInfoPrecedence(t *testing.T) {
 
 	// Test 6: no name source
 	m.names = map[string]string{}
+	m.sources = map[string]nameSource{}
 	m.macs = map[string]string{}
 	info = m.NameInfo("192.168.1.200")
 	if info.Source != "none" || info.Confidence != 0.0 {
@@ -94,6 +100,7 @@ func TestNameInfoLoopback(t *testing.T) {
 	m := &Module{
 		ctx:     &core.Context{Store: st},
 		names:   map[string]string{},
+		sources: map[string]nameSource{},
 		macs:    map[string]string{},
 		ips:     map[string][]string{},
 		static:  map[string]string{},

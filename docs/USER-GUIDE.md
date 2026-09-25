@@ -87,6 +87,12 @@ session alone: the client device and the route to that destination, one
 traceroute. Sessions between two local addresses have no button, since
 there is no path across the internet to show.
 
+**Domain provenance:** The server name comes from multiple sources: the client's
+TLS SNI (most reliable), HTTP Host header, DNS query, or the flow probe's
+reverse-DNS cache (least reliable, often wrong for shared servers like CDNs).
+When the domain comes from the probe's cache, it appears muted with a tooltip
+showing its source, so you can tell if it may not be authoritative.
+
 **Where the far end is.** Each session's server shows its country; the
 **Outside \<country\>** button keeps only sessions whose far end is abroad
 (FlowSight learns your own country from its public address once *Country
@@ -876,6 +882,14 @@ addresses listed under the name, the IPv4 address as the link. Addresses
 with no known device stay their own rows. The range bar shows *since <date>*
 when the window reaches back past the oldest record, so 7d and 30d reading
 the same on a young installation is expected, not a fault.
+
+**Name provenance marks:** A small bullet (•) after a device's name shows where
+the name came from, with a tooltip showing the source and confidence. Names come
+from DHCP hostnames (highest trust), static reservations, device enrollment,
+reverse DNS, or operator assignment. The mark confirms a name is from a trusted
+source (lease, reservation, enrollment) or warns it came from the network
+(resolver). Operator-assigned names override all others and always have 100%
+confidence.
 
 IP Addresses and Devices overlap on purpose and answer different questions.
 **IP Addresses** (once called Hosts) is what the traffic shows: one row per address seen in flows and

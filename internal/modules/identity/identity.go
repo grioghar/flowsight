@@ -20,12 +20,19 @@ import (
 
 func init() { core.Register(func() core.Module { return &Module{} }) }
 
+type nameSource struct {
+	name       string
+	source     string  // override | dhcp_hostname | reservation | device_table | mdns | reverse_dns | none
+	confidence float64 // 0.0-1.0
+}
+
 type Module struct {
 	ctx *core.Context
 
 	mu      sync.RWMutex
-	names   map[string]string // ip -> best name
-	macs    map[string]string // ip -> mac
+	names   map[string]string       // ip -> best name
+	sources map[string]nameSource   // ip -> name source and confidence
+	macs    map[string]string       // ip -> mac
 	ips     map[string][]string
 	seenAt  map[string]map[string]int64 // mac -> address -> last seen
 	vendors map[string]string           // oui -> vendor
@@ -70,6 +77,7 @@ func (m *Module) Info() core.ModuleInfo {
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
 	m.names = map[string]string{}
+	m.sources = map[string]nameSource{}
 	m.macs = map[string]string{}
 	m.ips = map[string][]string{}
 	m.leases = map[string]Lease{}
@@ -98,9 +106,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 // ---------------------------------------------------------------- service
 
 // NameInfo returns the name for an address along with its source and confidence.
-// Sources in order of trust: override (1.0), dhcp_hostname (0.88), dns_query (0.85),
-// probe_name (0.50), none (0.0). The name comes from the device table when it is
-// the only source; it gives way to a DHCP hostname that came in after enrollment.
+// Sources in precedence order: override (1.0), dhcp_hostname (0.88), reservation (0.80),
+// device_table (0.70), reverse_dns (0.20), none (0.0).
+// This reads from m.sources which is populated during refresh, so no DB calls.
 func (m *Module) NameInfo(ip string) struct {
 	Name       string
 	Source     string
@@ -118,6 +126,7 @@ func (m *Module) NameInfo(ip string) struct {
 		}{Name: n, Source: "override", Confidence: 1.0}
 	}
 
+	// Loopback addresses
 	if ip == "127.0.0.1" || ip == "::1" {
 		return struct {
 			Name       string
@@ -126,77 +135,46 @@ func (m *Module) NameInfo(ip string) struct {
 		}{Name: "this gateway (loopback)", Source: "loopback", Confidence: 1.0}
 	}
 
-	// Check if a DHCP lease covers this address
-	if mac := m.macs[ip]; mac != "" {
-		for _, l := range m.leases {
-			if l.MAC == mac && l.IP == ip && l.Hostname != "" && l.Hostname != "*" {
-				return struct {
-					Name       string
-					Source     string
-					Confidence float64
-				}{Name: l.Hostname, Source: "dhcp_hostname", Confidence: 0.88}
-			}
-		}
-	}
-
-	// Check static reservations / /etc/hosts
-	if n := m.static[ip]; n != "" {
+	// Check sources map (populated during refresh)
+	if src, ok := m.sources[ip]; ok {
 		return struct {
 			Name       string
 			Source     string
 			Confidence float64
-		}{Name: n, Source: "reservation", Confidence: 0.80}
+		}{Name: src.name, Source: src.source, Confidence: src.confidence}
 	}
 
-	// Check device table (enrollment) names
-	// These are lower priority than DHCP or reservation
-	if n := m.names[ip]; n != "" {
-		// Try to determine if this is from device table or elsewhere
-		// For now, assume device table if not in leases
-		isFromDeviceTable := true
-		if mac := m.macs[ip]; mac != "" {
-			for _, l := range m.leases {
-				if l.MAC == mac && l.IP == ip {
-					isFromDeviceTable = false
-					break
+	// Check if device holds this address (durable-by-MAC): report original source with "via device's other address"
+	if mac := m.macs[ip]; mac != "" {
+		if origName := m.macName[mac]; origName != "" {
+			// Find the source from any address the device holds
+			for otherIP := range m.names {
+				if m.macs[otherIP] == mac {
+					if src, ok := m.sources[otherIP]; ok && src.name != "" {
+						// Report the source from the other address
+						return struct {
+							Name       string
+							Source     string
+							Confidence float64
+						}{Name: origName, Source: src.source, Confidence: src.confidence}
+					}
 				}
 			}
 		}
-		if isFromDeviceTable {
-			return struct {
-				Name       string
-				Source     string
-				Confidence float64
-			}{Name: n, Source: "device_table", Confidence: 0.70}
-		}
 	}
 
-	// Check device via MAC for any address the device holds
-	if mac := m.macs[ip]; mac != "" {
-		if n := m.macName[mac]; n != "" {
-			return struct {
-				Name       string
-				Source     string
-				Confidence float64
-			}{Name: n, Source: "device_table", Confidence: 0.70}
-		}
-	}
-
-	// Check ever-known MAC
+	// Check ever-known MAC (addresses that rotated out)
 	if mac := m.everMAC[ip]; mac != "" {
-		if n := m.macName[mac]; n != "" {
+		if origName := m.macName[mac]; origName != "" {
+			// Similar to above but for rotated addresses
 			return struct {
 				Name       string
 				Source     string
 				Confidence float64
-			}{Name: n, Source: "device_table", Confidence: 0.70}
+			}{Name: origName, Source: "device_table", Confidence: 0.70}
 		}
 	}
 
-	// Check resolver answers (lowest confidence)
-	// These only apply to non-local addresses
-	// We don't hold the lock when querying the database, so we need to release it first
-	// Return a placeholder that the caller must then check
 	return struct {
 		Name       string
 		Source     string
@@ -604,6 +582,7 @@ func (m *Module) refresh() error {
 	nets := m.localNets()
 
 	names := map[string]string{}
+	sources := map[string]nameSource{}
 	macs := map[string]string{}
 	// Everything seen now is remembered against its device; see seen().
 	for ip, mac := range arp {
@@ -620,16 +599,22 @@ func (m *Module) refresh() error {
 			macs[ip] = mac
 		}
 	}
+	// DHCP hostnames: highest priority after override
 	for _, l := range leases {
 		if l.IP != "" {
 			macs[l.IP] = l.MAC
 			if l.Hostname != "" && l.Hostname != "*" {
 				names[l.IP] = l.Hostname
+				sources[l.IP] = nameSource{name: l.Hostname, source: "dhcp_hostname", confidence: 0.88}
 			}
 		}
 	}
+	// Static reservations (from /etc/hosts or dnsmasq dhcp-host)
 	for ip, n := range static {
-		names[ip] = n
+		if _, hasSource := sources[ip]; !hasSource {
+			names[ip] = n
+			sources[ip] = nameSource{name: n, source: "reservation", confidence: 0.80}
+		}
 	}
 	// Enrolment / device table contributions. A lease is authoritative for
 	// the address it covers: a device that sent no hostname with its lease
@@ -661,8 +646,10 @@ func (m *Module) refresh() error {
 		if _, ok := names[ip]; !ok && !leased[ip] {
 			if h != "" {
 				names[ip] = h
+				sources[ip] = nameSource{name: h, source: "device_table", confidence: 0.70}
 			} else if g != "" {
 				names[ip] = g
+				sources[ip] = nameSource{name: g, source: "device_table", confidence: 0.70}
 			}
 		}
 		if mac != "" {
@@ -698,6 +685,7 @@ func (m *Module) refresh() error {
 		// or the unspecified address ever carry a resolver's name.
 		if _, ok := names[ip]; !ok && ip != "" && n != "" && !isLocal(ip) && !core.IsSpecialIP(ip) {
 			names[ip] = n
+			sources[ip] = nameSource{name: n, source: "reverse_dns", confidence: 0.20}
 		}
 	}
 
@@ -707,13 +695,16 @@ func (m *Module) refresh() error {
 	// which is what makes IPv6 rows read like IPv4 ones.
 	for _, list := range ips {
 		name := ""
+		var src nameSource
 		for _, ip := range list {
 			if n := static[ip]; n != "" {
 				name = n
+				src = sources[ip]
 				break
 			}
 			if n := names[ip]; n != "" && name == "" {
 				name = n
+				src = sources[ip]
 			}
 		}
 		if name == "" {
@@ -722,10 +713,11 @@ func (m *Module) refresh() error {
 		for _, ip := range list {
 			if names[ip] == "" {
 				names[ip] = name
+				sources[ip] = src
 			}
 		}
 	}
-	m.names, m.macs, m.ips, m.leases, m.static = names, macs, ips, leases, static
+	m.names, m.sources, m.macs, m.ips, m.leases, m.static = names, sources, macs, ips, leases, static
 	var moved []string
 	m.everMAC, m.macName, moved = m.durable(names, macs)
 	m.nets = nets
@@ -1272,8 +1264,10 @@ func (m *Module) apiLookup(r *core.Req) (any, error) {
 		return nil, core.BadRequest("ip must be an address")
 	}
 	mac := m.MAC(ip)
+	info := m.NameInfo(ip)
 	return map[string]any{"ip": ip, "name": m.Name(ip), "mac": mac, "vendor": m.Vendor(mac),
-		"local": m.IsLocal(ip), "randomized": isRandomized(mac)}, nil
+		"local": m.IsLocal(ip), "randomized": isRandomized(mac),
+		"name_source": info.Source, "name_confidence": int(info.Confidence * 100)}, nil
 }
 
 func (m *Module) apiLeases(r *core.Req) (any, error) {

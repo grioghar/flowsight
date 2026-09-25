@@ -138,6 +138,10 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/identity/lookup` | Name, MAC and vendor for one address | ip (address) |
 | POST | `/api/identity/name` | Assign a display name to an address |  |
 
+**Response fields for `/api/identity/hosts` and `/api/identity/lookup`:**
+- `name_source` — where the hostname came from: override (operator-assigned), dhcp_hostname (DHCP lease), reservation (static /etc/hosts), device_table (enrollment), reverse_dns (resolver), loopback, or none
+- `name_confidence` — confidence in the name as a percentage (0-100): override and loopback are 100, DHCP is 88, reservation is 80, device table is 70, resolver is 20
+
 ### ids
 
 | Method | Path | What | Parameters |
@@ -314,6 +318,10 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/visibility/summary` | Throughput, active flows and hosts right now |  |
 | GET | `/api/visibility/timeseries` | Metric series for charts | hours (window), metric (name), step (seconds) |
 | GET | `/api/visibility/top` | Top hosts, applications, categories, sites (each with `dst_ip`, the endpoint that served it, and `traced`), destinations | hours (window), limit (rows) |
+
+**Response fields for `/api/visibility/flows`:**
+- `domain_source` — where the domain/server name came from: sni (TLS ClientHello), http_host (HTTP header), dns_query (DNS query from client), probe_name (flow probe's reverse DNS cache), or none
+- `country_source` — where the country came from: database (GeoIP database) or none
 
 ### web
 

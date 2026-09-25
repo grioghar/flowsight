@@ -70,7 +70,13 @@ FS.verdictPill = (v) => v === 'blocked' ? FS.pill('blocked', 'bad') : v === 'all
 // Both the name and the address open the host page: a reader clicks the
 // address as readily as the name, and a grey address that did nothing read
 // as a broken page.
-FS.hostLink = (ip, name) => ip ? `<a href="#host/${encodeURIComponent(ip)}" title="${FS.esc(ip)}" ${name ? '' : `data-ip="${FS.esc(ip)}"`}>${FS.esc(name || ip)}</a>${name ? ` <a class="muted mono small" href="#host/${encodeURIComponent(ip)}">${FS.esc(ip)}</a>` : ''}` : '';
+// info parameter (optional): {source: string, confidence: number 0-1} for provenance marks
+FS.hostLink = (ip, name, info) => {
+  if (!ip) return '';
+  const mark = FS.provenanceMark(info?.source, info?.confidence);
+  const nameDisplay = name || ip;
+  return `<a href="#host/${encodeURIComponent(ip)}" title="${FS.esc(ip)}" ${name ? '' : `data-ip="${FS.esc(ip)}"`}>${FS.esc(nameDisplay)}${mark}</a>${name ? ` <a class="muted mono small" href="#host/${encodeURIComponent(ip)}">${FS.esc(ip)}</a>` : ''}`;
+};
 // A bare address that enrichment may decorate with a reverse-DNS name and a country.
 // An address cell: the address itself, with whatever host or device name
 // FlowSight knows beneath it. The Web page shows the name first and the
@@ -82,7 +88,14 @@ FS.addrCell = (ip, name) => {
   return `<a href="#host/${encodeURIComponent(ip)}" class="mono" ${known ? '' : `data-ip="${FS.esc(ip)}"`}>${FS.esc(ip)}</a>` +
     (known ? `<div class="muted small">${FS.esc(known)}</div>` : '<div class="muted small ipname" data-name-for="' + FS.esc(ip) + '"></div>');
 };
-FS.ipTag = (ip, name) => ip ? (name ? `${FS.esc(name)} <span class="muted small mono">${FS.esc(ip)}</span>` : `<span class="mono" data-ip="${FS.esc(ip)}">${FS.esc(ip)}</span>`) : '';
+// info parameter (optional): {source: string, confidence: number 0-1} for provenance marks
+FS.ipTag = (ip, name, info) => {
+  if (!ip) return '';
+  const mark = FS.provenanceMark(info?.source, info?.confidence);
+  return name
+    ? `${FS.esc(name)}${mark} <span class="muted small mono">${FS.esc(ip)}</span>`
+    : `<span class="mono" data-ip="${FS.esc(ip)}">${FS.esc(ip)}</span>`;
+};
 // Provenance mark: shows source and confidence for a name or domain in a quiet way.
 // Returns a superscript mark with a title showing the source and confidence level.
 FS.provenanceMark = (source, confidence) => {

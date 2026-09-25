@@ -619,8 +619,8 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	q := `SELECT id,ts,end_ts,src_ip,src_port,dst_ip,dst_port,proto,app,category,domain,bytes_in,bytes_out,
-		duration,verdict,policy,source,iface,tls_version,tls_sni,country,anycast FROM flows WHERE COALESCE(end_ts,ts)>=?`
+	q := `SELECT id,ts,end_ts,src_ip,src_port,dst_ip,dst_port,proto,app,category,domain,domain_source,bytes_in,bytes_out,
+		duration,verdict,policy,source,iface,tls_version,tls_sni,country,country_source,anycast FROM flows WHERE COALESCE(end_ts,ts)>=?`
 	args := []any{time.Now().Unix() - int64(minutes)*60}
 	if ip != "" {
 		q += ` AND (src_ip=? OR dst_ip=?)`
