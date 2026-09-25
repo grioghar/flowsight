@@ -118,7 +118,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/license", m.apiStatus, core.Doc("Retrieve current license tier, key, limits, and refresh status"),
 		core.Returns("License status", map[string]any{
 			"tier": "Business", "installation": "inst-id-123", "verifiable": true,
-			"limits": map[string]int{"flows": 1000000, "rules": 5000},
+			"limits":     map[string]int{"flows": 1000000, "rules": 5000},
 			"last_error": "", "revoked": false, "key_hint": "FSI-****-****-****-WXYZ",
 		}))
 	ctx.Route("GET", "/api/license/features", m.apiFeatures, core.Doc("List all features with enabled status and limits by tier"),

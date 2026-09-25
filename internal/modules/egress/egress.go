@@ -183,8 +183,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/egress/summary", m.apiSummary, core.Needs("egress.watch"),
 		core.Doc("Total outbound traffic aggregated by device and destination group"),
 		core.Returns("Egress summary", map[string]any{
-			"devices": []map[string]any{{"key": "192.168.1.10", "name": "MacBook", "out": 5000000}},
-			"groups": []map[string]any{{"key": "workload", "title": "Work", "out": 5000000}},
+			"devices":   []map[string]any{{"key": "192.168.1.10", "name": "MacBook", "out": 5000000}},
+			"groups":    []map[string]any{{"key": "workload", "title": "Work", "out": 5000000}},
 			"total_out": 5000000, "total_in": 2500000, "rate_out": 250.0,
 		}))
 	ctx.Route("GET", "/api/egress/events", m.apiEvents, core.Needs("egress.watch"),

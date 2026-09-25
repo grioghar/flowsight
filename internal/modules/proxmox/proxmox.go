@@ -184,13 +184,13 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Returns("Connection status", map[string]any{
 			"connected": true,
 			"last_poll": 1790376243,
-			"error": "",
+			"error":     "",
 		}))
 	ctx.Route("POST", "/api/proxmox/poll", m.apiPoll, core.Write(),
 		core.Doc("Trigger an immediate poll of Proxmox API for latest node and VM status"),
 		core.Body(),
 		core.Returns("Poll result", map[string]any{
-			"ok": true,
+			"ok":      true,
 			"message": "Poll completed",
 		}))
 	ctx.Route("GET", "/api/proxmox/guest", m.apiGuest,
@@ -198,11 +198,11 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Query("node", "string", "Proxmox node name where guest resides", true, "pve1"),
 		core.Doc("Retrieve detailed configuration and status for a specific virtual machine or container"),
 		core.Returns("Guest details", map[string]any{
-			"vmid": 100,
-			"name": "container1",
-			"node": "pve1",
+			"vmid":   100,
+			"name":   "container1",
+			"node":   "pve1",
 			"status": "running",
-			"cpu": 4,
+			"cpu":    4,
 			"memory": 2048,
 		}))
 	ctx.Route("GET", "/api/proxmox/notes/preview", m.apiNotesPreview,
@@ -211,7 +211,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Preview the formatted notes section for a guest container or virtual machine"),
 		core.Returns("Notes preview", map[string]any{
 			"content": "Guest notes here",
-			"html": "<p>Guest notes here</p>",
+			"html":    "<p>Guest notes here</p>",
 		}))
 	ctx.Route("POST", "/api/proxmox/notes/write", m.apiNotesWrite, core.Write(),
 		core.Doc("Update the notes section for a Proxmox guest with new content and formatting"),
@@ -238,9 +238,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Query("hours", "integer", "Time window in hours for metrics (default 24)", false, 24),
 		core.Doc("Analyze a guest's resource requirements based on historical usage patterns and current load"),
 		core.Returns("Resource requirements analysis", map[string]any{
-			"vmid": 100,
-			"cpu_cores_needed": 4,
-			"memory_mb_needed": 2048,
+			"vmid":                  100,
+			"cpu_cores_needed":      4,
+			"memory_mb_needed":      2048,
 			"network_capacity_mbps": 100,
 		}))
 

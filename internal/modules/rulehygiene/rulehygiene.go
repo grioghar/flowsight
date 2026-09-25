@@ -82,9 +82,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/rulehygiene/summary", m.apiSummary, core.Needs("firewall.analyse"),
 		core.Doc("Summary of firewall rule health including risk score and analysis statistics"),
 		core.Returns("Rule hygiene summary", map[string]any{
-			"risk_score": 35,
-			"finding_count": 10,
-			"rules_analyzed": 250,
+			"risk_score":           35,
+			"finding_count":        10,
+			"rules_analyzed":       250,
 			"ruleset_loaded_since": 1790376243,
 		}))
 	ctx.Route("GET", "/api/rulehygiene/rules", m.apiRules, core.Needs("firewall.analyse"),
@@ -113,7 +113,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Trigger immediate firewall rule analysis to detect policy issues and cleanup opportunities"),
 		core.Body(),
 		core.Returns("Run result", map[string]any{
-			"ok": true,
+			"ok":      true,
 			"message": "Analysis started",
 		}))
 	ctx.Panel(core.Panel{

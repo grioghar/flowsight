@@ -96,9 +96,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Query("ip", "string", "IP address to look up", true, "192.168.1.10"),
 		core.Doc("Lookup details for a specific IP address including MAC, vendor and display name"),
 		core.Returns("Host lookup details", map[string]any{
-			"ip": "192.168.1.10",
-			"mac": "aa:bb:cc:dd:ee:ff",
-			"name": "MacBook",
+			"ip":     "192.168.1.10",
+			"mac":    "aa:bb:cc:dd:ee:ff",
+			"name":   "MacBook",
 			"vendor": "Apple",
 		}))
 	ctx.Route("GET", "/api/identity/leases", m.apiLeases,

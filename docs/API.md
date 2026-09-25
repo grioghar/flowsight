@@ -27,8 +27,8 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/captive` | Captive portal page | none |
-| POST | `/captive` | Captive portal action | none |
+| GET | `/captive` | Serve the captive portal page for device enrollment and policy acceptance | none |
+| POST | `/captive` | Handle captive portal form submission for device enrollment or policy acceptance | none |
 
 ### alerting
 
@@ -37,25 +37,23 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 |---|---|---|---|
 | GET | `/api/alerting/channel-types` | List all notification channel types grouped by family, with configuration schemas | none |
 | GET | `/api/alerting/channels` | List all configured notification channels | none |
-| GET | `/api/alerting/rules` | List all alert rules | none |
 
 **Create operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
 | POST | `/api/alerting/channels` | Create a new notification channel | none |
-| POST | `/api/alerting/rules` | Create a new alert rule | none |
+| POST | `/api/alerting/rules` | Create a new alert rule that evaluates conditions and sends notifications | none |
 
 **Update operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
 | PUT | `/api/alerting/channels/{id}` | Update a notification channel | id, id |
-| PUT | `/api/alerting/rules/{id}` | Update an alert rule | id, id |
+| PUT | `/api/alerting/rules/{id}` | Update an existing alert rule with new conditions and settings | id |
 
 **Delete operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
 | DELETE | `/api/alerting/channels/{id}` | Delete a notification channel | id, id |
-| DELETE | `/api/alerting/rules/{id}` | Delete an alert rule | id, id |
 
 **Other operations**
 | Method | Path | What | Parameters |
@@ -64,151 +62,181 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/alerting/channels/{id}` | Get a specific notification channel | id, id |
 | POST | `/api/alerting/channels/{id}/test` | Send a test message to a channel | id, id |
 | GET | `/api/alerting/deliveries` | Get notification delivery history | channel, limit |
-| GET | `/api/alerting/feed.xml` | RSS feed of recent alerts (requires token in Authorization header) | none |
+| GET | `/api/alerting/feed.xml` | RSS feed of recent alerts with token-based authorization | none |
 | POST | `/api/alerting/import-apprise` | Import Apprise notification URL | none |
 | GET | `/api/alerting/maintenance` | Get current maintenance mode status | none |
 | POST | `/api/alerting/maintenance` | Enable or disable maintenance mode (suppresses alerts) | none |
-| GET | `/api/alerting/notifications` | Recent notifications | limit |
+| GET | `/api/alerting/notifications` | Retrieve recent notification delivery history with optional limit | limit |
 | POST | `/api/alerting/resolve/{alert_key}` | Resolve an acknowledged alert | id, alert_key |
-| GET | `/api/alerting/rules/{id}` | Get a specific alert rule | id, id |
+| GET | `/api/alerting/rules` | Retrieve all configured alert rules with their conditions and channels | none |
+| DELETE | `/api/alerting/rules/{id}` | Remove an alert rule permanently from the system | id |
+| GET | `/api/alerting/rules/{id}` | Retrieve details of a specific alert rule by ID | id |
 | POST | `/api/alerting/simulate` | Generate a test alert to verify rules | none |
-| GET | `/api/alerting/status` | Channel status and recent notifications | none |
+| GET | `/api/alerting/status` | Query status of all channels and recent notification delivery events | none |
 
 ### appcontrol
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/appcontrol/blocked` | List recent application blocks with timestamps and details | hours, limit |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/appcontrol/blocked` | Recent application blocks | hours, limit |
-| GET | `/api/appcontrol/status` | Active application rules and what they have blocked | none |
+| GET | `/api/appcontrol/status` | Retrieve active application control rules with current block counts and enforcement status | none |
 
 ### dns
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/dns/log` | Recent queries | blocked, client, domain, limit |
-| GET | `/api/dns/lookup` | Names the resolver handed out for an address | ip |
-| GET | `/api/dns/summary` | Query volumes, block rate, top domains and clients | hours |
-| GET | `/api/dns/timeseries` | Queries and blocks over time | hours |
+| GET | `/api/dns/log` | Historical DNS query log with optional filtering by domain or client | client, domain, blocked, limit |
+| GET | `/api/dns/lookup` | Retrieve hostname assignments given to a specific IP address | ip |
+| GET | `/api/dns/summary` | Query summary with volumes, block rates, top domains, clients and lists | hours, limit |
+| GET | `/api/dns/timeseries` | Time series of DNS queries and blocks with automatic step adjustment | hours |
 
 ### egress
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/egress/events` | Transfers that crossed a threshold, most recent first | limit |
-| GET | `/api/egress/live` | Connections carrying data right now, newest sample | group, min_kb |
-| POST | `/api/egress/stop` | Drop a transfer that is running ({local, peer, port}); the connection is killed at the firewall | none |
-| GET | `/api/egress/summary` | What is leaving now, totalled by device and by destination group | none |
+| GET | `/api/egress/events` | Connection lifecycle events from the firewall connection table | limit |
+| GET | `/api/egress/live` | Show live connections carrying data with rates and traffic totals by device | group, min_kb |
+| POST | `/api/egress/stop` | Terminate an active outbound transfer connection at the firewall gateway | none |
+| GET | `/api/egress/summary` | Total outbound traffic aggregated by device and destination group | none |
 
 ### enrich
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/enrich/countries` | List all countries available in the GeoIP database for location lookups | none |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/enrich/countries` | Countries available in the GeoIP database | none |
-| POST | `/api/enrich/lookup` | Names and countries for a list of addresses (up to 500); unknown names are resolved in the background and answered on the next call | none |
-| GET | `/api/enrich/status` | What is enabled, cache size, country database state | none |
+| POST | `/api/enrich/lookup` | Batch lookup of DNS names and geolocation countries for IP addresses; unknown names are cached | none |
+| GET | `/api/enrich/status` | Query what enrichment is enabled, cache size, and database state | none |
 
 ### enroll
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/enroll/devices` | List all enrolled devices with optional filtering by zone or name search | zone, q |
+| GET | `/api/enroll/services` | List applications used and ports offered by each device, keyed by MAC address | hours |
+
+**Create operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| POST | `/api/enroll/zones` | Create or replace all enrollment zones with new rules and classification | none |
 
 **Update operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| POST | `/api/enroll/rules` | Update rules | none |
-| POST | `/api/enroll/zones` | Update zones | none |
-| PUT | `/api/enroll/zones/{id}` | Update a zone | id |
+| PUT | `/api/enroll/zones/{id}` | Update a specific enrollment zone by its ID with new rules or settings | id |
 
 **Delete operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| DELETE | `/api/enroll/devices/{mac}` | Delete a device | mac |
-| DELETE | `/api/enroll/zones/{id}` | Delete a zone | id |
+| DELETE | `/api/enroll/zones/{id}` | Delete an enrollment zone by its ID and reassign devices to unclassified | id |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/enroll` | Enrollment status, zones and device counts | none |
-| POST | `/api/enroll/apply` | Apply enforcement | none |
-| POST | `/api/enroll/assign` | Assign a device to a zone and pin it there; an empty zone unpins it so the rules place it ({mac, zone}) | none |
-| GET | `/api/enroll/devices` | All devices with filtering | q, zone |
-| GET | `/api/enroll/devices/{mac}` | Get a device by MAC | mac |
-| POST | `/api/enroll/mode` | Set monitor/enforce mode | none |
-| GET | `/api/enroll/plan` | Plan of what apply would do | none |
-| POST | `/api/enroll/reconcile` | Re-classify devices | none |
-| GET | `/api/enroll/rules` | Current rules configuration | none |
-| GET | `/api/enroll/services` | What each device uses (applications) and offers (ports other local hosts connect to), by MAC | hours |
-| GET | `/api/enroll/zones` | Current zones configuration | none |
-| GET | `/api/enroll/zones/{id}` | Get a zone by ID | id |
+| GET | `/api/enroll` | Retrieve current enrollment status including device counts by zone and unidentified devices | none |
+| POST | `/api/enroll/apply` | Apply the enrollment plan to enforce zone assignments on all devices | none |
+| POST | `/api/enroll/assign` | Assign a device to a specific zone or unpin it for automatic rule-based classification | none |
+| DELETE | `/api/enroll/devices/{mac}` | Remove a device from the enrollment list and forget its identification | mac |
+| GET | `/api/enroll/devices/{mac}` | Retrieve detailed information about a specific device by its MAC address | mac |
+| POST | `/api/enroll/mode` | Set enrollment mode between monitor and enforce for device assignment | none |
+| GET | `/api/enroll/plan` | Preview what changes apply would make to device enrollment assignments | none |
+| POST | `/api/enroll/reconcile` | Trigger re-evaluation of device classification against current rules | none |
+| GET | `/api/enroll/rules` | Retrieve all device classification rules used in zone assignment | none |
+| POST | `/api/enroll/rules` | Replace all device classification rules used for zone assignment | none |
+| GET | `/api/enroll/zones` | Retrieve all enrollment zones with their rules and captive portal settings | none |
+| GET | `/api/enroll/zones/{id}` | Retrieve a specific enrollment zone by its ID with detailed configuration | id |
 
 ### identity
 
-**Delete operations**
+**List operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| DELETE | `/api/identity/name/{ip}` | Delete a name override by IP | ip |
+| GET | `/api/identity/hosts` | List all known hosts with their names, MAC addresses, vendors and last activity time | hours, all |
+| GET | `/api/identity/leases` | List all current DHCP leases issued by the gateway DHCP server | none |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/identity/hosts` | Known hosts with names, MACs, vendors and last activity | all, hours |
-| GET | `/api/identity/leases` | Current DHCP leases | none |
-| GET | `/api/identity/lookup` | Name, MAC and vendor for one address | ip |
-| POST | `/api/identity/name` | Assign a display name to an address | none |
+| GET | `/api/identity/lookup` | Lookup details for a specific IP address including MAC, vendor and display name | ip |
+| POST | `/api/identity/name` | Assign or update a custom display name for a network device by IP address | none |
+| DELETE | `/api/identity/name/{ip}` | Remove a custom name override and revert to automatic identification for a device | ip |
 
 ### ids
 
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/ids/alerts` | List recent IDS alerts with filtering by severity, IP address and acknowledgment status | hours, severity, ip, unacked, limit |
+
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/ids/alerts` | Recent alerts | hours, ip, limit, severity |
-| POST | `/api/ids/alerts/ack` | Acknowledge alerts | none |
-| GET | `/api/ids/summary` | Alert counts by severity, category, signature and host | hours |
+| POST | `/api/ids/alerts/ack` | Acknowledge one or multiple IDS alerts to mark them as reviewed | none |
+| GET | `/api/ids/summary` | Get summary of IDS alerts grouped by severity, category, signature and source host | hours |
 
 ### license
 
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/license/features` | List all features with enabled status and limits by tier | none |
+
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/license` | Current tier, license, features and limits | none |
-| POST | `/api/license/activate` | Activate an activation key against the license server | none |
-| GET | `/api/license/features` | The feature catalogue with what this installation has | none |
-| POST | `/api/license/install` | Install a signed license file (offline) | none |
-| POST | `/api/license/refresh` | Refresh the online lease now | none |
-| POST | `/api/license/remove` | Remove the license and return to Community (tells the server, when it was an online activation) | none |
+| GET | `/api/license` | Retrieve current license tier, key, limits, and refresh status | none |
+| POST | `/api/license/activate` | Activate an activation key or license code through the online license server | none |
+| POST | `/api/license/install` | Install a signed offline license file for air-gapped deployments | none |
+| POST | `/api/license/refresh` | Refresh online license lease status with the license server immediately | none |
+| POST | `/api/license/remove` | Remove current license and revert to Community tier after notifying server | none |
 
 ### mitm
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/mitm/requests` | The most recent decrypted requests with their headers | limit, q |
-| GET | `/api/mitm/status` | Stateful Packet Inspection: whether it is listening and what it has seen | none |
+| GET | `/api/mitm/requests` | Retrieve recent decrypted HTTPS requests with headers, methods and hostnames | limit, q |
+| GET | `/api/mitm/status` | Check if deep packet inspection is listening and retrieve decoded traffic statistics | none |
 
 ### paths
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/paths/corrections` | List corrections to address geolocation and IP prefix data learned from traffic analysis | none |
+| GET | `/api/paths/destinations` | List all destinations with measured routes and associated traffic metrics | hours, limit |
+| GET | `/api/paths/devices` | List all devices with measured network paths and their trace status | none |
+| GET | `/api/paths/fcc/files` | List files from the FCC broadband deployment release with optional filtering | filter, limit |
+| GET | `/api/paths/geofeeds` | List RFC 8805 geofeeds discovered in WHOIS registry objects with their fetch state | none |
+| GET | `/api/paths/talkers` | List all devices and their applications that have traffic to a specific destination | dst, hours |
+| GET | `/api/paths/who` | List all devices whose traffic reached any of the given destination IP addresses | dsts, hours |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/paths/cables` | The submarine cable map, simplified for drawing | detail |
-| GET | `/api/paths/corrections` | What the address database has been shown to get wrong: corrected prefixes and distrusted registrant coordinates | none |
-| POST | `/api/paths/corrections/forget` | Forget one learned correction (prefix) or distrusted coordinate (key) | none |
-| GET | `/api/paths/destinations` | Destinations with a measured route | limit |
-| GET | `/api/paths/devices` | Devices whose traffic has a measured route, one entry per device | none |
-| POST | `/api/paths/fcc/check` | Test the FCC broadband map credentials and record the current release | none |
-| GET | `/api/paths/fcc/files` | The FCC release's file catalogue from the last check | filter, limit |
-| POST | `/api/paths/fcc/pull` | Run the monthly FCC pull now | none |
-| GET | `/api/paths/fcc/summary` | What was kept from the FCC release: national fixed-broadband providers and the origin state's census places | full |
-| GET | `/api/paths/geofeeds` | RFC 8805 geofeeds discovered in registry objects, with fetch state | none |
-| GET | `/api/paths/graph` | The whole picture as nodes and legs, with shared legs collapsed | country, device, max_latency |
-| GET | `/api/paths/home` | The origin the map is drawn from, and what could be detected for it | none |
-| POST | `/api/paths/home` | Declare your location ({lat, lon}), or {clear:true} to go back to detecting it | none |
-| GET | `/api/paths/path` | Every hop to one destination, with names and locations | dst |
-| GET | `/api/paths/shodan` | Shodan record for a hop: InternetDB always, the keyed host record when a key is set; fetched now with now=1 | ip, now |
-| GET | `/api/paths/status` | Whether tracing is on, how many destinations have a route, and when | none |
-| GET | `/api/paths/talkers` | Which devices talked to an endpoint and over which services (application, name, port) | dst, hours |
-| GET | `/api/paths/who` | The devices whose traffic reached any of the given destinations: what a hop click on the map sets its device filter to | dsts, hours |
+| GET | `/api/paths/cables` | Submarine cable map simplified for display with optional detail level | detail |
+| POST | `/api/paths/corrections/forget` | Forget a learned correction to revert to database values | none |
+| POST | `/api/paths/fcc/check` | Test FCC broadband map credentials and record the current available release | none |
+| POST | `/api/paths/fcc/pull` | Trigger monthly FCC broadband map data pull and update local database | none |
+| GET | `/api/paths/fcc/summary` | Summarize fixed-broadband providers and census places from the FCC broadband map | full |
+| GET | `/api/paths/graph` | Complete network graph as nodes and edges with location, latency and traffic data | device, country, max_latency, max_hops, hours |
+| GET | `/api/paths/home` | Get the current map origin point and its detected or configured geolocation | none |
+| POST | `/api/paths/home` | Set the map origin to a specific location or clear for automatic geolocation | none |
+| GET | `/api/paths/path` | Retrieve complete hop-by-hop path to a destination with geolocation and latency data | dst, device, hours |
+| GET | `/api/paths/shodan` | Retrieve Shodan/InternetDB data for a network hop including services and vulnerabilities | ip, now |
+| GET | `/api/paths/status` | Get current tracing status including destination count and last trace time | none |
 
 ### pihole
 
@@ -216,187 +244,203 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | Method | Path | What | Parameters |
 |---|---|---|---|
 | POST | `/api/pihole/pull` | Pull from every server now | none |
-| GET | `/api/pihole/status` | Per-server state: version, last pull, records imported, last error | none |
+| GET | `/api/pihole/status` | Retrieve Pi-hole server status with pull history and error details | none |
 
 ### policy
 
 **List operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/policy/groups` | List all groups | none |
-| GET | `/api/policy/schedules` | List all schedules | none |
+| GET | `/api/policy/capabilities` | List all registered providers, their capabilities, and what policies require | none |
+| GET | `/api/policy/groups` | List all device groups defined in the policy with their member counts | none |
+| GET | `/api/policy/schedules` | List all schedules defined in the policy with their time windows and rules | none |
 
 **Create operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| POST | `/api/policy/group` | Create or update a group | none |
-| POST | `/api/policy/policy` | Create or update one policy | none |
-| POST | `/api/policy/schedule` | Create or update a schedule | none |
+| POST | `/api/policy/group` | Create a new device group or update an existing one with member definitions | none |
+| POST | `/api/policy/policy` | Create a new policy or update an existing one with validation and compilation | none |
+| POST | `/api/policy/schedule` | Create a new schedule or update an existing one for policy time-based enforcement | none |
 
 **Update operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| PUT | `/api/policy/groups/{name}` | Update a group | name |
-| PUT | `/api/policy/schedules/{name}` | Update a schedule | name |
+| PUT | `/api/policy/groups/{name}` | Update an existing device group with new member definitions and properties | name |
+| PUT | `/api/policy/schedules/{name}` | Update an existing schedule with new time windows and day-of-week rules | name |
 
 **Delete operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| POST | `/api/policy/group/delete` | Delete a group | none |
-| DELETE | `/api/policy/groups/{name}` | Delete a group by name | name |
-| POST | `/api/policy/policy/delete` | Delete one policy | none |
-| POST | `/api/policy/schedule/delete` | Delete a schedule | none |
-| DELETE | `/api/policy/schedules/{name}` | Delete a schedule by name | name |
+| POST | `/api/policy/group/delete` | Delete a device group from the policy document with validation against usage | none |
+| DELETE | `/api/policy/groups/{name}` | Delete a device group via REST DELETE method with validation against usage | name |
+| POST | `/api/policy/policy/delete` | Delete a policy from the document by name with validation and recompilation | none |
+| POST | `/api/policy/schedule/delete` | Delete a schedule from the policy document with validation against policy usage | none |
+| DELETE | `/api/policy/schedules/{name}` | Delete a schedule via REST DELETE method with validation against policy usage | name |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/policy` | The policy document, its status and the last plan | none |
-| POST | `/api/policy` | Replace the whole policy document (validated first) | none |
-| POST | `/api/policy/apply` | Apply the plan now (requires enforce) | none |
-| GET | `/api/policy/capabilities` | Providers, capabilities and what each policy needs | none |
-| POST | `/api/policy/exclusions` | Replace exclusions and options | none |
-| GET | `/api/policy/export` | The document as YAML | none |
-| GET | `/api/policy/groups/{name}` | Get a group by name | name |
-| POST | `/api/policy/import` | Replace the document from YAML or JSON text | none |
-| GET | `/api/policy/matches` | What a policy's country rule matches: per device, the far ends in denied countries from the session table (names, domains, bytes), and the packets the firewall's log recorded for the rule | hours, name |
-| GET | `/api/policy/plan` | Compile onto every provider and show what would change | none |
-| POST | `/api/policy/policy/move` | Reorder a policy | none |
-| GET | `/api/policy/schedules/{name}` | Get a schedule by name | name |
+| GET | `/api/policy` | Retrieve the current policy document, its compilation status, plan, and enforcement state | none |
+| POST | `/api/policy` | Replace the entire policy document after validation and preview compilation | none |
+| POST | `/api/policy/apply` | Apply the current plan immediately to all providers (requires enforcement to be enabled) | none |
+| POST | `/api/policy/exclusions` | Replace the device exclusions list and global policy enforcement options | none |
+| GET | `/api/policy/export` | Export the entire policy document in YAML format for version control or sharing | none |
+| GET | `/api/policy/groups/{name}` | Retrieve a specific device group definition with its member list and tags | name |
+| POST | `/api/policy/import` | Replace the policy document from YAML or JSON text with validation and compilation | none |
+| GET | `/api/policy/matches` | Analyze which devices and far-ends match a specific policy rule, with session details and firewall log records | name, hours |
+| GET | `/api/policy/plan` | Compile the policy onto every registered provider and show what would change without applying | none |
+| POST | `/api/policy/policy/move` | Reorder policies in the document list for evaluation priority and display order | none |
+| GET | `/api/policy/schedules/{name}` | Retrieve a specific schedule definition with its time windows and active days | name |
 
 ### proxmox
 
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/proxmox/inventory` | List all Proxmox nodes and virtual machines with their status and configuration | none |
+
+**Update operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| POST | `/api/proxmox/notes/write` | Update the notes section for a Proxmox guest with new content and formatting | none |
+
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/proxmox/guest` | Guest by VMID and node | none |
-| GET | `/api/proxmox/inventory` | Nodes and guests | none |
-| GET | `/api/proxmox/map` | Dependency map | none |
-| GET | `/api/proxmox/notes/preview` | Preview notes block | none |
-| POST | `/api/proxmox/notes/write` | Write notes | none |
-| POST | `/api/proxmox/poll` | Poll now | none |
-| GET | `/api/proxmox/requirements` | Guest requirements | none |
-| GET | `/api/proxmox/status` | Connection status and last poll | none |
+| GET | `/api/proxmox/guest` | Retrieve detailed configuration and status for a specific virtual machine or container | vmid, node |
+| GET | `/api/proxmox/map` | Show network dependencies and traffic patterns between guests and external destinations | hours |
+| GET | `/api/proxmox/notes/preview` | Preview the formatted notes section for a guest container or virtual machine | vmid, node |
+| POST | `/api/proxmox/poll` | Trigger an immediate poll of Proxmox API for latest node and VM status | none |
+| GET | `/api/proxmox/requirements` | Analyze a guest's resource requirements based on historical usage patterns and current load | vmid, node, hours |
+| GET | `/api/proxmox/status` | Check Proxmox connection status and display timestamp of last successful poll | none |
 
 ### qos
 
 **List operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/qos/rules` | List all traffic shaping rules | none |
+| GET | `/api/qos/rules` | List all configured traffic shaping rules with their criteria and priority order | none |
 
 **Create operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| POST | `/api/qos/rules` | Create a new traffic shaping rule | none |
+| POST | `/api/qos/rules` | Create a new traffic shaping rule to prioritize or limit specific network traffic | none |
 
 **Delete operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| DELETE | `/api/qos/rules/{id}` | Delete a traffic shaping rule | id |
+| DELETE | `/api/qos/rules/{id}` | Delete a traffic shaping rule and recalculate policy priority | id |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/qos/preview` | The firewall rules the current settings would produce, without applying them | none |
-| GET | `/api/qos/status` | Whether shaping is on, the pipes in force, the rules and what each queue is holding | none |
+| GET | `/api/qos/preview` | Preview firewall rules that would be generated from current QoS settings without applying them | none |
+| GET | `/api/qos/status` | Get current traffic shaping status including enabled pipes, rules and queue statistics | none |
 
 ### reports
 
 **List operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/reports/definitions` | List all report definitions | none |
-| GET | `/api/reports/runs` | List recent report runs | none |
+| GET | `/api/reports/definitions` | List all configured report definitions with their schedules and settings | none |
+| GET | `/api/reports/runs` | List all generated report runs with execution status and download information | definition |
 
 **Create operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| POST | `/api/reports/definitions` | Create a custom report definition | none |
+| POST | `/api/reports/definitions` | Create a new report definition with name, queries and delivery settings | none |
 
 **Update operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| PUT | `/api/reports/definitions/{id}` | Update a report definition | id |
+| PUT | `/api/reports/definitions/{id}` | Update an existing report definition with modified query or delivery settings | id |
 
 **Delete operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| DELETE | `/api/reports/definitions/{id}` | Delete a report definition | id |
-| DELETE | `/api/reports/runs/{run}` | Delete a report run | run |
+| DELETE | `/api/reports/definitions/{id}` | Delete a report definition and all associated scheduled runs | id |
+| DELETE | `/api/reports/runs/{run}` | Delete a generated report run and free associated storage resources | run |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/reports/definitions/{id}` | Get a report definition | id |
-| POST | `/api/reports/preview` | Generate and preview a report | none |
-| POST | `/api/reports/run/{id}` | Execute a report definition | id |
-| GET | `/api/reports/runs/{run}` | Get report run details | run |
-| GET | `/api/reports/runs/{run}/download` | Download report in specified format | run |
+| GET | `/api/reports/definitions/{id}` | Retrieve a specific report definition with all its settings and query criteria | id |
+| POST | `/api/reports/preview` | Generate a test report with current data to preview before running scheduled | none |
+| POST | `/api/reports/run/{id}` | Execute a report definition immediately and schedule generation of output | id |
+| GET | `/api/reports/runs/{run}` | Retrieve details and status of a specific report run including metrics | run |
+| GET | `/api/reports/runs/{run}/download` | Download a generated report in the requested format (HTML, PDF, or CSV) | run, format |
 
 ### rulehygiene
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/rulehygiene/changes` | Configuration changes from the changes table | none |
-| GET | `/api/rulehygiene/findings` | Open findings | none |
-| GET | `/api/rulehygiene/rules` | Every rule with counters, description, interface and findings | none |
-| POST | `/api/rulehygiene/run` | Run analysis now | none |
-| GET | `/api/rulehygiene/summary` | Risk score, finding counts, rules analysed, ruleset loaded since | none |
+| GET | `/api/rulehygiene/changes` | Recent configuration changes and rule modifications tracked from firewall system | none |
+| GET | `/api/rulehygiene/findings` | Open findings from firewall rule analysis including policy recommendations | none |
+| GET | `/api/rulehygiene/rules` | Complete list of firewall rules with hit counters, descriptions and associated findings | none |
+| POST | `/api/rulehygiene/run` | Trigger immediate firewall rule analysis to detect policy issues and cleanup opportunities | none |
+| GET | `/api/rulehygiene/summary` | Summary of firewall rule health including risk score and analysis statistics | none |
 
 ### scan
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/scan/results` | List the latest scan results for all recently scanned IP addresses and hosts | none |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| POST | `/api/scan/cancel` | Cancel a scan job | none |
-| GET | `/api/scan/result` | Latest result for an IP | none |
-| GET | `/api/scan/results` | Latest results for all IPs scanned recently | none |
-| POST | `/api/scan/start` | Start a scan on an IP or MAC | none |
-| GET | `/api/scan/status` | Queue status, running jobs, last sweep | none |
-| POST | `/api/scan/sweep` | Start a sweep of all local devices | none |
+| POST | `/api/scan/cancel` | Cancel a currently running or queued scan operation for an IP or MAC address | none |
+| GET | `/api/scan/result` | Retrieve the latest scan result for a specific IP address with detected services | none |
+| POST | `/api/scan/start` | Start a network scan on a specific IP address or MAC address to detect services | none |
+| GET | `/api/scan/status` | Get current scan queue status, running jobs and last automatic sweep time | none |
+| POST | `/api/scan/sweep` | Start a comprehensive network sweep scanning all local devices for services | none |
 
 ### setup
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| POST | `/api/setup/apply` | Apply one step's answers | none |
-| POST | `/api/setup/reset` | Reset the wizard progress | none |
-| GET | `/api/setup/state` | Wizard state and detected facts | none |
-| POST | `/api/setup/test` | Test a step's values | none |
+| POST | `/api/setup/apply` | Apply answers from the current setup wizard step and advance to the next | none |
+| POST | `/api/setup/reset` | Reset setup wizard progress to initial state | none |
+| GET | `/api/setup/state` | Get current setup wizard state and auto-detected network configuration facts | none |
+| POST | `/api/setup/test` | Test and validate configuration values provided in the current setup step | none |
 
 ### ui
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/ui/prefs` | Interface preferences the front end applies at start (theme) | none |
+| GET | `/api/ui/prefs` | Get user interface preferences and display settings applied at front-end startup | none |
 
 ### updater
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| POST | `/api/updater/apply` | Apply the available update | none |
-| POST | `/api/updater/check` | Check for updates now | none |
-| POST | `/api/updater/rollback` | Rollback to the previous binary | none |
-| GET | `/api/updater/status` | Current version, latest version, and update status | none |
+| POST | `/api/updater/apply` | Download and apply the latest available update to the application | none |
+| POST | `/api/updater/check` | Trigger an immediate check for newer application versions from the update server | none |
+| POST | `/api/updater/rollback` | Revert to the previous application version if current update has issues | none |
+| GET | `/api/updater/status` | Get current application version, latest available version and update readiness status | none |
 
 ### visibility
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/visibility/catalog` | List all known applications and content categories available for filtering and classification | none |
+| GET | `/api/visibility/flows` | List recent network flows with detailed source, destination and application information | minutes, ip, app, limit, country, abroad, blocked, anycast |
 
 **Other operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
-| GET | `/api/visibility/abroad` | Per local device, the foreign countries it reached, sessions and bytes per country, and the destinations behind them | hours, ip |
-| GET | `/api/visibility/apps` | Application breakdown over a window | hours, ip |
-| GET | `/api/visibility/catalog` | Known applications and categories | none |
-| GET | `/api/visibility/flows` | Recent flows | abroad, app, blocked, country, ip, limit, minutes |
-| GET | `/api/visibility/host` | Everything about one host | hours, ip |
-| GET | `/api/visibility/summary` | Throughput, active flows and hosts right now | none |
-| GET | `/api/visibility/timeseries` | Metric series for charts | hours, metric, step |
-| GET | `/api/visibility/top` | Top hosts, applications, categories, destinations | hours, limit |
+| GET | `/api/visibility/abroad` | Show per-device traffic to foreign countries with session and byte counts by country | hours, ip |
+| GET | `/api/visibility/apps` | Breakdown of network traffic by application type with byte counts and session metrics | hours, ip |
+| GET | `/api/visibility/host` | Comprehensive analysis of a single host including connections, applications and countries | ip, hours |
+| GET | `/api/visibility/summary` | Get current network statistics including throughput, active flow count, and connected hosts | none |
+| GET | `/api/visibility/timeseries` | Fetch metric time series data for building charts and analyzing traffic trends | hours, metric, step |
+| GET | `/api/visibility/top` | Top hosts, applications, categories and destinations ranked by traffic volume | hours, limit |
 
 ## Authentication
 

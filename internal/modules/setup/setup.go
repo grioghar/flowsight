@@ -72,7 +72,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 			"step": 1,
 			"facts": map[string]any{
 				"gateway_ip": "192.168.1.1",
-				"hostname": "flowsight",
+				"hostname":   "flowsight",
 			},
 		}))
 	ctx.Route("POST", "/api/setup/apply", m.apiApply, core.Write(),

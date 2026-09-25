@@ -121,15 +121,15 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Get current application version, latest available version and update readiness status"),
 		core.Returns("Update status", map[string]any{
 			"current_version": "0.9.8r202609220604",
-			"latest_version": "0.9.8r202609220605",
-			"available": true,
-			"last_check": 1790376243,
+			"latest_version":  "0.9.8r202609220605",
+			"available":       true,
+			"last_check":      1790376243,
 		}))
 	ctx.Route("POST", "/api/updater/check", m.apiCheck, core.Write(),
 		core.Doc("Trigger an immediate check for newer application versions from the update server"),
 		core.Body(),
 		core.Returns("Check result", map[string]any{
-			"ok": true,
+			"ok":          true,
 			"new_version": "0.9.8r202609220605",
 		}))
 	ctx.Route("POST", "/api/updater/apply", m.apiApply, core.Write(),

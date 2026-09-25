@@ -290,16 +290,16 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Trigger monthly FCC broadband map data pull and update local database"),
 		core.Body(),
 		core.Returns("Pull result", map[string]any{
-			"ok": true,
+			"ok":         true,
 			"downloaded": true,
-			"message": "FCC data updated",
+			"message":    "FCC data updated",
 		}))
 	ctx.Route("POST", "/api/paths/fcc/check", m.apiFCCCheck, core.Write(), core.Needs("paths.map"),
 		core.Doc("Test FCC broadband map credentials and record the current available release"),
 		core.Body(),
 		core.Returns("Check result", map[string]any{
-			"ok": true,
-			"authenticated": true,
+			"ok":              true,
+			"authenticated":   true,
 			"current_release": "2024_12_01",
 		}))
 	ctx.Route("GET", "/api/paths/shodan", m.apiShodan, core.Needs("paths.map"),
@@ -307,10 +307,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Query("now", "boolean", "Force refresh from Shodan even if cached", false, false),
 		core.Doc("Retrieve Shodan/InternetDB data for a network hop including services and vulnerabilities"),
 		core.Returns("Shodan record for address", map[string]any{
-			"ip": "192.168.1.1",
-			"hostnames": []string{"example.com"},
-			"ports": []int{80, 443},
-			"org": "Example ISP",
+			"ip":           "192.168.1.1",
+			"hostnames":    []string{"example.com"},
+			"ports":        []int{80, 443},
+			"org":          "Example ISP",
 			"country_code": "US",
 		}))
 	ctx.Route("GET", "/api/paths/geofeeds", m.apiGeofeeds, core.Needs("paths.map"),
@@ -348,10 +348,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/paths/status", m.apiStatus, core.Needs("paths.map"),
 		core.Doc("Get current tracing status including destination count and last trace time"),
 		core.Returns("Tracing status", map[string]any{
-			"tracing": true,
+			"tracing":      true,
 			"destinations": 1000,
-			"last_trace": 1790376243,
-			"last_error": "",
+			"last_trace":   1790376243,
+			"last_error":   "",
 		}))
 	ctx.Route("GET", "/api/paths/destinations", m.apiDestinations, core.Needs("paths.map"),
 		core.Query("hours", "integer", "Time window in hours for traffic analysis (default 24)", false, 24),
@@ -404,7 +404,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 				{"ip": "192.168.1.1", "name": "gateway", "country": "US", "latency": 5},
 			},
 			"edges": []map[string]any{},
-			"home": map[string]any{"country": "US"},
+			"home":  map[string]any{"country": "US"},
 		}))
 	ctx.Route("GET", "/api/paths/cables", m.apiCables, core.Needs("paths.map"),
 		core.Query("detail", "integer", "Number of points per submarine cable (more = more detailed)", false, 50),
@@ -419,11 +419,11 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/paths/home", m.apiGetHome, core.Needs("paths.map"),
 		core.Doc("Get the current map origin point and its detected or configured geolocation"),
 		core.Returns("Home location", map[string]any{
-			"latitude": 37.7749,
+			"latitude":  37.7749,
 			"longitude": -122.4194,
-			"country": "US",
-			"city": "San Francisco",
-			"detected": true,
+			"country":   "US",
+			"city":      "San Francisco",
+			"detected":  true,
 		}))
 	ctx.Route("POST", "/api/paths/home", m.apiSetHome, core.Write(), core.Needs("paths.map"),
 		core.Doc("Set the map origin to a specific location or clear for automatic geolocation"),

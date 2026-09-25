@@ -107,10 +107,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Retrieve the current policy document, its compilation status, plan, and enforcement state"),
 		core.Returns("Policy document with status", map[string]any{
 			"document": map[string]any{"version": 1, "policies": []any{}, "groups": map[string]any{}, "schedules": map[string]any{}},
-			"enforce": true,
-			"error": "",
-			"plan": map[string]any{"at": 1790376243, "enforce": true, "changes": 0},
-			"path": "/etc/flowsight/policy.json",
+			"enforce":  true,
+			"error":    "",
+			"plan":     map[string]any{"at": 1790376243, "enforce": true, "changes": 0},
+			"path":     "/etc/flowsight/policy.json",
 		}))
 	ctx.Route("POST", "/api/policy", m.apiPut, core.Write(),
 		core.Doc("Replace the entire policy document after validation and preview compilation"),
@@ -125,7 +125,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Compile the policy onto every registered provider and show what would change without applying"),
 		core.Returns("Compilation plan across all providers", map[string]any{
 			"plan": map[string]any{
-				"at": 1790376243,
+				"at":      1790376243,
 				"enforce": true,
 				"changes": 2,
 				"providers": []map[string]any{
@@ -148,8 +148,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("POST", "/api/policy/apply", m.apiApply, core.Write(),
 		core.Doc("Apply the current plan immediately to all providers (requires enforcement to be enabled)"),
 		core.Returns("Apply result with plan", map[string]any{
-			"ok": true,
-			"plan": map[string]any{"changes": 2, "errors": []string{}},
+			"ok":    true,
+			"plan":  map[string]any{"changes": 2, "errors": []string{}},
 			"error": "",
 		}))
 	ctx.Route("POST", "/api/policy/policy", m.apiSavePolicy, core.Write(),
@@ -183,7 +183,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.PathParam("name", "string", "Device group name", "office"),
 		core.Doc("Retrieve a specific device group definition with its member list and tags"),
 		core.Returns("Device group definition", map[string]any{
-			"name": "office",
+			"name":    "office",
 			"members": []string{"192.168.1.10", "192.168.1.11"},
 		}))
 	ctx.Route("POST", "/api/policy/group", m.apiSaveGroup, core.Write(),
@@ -222,10 +222,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.PathParam("name", "string", "Schedule name", "business-hours"),
 		core.Doc("Retrieve a specific schedule definition with its time windows and active days"),
 		core.Returns("Schedule definition", map[string]any{
-			"name": "business-hours",
+			"name":  "business-hours",
 			"start": "09:00",
-			"end": "17:00",
-			"days": []string{"Mon", "Tue", "Wed", "Thu", "Fri"},
+			"end":   "17:00",
+			"days":  []string{"Mon", "Tue", "Wed", "Thu", "Fri"},
 		}))
 	ctx.Route("POST", "/api/policy/schedule", m.apiSaveSchedule, core.Write(),
 		core.Doc("Create a new schedule or update an existing one for policy time-based enforcement"),
@@ -264,7 +264,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Export the entire policy document in YAML format for version control or sharing"),
 		core.Returns("YAML-formatted policy document", map[string]any{
 			"content_type": "application/yaml",
-			"filename": "flowsight-policy.yaml",
+			"filename":     "flowsight-policy.yaml",
 		}))
 	ctx.Route("POST", "/api/policy/import", m.apiImport, core.Write(),
 		core.Doc("Replace the policy document from YAML or JSON text with validation and compilation"),
@@ -272,7 +272,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 			core.Fld("text", "string", true, "YAML or JSON policy document content", "version: 1\npolicies: []"),
 		),
 		core.Returns("Import result with policy count", map[string]any{
-			"ok": true,
+			"ok":       true,
 			"policies": 5,
 		}))
 	ctx.Route("GET", "/api/policy/capabilities", m.apiCapabilities,

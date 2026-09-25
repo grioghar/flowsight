@@ -92,9 +92,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Query("hours", "integer", "Time window in hours", false, 24),
 		core.Query("limit", "integer", "Max results per category", false, 15),
 		core.Returns("DNS summary", map[string]any{
-			"totals": map[string]any{"queries": 10000, "blocked": 234, "clients": 5, "domains": 50},
-			"live": map[string]any{"queries": 100, "blocked": 2, "avg_ms": 25},
-			"top": []map[string]any{{"domain": "google.com", "queries": 500, "clients": 3}},
+			"totals":  map[string]any{"queries": 10000, "blocked": 234, "clients": 5, "domains": 50},
+			"live":    map[string]any{"queries": 100, "blocked": 2, "avg_ms": 25},
+			"top":     []map[string]any{{"domain": "google.com", "queries": 500, "clients": 3}},
 			"blocked": []map[string]any{{"domain": "ads.com", "queries": 50, "list": "adblock"}},
 		}))
 	ctx.Route("GET", "/api/dns/log", m.apiLog, core.Doc("Historical DNS query log with optional filtering by domain or client"),
@@ -114,7 +114,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Query("hours", "integer", "Time window in hours", false, 24),
 		core.Returns("Time series data", map[string]any{
 			"series": []map[string]any{{"t": 1790376243, "queries": 100, "blocked": 2}},
-			"step": 300,
+			"step":   300,
 		}))
 	ctx.Panel(core.Panel{ID: "dns", Title: "DNS", Group: "Monitor", Order: 50, Icon: "dns"})
 	return nil

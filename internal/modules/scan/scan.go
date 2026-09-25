@@ -170,9 +170,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Route("GET", "/api/scan/status", m.apiStatus,
 		core.Doc("Get current scan queue status, running jobs and last automatic sweep time"),
 		core.Returns("Scan status", map[string]any{
-			"queue_size": 5,
+			"queue_size":   5,
 			"running_jobs": 2,
-			"last_sweep": 1790376243,
+			"last_sweep":   1790376243,
 		}))
 	ctx.Route("GET", "/api/scan/result", m.apiResult,
 		core.Doc("Retrieve the latest scan result for a specific IP address with detected services"),

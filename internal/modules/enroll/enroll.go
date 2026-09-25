@@ -230,15 +230,15 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Retrieve current enrollment status including device counts by zone and unidentified devices"),
 		core.Returns("Enrollment summary with zone device counts", map[string]any{
 			"unidentified": 3,
-			"office": 12,
-			"guest": 5,
+			"office":       12,
+			"guest":        5,
 		}))
 	ctx.Route("GET", "/api/enroll/services", m.apiServices,
 		core.Query("hours", "integer", "Time window in hours for service analysis (1-168, default 24)", false, 24),
 		core.Doc("List applications used and ports offered by each device, keyed by MAC address"),
 		core.Returns("Device services grouped by MAC", map[string]any{
 			"aa:bb:cc:dd:ee:ff": map[string]any{
-				"uses": []string{"youtube", "netflix"},
+				"uses":   []string{"youtube", "netflix"},
 				"offers": []int{22, 80},
 			},
 		}))
@@ -262,8 +262,8 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.PathParam("id", "string", "Zone identifier", "zone-1"),
 		core.Doc("Retrieve a specific enrollment zone by its ID with detailed configuration"),
 		core.Returns("Single zone configuration", map[string]any{
-			"id": "zone-1",
-			"name": "office",
+			"id":    "zone-1",
+			"name":  "office",
 			"rules": []map[string]any{},
 		}))
 	ctx.Route("POST", "/api/enroll/zones", m.apiSetZones, core.Write(),
@@ -301,10 +301,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.PathParam("mac", "string", "Device MAC address", "aa:bb:cc:dd:ee:ff"),
 		core.Doc("Retrieve detailed information about a specific device by its MAC address"),
 		core.Returns("Device details", map[string]any{
-			"mac": "aa:bb:cc:dd:ee:ff",
+			"mac":  "aa:bb:cc:dd:ee:ff",
 			"name": "MacBookPro",
 			"zone": "office",
-			"ip": "192.168.1.10",
+			"ip":   "192.168.1.10",
 		}))
 	ctx.Route("DELETE", "/api/enroll/devices/{mac}", m.apiDeleteDeviceByMAC, core.Write(),
 		core.PathParam("mac", "string", "Device MAC address", "aa:bb:cc:dd:ee:ff"),

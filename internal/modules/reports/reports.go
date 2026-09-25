@@ -109,17 +109,17 @@ func (m *Module) Setup(ctx *core.Context) error {
 			core.Fld("schedule", "string", false, "Cron expression for automatic delivery", "0 8 * * *"),
 		),
 		core.Returns("Created definition", map[string]any{
-			"id": "def-1",
-			"name": "Daily Report",
+			"id":      "def-1",
+			"name":    "Daily Report",
 			"enabled": true,
 		}))
 	ctx.Route("GET", "/api/reports/definitions/{id}", m.apiGetDefinition,
 		core.PathParam("id", "string", "Report definition ID", "def-1"),
 		core.Doc("Retrieve a specific report definition with all its settings and query criteria"),
 		core.Returns("Report definition details", map[string]any{
-			"id": "def-1",
-			"name": "Daily Summary",
-			"query": map[string]any{},
+			"id":       "def-1",
+			"name":     "Daily Summary",
+			"query":    map[string]any{},
 			"schedule": "0 8 * * *",
 		}))
 	ctx.Route("PUT", "/api/reports/definitions/{id}", m.apiUpdateDefinition,
@@ -153,7 +153,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Execute a report definition immediately and schedule generation of output"),
 		core.Body(),
 		core.Returns("Execution result", map[string]any{
-			"ok": true,
+			"ok":     true,
 			"run_id": "run-123",
 		}))
 	ctx.Route("GET", "/api/reports/runs", m.apiListRuns,
@@ -168,11 +168,11 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.PathParam("run", "string", "Report run ID", "run-1"),
 		core.Doc("Retrieve details and status of a specific report run including metrics"),
 		core.Returns("Report run details", map[string]any{
-			"id": "run-1",
+			"id":         "run-1",
 			"definition": "def-1",
-			"status": "completed",
-			"created": 1790376243,
-			"rows": 1000,
+			"status":     "completed",
+			"created":    1790376243,
+			"rows":       1000,
 		}))
 	ctx.Route("GET", "/api/reports/runs/{run}/download", m.apiDownloadRun,
 		core.PathParam("run", "string", "Report run ID", "run-1"),
@@ -180,7 +180,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Download a generated report in the requested format (HTML, PDF, or CSV)"),
 		core.Returns("Report file download", map[string]any{
 			"content_type": "text/html",
-			"filename": "report-run-1.html",
+			"filename":     "report-run-1.html",
 		}))
 	ctx.Route("DELETE", "/api/reports/runs/{run}", m.apiDeleteRun,
 		core.PathParam("run", "string", "Report run ID", "run-1"),

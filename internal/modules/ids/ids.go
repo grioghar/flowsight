@@ -66,11 +66,11 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Returns("Alert summary", map[string]any{
 			"counts": map[string]any{
 				"critical": 2,
-				"high": 5,
-				"medium": 10,
+				"high":     5,
+				"medium":   10,
 			},
 			"by_category": map[string]any{
-				"trojan": 3,
+				"trojan":  3,
 				"exploit": 2,
 			},
 		}))

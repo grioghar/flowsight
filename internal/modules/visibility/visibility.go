@@ -130,9 +130,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Doc("Get current network statistics including throughput, active flow count, and connected hosts"),
 		core.Returns("Network summary statistics", map[string]any{
 			"throughput_bps": 1000000,
-			"active_flows": 250,
-			"active_hosts": 50,
-			"timestamp": 1790376243,
+			"active_flows":   250,
+			"active_hosts":   50,
+			"timestamp":      1790376243,
 		}))
 	// Flows recorded before country lookup was on, or before this release,
 	// have no country; fill them in behind the scenes, a few hundred a minute,
@@ -202,10 +202,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 		core.Query("hours", "integer", "Time window in hours (default 24)", false, 24),
 		core.Doc("Comprehensive analysis of a single host including connections, applications and countries"),
 		core.Returns("Host analysis data", map[string]any{
-			"ip": "192.168.1.10",
-			"name": "MacBook",
+			"ip":           "192.168.1.10",
+			"name":         "MacBook",
 			"applications": []string{"youtube", "facebook"},
-			"countries": map[string]any{"US": 5000000},
+			"countries":    map[string]any{"US": 5000000},
 		}))
 	ctx.Route("GET", "/api/visibility/catalog", m.apiCatalog,
 		core.Doc("List all known applications and content categories available for filtering and classification"),
