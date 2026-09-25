@@ -41,17 +41,58 @@
         }
       });
 
+      // Helper to render request body fields
+      const renderBodyFields = (requestBody, opIdx) => {
+        if (!requestBody || !requestBody.content || !requestBody.content['application/json']) {
+          return '';
+        }
+        const jsonContent = requestBody.content['application/json'];
+        const schema = jsonContent.schema;
+        if (!schema || !schema.properties) {
+          return '';
+        }
+
+        let html = `<div style="margin-top:8px">
+          <div class="small" style="font-weight:bold;color:#666">Request body fields:</div>
+          <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:4px">
+            <thead><tr style="border-bottom:1px solid #ddd">
+              <th style="text-align:left;padding:4px">Field</th>
+              <th style="text-align:left;padding:4px">Type</th>
+              <th style="text-align:left;padding:4px">Required</th>
+              <th style="text-align:left;padding:4px">Description</th>
+            </tr></thead>
+            <tbody>`;
+
+        const required = schema.required || [];
+        for (const [name, prop] of Object.entries(schema.properties)) {
+          const isRequired = required.includes(name);
+          html += `<tr style="border-bottom:1px solid #eee">
+            <td style="padding:4px"><span class="mono">${esc(name)}</span></td>
+            <td style="padding:4px"><span class="mono">${esc(prop.type || 'object')}</span></td>
+            <td style="padding:4px">${isRequired ? '<span style="color:red">✓</span>' : ''}</td>
+            <td style="padding:4px;color:#666">${esc(prop.description || '')}</td>
+          </tr>`;
+        }
+        html += `</tbody></table>`;
+
+        if (jsonContent.example) {
+          html += `<div style="margin-top:8px;font-size:11px"><strong>Example:</strong><br>
+            <pre class="code" style="background:#f9f9f9;padding:6px;border-radius:3px;overflow-x:auto;max-width:100%">${esc(JSON.stringify(jsonContent.example, null, 2))}</pre>
+          </div>`;
+        }
+
+        return html;
+      };
+
       // Render
       const areas = ['Monitor', 'Inventory', 'Protect', 'Administration'];
-      let html = `<div style="display:flex;gap:20px;margin-bottom:14px">
-        <div style="flex:1">${card('', `
-          <p class="small">
-            <strong>FlowSight API v${esc(spec.info.version)}</strong><br>
-            Complete REST API for policy, inventory, monitoring and administration.<br>
-            <button class="btn small" id="dl-spec" style="margin-top:8px">Download OpenAPI JSON</button>
-          </p>
-        `)}</div>
-      </div>`;
+      let html = `<div style="margin-bottom:14px">${card('', `
+        <p class="small">
+          <strong>FlowSight API v${esc(spec.info.version)}</strong><br>
+          <span style="color:#666">${(spec.info.description || '').split('\\n')[0]}</span><br>
+          <button class="btn small" id="dl-spec" style="margin-top:8px">Download OpenAPI JSON</button>
+        </p>
+      `)}</div>`;
 
       areas.forEach(area => {
         const group = grouped[area];
@@ -59,42 +100,91 @@
 
         html += `<div style="margin-bottom:14px">${card(area, `
           <div class="api-area">
-            ${group.ops.map((op, i) => `
-              <div class="api-op" data-idx="${i}">
-                <div class="api-op-header" style="cursor:pointer;padding:8px;background:#f5f5f5;border-radius:4px;margin-bottom:4px">
-                  <span class="pill ${op['x-write'] ? 'bad' : 'ok'}" style="display:inline-block;width:50px;text-align:center">${esc(op.method)}</span>
-                  <span class="mono small" style="margin-left:8px">${esc(op.path)}</span>
-                  ${op.operationId ? `<span class="pill" style="margin-left:8px;font-size:11px">${esc(op.operationId)}</span>` : ''}
-                </div>
-                <div class="api-op-detail" style="display:none;padding:8px;border-left:3px solid #ddd;margin-bottom:8px;background:#fafafa">
-                  <div class="small"><strong>${esc(op.summary || op.operationId || 'Operation')}</strong></div>
-                  ${(op.parameters || []).length > 0 ? `
-                    <div style="margin-top:8px">
-                      <div class="small" style="font-weight:bold;color:#666">Parameters:</div>
-                      ${(op.parameters || []).map(p => `
-                        <div style="margin:4px 0;font-size:12px">
-                          <span class="mono">${esc(p.name)}</span>
-                          <span class="muted"> — ${esc(p.description || '')}</span>
-                        </div>
-                      `).join('')}
-                    </div>
-                  ` : ''}
-                  ${op['x-write'] ? `
-                    <div style="margin-top:8px">
-                      <div class="small" style="font-weight:bold;color:#666">Request body (JSON):</div>
-                      <textarea class="api-body" data-idx="${i}" style="width:100%;height:100px;font-family:monospace;font-size:12px;padding:4px;border:1px solid #ccc;border-radius:4px;resize:vertical">{}</textarea>
-                    </div>
-                  ` : ''}
-                  <div style="margin-top:8px;display:flex;gap:8px">
-                    <button class="btn small api-send" data-idx="${i}">Send request</button>
-                    <button class="btn small api-curl" data-idx="${i}">Copy as curl</button>
+            ${group.ops.map((op, i) => {
+              let detailContent = `
+                <div class="small"><strong>${esc(op.summary || op.operationId || 'Operation')}</strong></div>
+              `;
+
+              // Parameters table
+              if (op.parameters && op.parameters.length > 0) {
+                detailContent += `
+                  <div style="margin-top:8px">
+                    <div class="small" style="font-weight:bold;color:#666">Parameters:</div>
+                    <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:4px">
+                      <thead><tr style="border-bottom:1px solid #ddd">
+                        <th style="text-align:left;padding:4px">Name</th>
+                        <th style="text-align:left;padding:4px">Type</th>
+                        <th style="text-align:left;padding:4px">In</th>
+                        <th style="text-align:left;padding:4px">Required</th>
+                        <th style="text-align:left;padding:4px">Description</th>
+                      </tr></thead>
+                      <tbody>
+                        ${(op.parameters || []).map(p => `
+                          <tr style="border-bottom:1px solid #eee">
+                            <td style="padding:4px"><span class="mono">${esc(p.name)}</span></td>
+                            <td style="padding:4px"><span class="mono">${esc(p.schema?.type || 'string')}</span></td>
+                            <td style="padding:4px"><span class="mono">${esc(p.in)}</span></td>
+                            <td style="padding:4px">${p.required ? '<span style="color:red">✓</span>' : ''}</td>
+                            <td style="padding:4px;color:#666">${esc(p.description || '')}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
                   </div>
-                  <div class="api-response" data-idx="${i}" style="display:none;margin-top:8px;padding:8px;background:white;border:1px solid #ddd;border-radius:4px;max-height:300px;overflow-y:auto">
-                    <div class="small muted">Response will appear here...</div>
+                `;
+              }
+
+              // Request body
+              if (op.requestBody) {
+                detailContent += renderBodyFields(op.requestBody, i);
+              }
+
+              // Request body textarea for write ops
+              if (op['x-write']) {
+                detailContent += `
+                  <div style="margin-top:8px">
+                    <div class="small" style="font-weight:bold;color:#666">Request body (JSON):</div>
+                    <textarea class="api-body" data-idx="${i}" style="width:100%;height:100px;font-family:monospace;font-size:12px;padding:4px;border:1px solid #ccc;border-radius:4px;resize:vertical">{}</textarea>
+                  </div>
+                `;
+              }
+
+              // Response example
+              if (op.responses && op.responses['200']) {
+                const resp = op.responses['200'];
+                if (resp.content && resp.content['application/json'] && resp.content['application/json'].example) {
+                  detailContent += `
+                    <div style="margin-top:8px">
+                      <div class="small" style="font-weight:bold;color:#666">Response example:</div>
+                      <pre class="code" style="background:#f9f9f9;padding:6px;border-radius:3px;overflow-x:auto;max-width:100%;font-size:11px;max-height:200px;overflow-y:auto">${esc(JSON.stringify(resp.content['application/json'].example, null, 2))}</pre>
+                    </div>
+                  `;
+                }
+              }
+
+              detailContent += `
+                <div style="margin-top:8px;display:flex;gap:8px">
+                  <button class="btn small api-send" data-idx="${i}">Send request</button>
+                  <button class="btn small api-curl" data-idx="${i}">Copy as curl</button>
+                </div>
+                <div class="api-response" data-idx="${i}" style="display:none;margin-top:8px;padding:8px;background:white;border:1px solid #ddd;border-radius:4px;max-height:300px;overflow-y:auto">
+                  <div class="small muted">Response will appear here...</div>
+                </div>
+              `;
+
+              return `
+                <div class="api-op" data-idx="${i}">
+                  <div class="api-op-header" style="cursor:pointer;padding:8px;background:#f5f5f5;border-radius:4px;margin-bottom:4px">
+                    <span class="pill ${op['x-write'] ? 'bad' : 'ok'}" style="display:inline-block;width:50px;text-align:center">${esc(op.method)}</span>
+                    <span class="mono small" style="margin-left:8px">${esc(op.path)}</span>
+                    ${op.operationId ? `<span class="pill" style="margin-left:8px;font-size:11px">${esc(op.operationId)}</span>` : ''}
+                  </div>
+                  <div class="api-op-detail" style="display:none;padding:8px;border-left:3px solid #ddd;margin-bottom:8px;background:#fafafa">
+                    ${detailContent}
                   </div>
                 </div>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         `)}</div>`;
       });
@@ -159,14 +249,14 @@
           const bodyInput = FS.$(`[data-idx="${idx}"].api-body`, el);
           const body = bodyInput ? bodyInput.value.trim() : '{}';
 
-          let curl = `curl -X ${op.method} https://flowsight.example.com${op.path}`;
+          let curl = `curl -X ${op.method} ${location.origin}${op.path}`;
           if (op['x-write']) {
-            curl += ` -H 'X-Flowsight-Token: YOUR_TOKEN' -H 'X-Requested-With: Flowsight'`;
+            curl += ` -H 'X-Flowsight-Token: $FLOWSIGHT_TOKEN' -H 'X-Requested-With: Flowsight'`;
             if (body && body !== '{}') {
               curl += ` -d '${body.replace(/'/g, "'\\''")}'`;
             }
           } else {
-            curl += ` -H 'X-Flowsight-Token: YOUR_TOKEN'`;
+            curl += ` -H 'X-Flowsight-Token: $FLOWSIGHT_TOKEN'`;
           }
 
           const ta = document.createElement('textarea');
