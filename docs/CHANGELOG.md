@@ -12,6 +12,18 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251912
+
+**VMs get their addresses; the Proxmox map answers.** Proxmox 9 sends a
+VM's memory as a string, which a strict number field rejected, so every VM's
+config was unreadable and no VM had addresses or agent facts; the config is
+now read loosely. The Devices and host pages asked for the Proxmox service
+under a name it was not published as; it is published under both. The
+map's traffic query aggregated the whole destination rollup and timed out;
+it now asks only for rows whose destination is a guest address, through
+the index. The OSM telecom source counts its regions on disk from start-up
+instead of showing zero until the first job run.
+
 ## 0.9.8r202609251908
 
 **Proxmox reads what the API actually sends.** Against the live node the

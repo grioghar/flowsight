@@ -187,6 +187,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// Publish the inventory service
 	ctx.Publish("proxmox_inventory", m)
+	ctx.Publish("proxmox", m) // the name the Devices and host pages ask for
 
 	return nil
 }
@@ -245,15 +246,44 @@ type pveQEMUList struct {
 	} `json:"data"`
 }
 
+// pveQEMUConfig is /nodes/{n}/qemu/{vmid}/config. Proxmox 9 sends memory
+// as a string ("8192") and agent as "1" or "enabled=1,fstrim_cloned_disks=1",
+// so both are read loosely; a strict int here made the whole config
+// unreadable and left every VM without addresses.
 type pveQEMUConfig struct {
 	Data struct {
-		Cores       int    `json:"cores"`
-		Memory      int    `json:"memory"`
-		OSType      string `json:"ostype"`
-		Description string `json:"description"`
-		Digest      string `json:"digest"`
-		Agent       string `json:"agent"`
+		Cores       int         `json:"cores"`
+		Memory      looseString `json:"memory"`
+		OSType      string      `json:"ostype"`
+		Description string      `json:"description"`
+		Digest      string      `json:"digest"`
+		Agent       looseString `json:"agent"`
 	} `json:"data"`
+}
+
+// looseString accepts a JSON string or number.
+type looseString string
+
+func (l *looseString) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		*l = looseString(s)
+		return nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err != nil {
+		return err
+	}
+	*l = looseString(n.String())
+	return nil
+}
+
+func (l looseString) String() string { return string(l) }
+
+// agentEnabled reads the qemu "agent" config value in both of its forms.
+func agentEnabled(v string) bool {
+	v = strings.TrimSpace(v)
+	return v == "1" || strings.HasPrefix(v, "1,") || strings.Contains(v, "enabled=1")
 }
 
 type pveLXCList struct {
@@ -626,7 +656,7 @@ func (m *Module) pollHost(hostURL string, inv *Inventory, excludeVMIDs map[strin
 						}
 
 						// Agent network if available
-						if qConfig.Data.Agent == "1" {
+						if agentEnabled(qConfig.Data.Agent.String()) {
 							netBody, _ := m.get(hostURL, fmt.Sprintf("/api2/json/nodes/%s/qemu/%d/agent/network-get-interfaces", nodeData.Node, qData.VMID))
 							var agentNet pveAgentNetworkResp
 							if err := json.Unmarshal(netBody, &agentNet); err == nil && agentNet.Result != nil {

@@ -256,6 +256,9 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("fccpull", 24*time.Hour, m.fccPull, core.Delayed())
 	_ = m.loadFCCSummary()
 	_ = m.loadRootSites()
+	// The regions already on disk count from the start, not from the first
+	// job run twenty minutes in.
+	go func() { _ = m.loadOSM() }()
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/fcc/files", m.apiFCCFiles, core.Needs("paths.map"),

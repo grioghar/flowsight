@@ -181,13 +181,34 @@ func (m *Module) getObservedEdges(hours int, ipToGuest map[string]int, guestByVM
 	windowSeconds := int64(hours * 3600)
 	cutoff := time.Now().Unix() - windowSeconds
 
-	// Query rollup_dst for traffic between guests
-	rows, err := m.ctx.Store.Rows(
-		`SELECT src_ip, dst_ip, dst_port, proto, SUM(flows) as flows, SUM(bytes_in+bytes_out) as bytes
-		 FROM rollup_dst WHERE bucket >= ? GROUP BY src_ip, dst_ip, dst_port, proto`,
-		cutoff)
-	if err != nil {
-		return edges
+	// Only rows that touch a guest address on the destination side matter
+	// (both ends must be guests for an edge), and rollup_dst is indexed on
+	// dst_ip; a whole-table aggregation over a day took minutes on the
+	// gateway and timed the page out.
+	ips := make([]string, 0, len(ipToGuest))
+	for ip := range ipToGuest {
+		ips = append(ips, ip)
+	}
+	var rows []map[string]any
+	for i := 0; i < len(ips); i += 200 {
+		j := i + 200
+		if j > len(ips) {
+			j = len(ips)
+		}
+		ph := make([]string, 0, j-i)
+		args := []any{cutoff}
+		for _, ip := range ips[i:j] {
+			ph = append(ph, "?")
+			args = append(args, ip)
+		}
+		part, err := m.ctx.Store.Rows(
+			`SELECT src_ip, dst_ip, dst_port, proto, SUM(flows) as flows, SUM(bytes_in+bytes_out) as bytes
+			 FROM rollup_dst WHERE bucket >= ? AND dst_ip IN (`+strings.Join(ph, ",")+`) GROUP BY src_ip, dst_ip, dst_port, proto`,
+			args...)
+		if err != nil {
+			return edges
+		}
+		rows = append(rows, part...)
 	}
 
 	edgeMap := make(map[string]*Edge)
