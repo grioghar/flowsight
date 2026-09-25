@@ -730,6 +730,128 @@ FS.space3D = (function() {
       return m;
     }
 
+    // Unproject screen coordinates to world ray
+    unproject(screenX, screenY) {
+      const aspect = this.canvas.width / this.canvas.height;
+      const proj = this.perspectiveMatrix(Math.PI / 4, aspect, 0.1, 1000);
+      const view = this.lookAtMatrix(this.camera.eye, this.camera.center, this.camera.up);
+
+      // Normalize screen coordinates
+      const x = (screenX / this.canvas.width) * 2 - 1;
+      const y = 1 - (screenY / this.canvas.height) * 2;
+
+      // Unproject near and far planes
+      const near = this.unprojectPoint(x, y, 0, proj, view);
+      const far = this.unprojectPoint(x, y, 1, proj, view);
+
+      const dir = vec3normalize(vec3sub(far, near));
+      return { origin: near, dir };
+    }
+
+    unprojectPoint(x, y, z, proj, view) {
+      // Invert projection and view matrices
+      const invProj = this.invertMatrix(proj);
+      const invView = this.invertMatrix(view);
+
+      // Unproject from screen space
+      const p = [x, y, z * 2 - 1, 1];
+      const p1 = this.multiplyMatrixVector(invProj, p);
+      p1[0] /= p1[3];
+      p1[1] /= p1[3];
+      p1[2] /= p1[3];
+      p1[3] = 1;
+
+      const p2 = this.multiplyMatrixVector(invView, p1);
+      return [p2[0], p2[1], p2[2]];
+    }
+
+    invertMatrix(m) {
+      const m16 = new Float32Array(16);
+      const a00 = m[0], a01 = m[1], a02 = m[2], a03 = m[3];
+      const a10 = m[4], a11 = m[5], a12 = m[6], a13 = m[7];
+      const a20 = m[8], a21 = m[9], a22 = m[10], a23 = m[11];
+      const a30 = m[12], a31 = m[13], a32 = m[14], a33 = m[15];
+
+      const b00 = a00 * a11 - a01 * a10;
+      const b01 = a00 * a12 - a02 * a10;
+      const b02 = a00 * a13 - a03 * a10;
+      const b03 = a01 * a12 - a02 * a11;
+      const b04 = a01 * a13 - a03 * a11;
+      const b05 = a02 * a13 - a03 * a12;
+      const b06 = a20 * a31 - a21 * a30;
+      const b07 = a20 * a32 - a22 * a30;
+      const b08 = a20 * a33 - a23 * a30;
+      const b09 = a21 * a32 - a22 * a31;
+      const b10 = a21 * a33 - a23 * a31;
+      const b11 = a22 * a33 - a23 * a32;
+
+      let det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+      if (Math.abs(det) < 1e-10) return this.identityMatrix();
+
+      det = 1 / det;
+
+      m16[0] = (a11 * b11 - a12 * b10 + a13 * b09) * det;
+      m16[1] = (a02 * b10 - a01 * b11 - a03 * b09) * det;
+      m16[2] = (a31 * b05 - a32 * b04 + a33 * b03) * det;
+      m16[3] = (a22 * b04 - a21 * b05 - a23 * b03) * det;
+      m16[4] = (a12 * b08 - a10 * b11 - a13 * b07) * det;
+      m16[5] = (a00 * b11 - a02 * b08 + a03 * b07) * det;
+      m16[6] = (a32 * b02 - a30 * b05 - a33 * b01) * det;
+      m16[7] = (a20 * b05 - a22 * b02 + a23 * b01) * det;
+      m16[8] = (a10 * b10 - a11 * b08 + a13 * b06) * det;
+      m16[9] = (a01 * b08 - a00 * b10 - a03 * b06) * det;
+      m16[10] = (a30 * b04 - a31 * b02 + a33 * b00) * det;
+      m16[11] = (a21 * b02 - a20 * b04 - a23 * b00) * det;
+      m16[12] = (a11 * b07 - a10 * b09 - a12 * b06) * det;
+      m16[13] = (a00 * b09 - a01 * b07 + a02 * b06) * det;
+      m16[14] = (a31 * b01 - a30 * b03 - a32 * b00) * det;
+      m16[15] = (a20 * b03 - a21 * b01 + a22 * b00) * det;
+
+      return m16;
+    }
+
+    multiplyMatrixVector(m, v) {
+      return [
+        m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12] * v[3],
+        m[1] * v[0] + m[5] * v[1] + m[9] * v[2] + m[13] * v[3],
+        m[2] * v[0] + m[6] * v[1] + m[10] * v[2] + m[14] * v[3],
+        m[3] * v[0] + m[7] * v[1] + m[11] * v[2] + m[15] * v[3]
+      ];
+    }
+
+    // Ray-cast from screen coordinates
+    raycast(screenX, screenY) {
+      const ray = this.unproject(screenX, screenY);
+      let closest = null;
+      let minDist = Infinity;
+
+      // Ray-cast against spatial grid if available
+      if (this.spatialIndex) {
+        const hit = this.spatialIndex.raycast(ray.origin, ray.dir, 1000);
+        if (hit) {
+          return {
+            x: ray.origin[0] + ray.dir[0] * hit.t,
+            y: ray.origin[1] + ray.dir[1] * hit.t,
+            z: ray.origin[2] + ray.dir[2] * hit.t,
+            t: hit.t
+          };
+        }
+      }
+
+      // Ray-cast against floor plane (z = 0) as fallback
+      const t = -ray.origin[2] / (ray.dir[2] || 1e-6);
+      if (t > 0.1 && t < 1000) {
+        return {
+          x: ray.origin[0] + ray.dir[0] * t,
+          y: ray.origin[1] + ray.dir[1] * t,
+          z: 0,
+          t
+        };
+      }
+
+      return null;
+    }
+
     destroy() {
       this.running = false;
     }

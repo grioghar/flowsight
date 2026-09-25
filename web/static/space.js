@@ -252,37 +252,238 @@ function initPlanPane(el, canvas, layout) {
 
 // === 3D Pane (WebGL Viewer) ===
 
-function init3DPane(canvas, layout) {
-  const gl = canvas.getContext('webgl2');
-  if (!gl) {
-    console.warn('WebGL2 not supported');
+async function init3DPane(canvas, layout) {
+  if (!FS.space3D) {
+    console.error('WebGL viewer not available');
     return;
   }
 
-  // Minimal WebGL setup
-  const program = gl.createProgram();
-  let floorGrid = [];
-  let deviceMarkers = [];
-  let scanMesh = null;
+  const viewer = new FS.space3D.Viewer(canvas);
+  viewer.layout = layout;
 
-  function resizeCanvas() {
-    const rect = canvas.parentElement.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    gl.viewport(0, 0, canvas.width, canvas.height);
+  // Create grid and axes
+  viewer.createGrid(10, 1);
+  viewer.createAxes(1);
+
+  // Helper to apply transform to geometry
+  function applyTransform(geometry, transform) {
+    if (!transform || !geometry.positions) return geometry;
+
+    const scale = transform.scale || 1;
+    const rotDeg = transform.rotation_deg || 0;
+    const offset = transform.offset || [0, 0, 0];
+    const upAxis = transform.up_axis || 'z';
+
+    // Create a copy
+    const pos = new Float32Array(geometry.positions);
+
+    // Apply scale
+    for (let i = 0; i < pos.length; i++) {
+      pos[i] *= scale;
+    }
+
+    // Convert Y-up to Z-up if needed
+    if (upAxis === 'y') {
+      for (let i = 0; i < pos.length; i += 3) {
+        const tmp = pos[i + 1];
+        pos[i + 1] = pos[i + 2];
+        pos[i + 2] = tmp;
+      }
+    }
+
+    // Apply rotation about Z (up) axis
+    const rad = (rotDeg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    for (let i = 0; i < pos.length; i += 3) {
+      const x = pos[i];
+      const y = pos[i + 1];
+      pos[i] = x * cos - y * sin;
+      pos[i + 1] = x * sin + y * cos;
+    }
+
+    // Apply offset
+    for (let i = 0; i < pos.length; i += 3) {
+      pos[i] += offset[0];
+      pos[i + 1] += offset[1];
+      pos[i + 2] += offset[2];
+    }
+
+    return { ...geometry, positions: pos };
   }
 
-  function drawScene() {
-    gl.clearColor(0.95, 0.95, 0.95, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  // Load scan if available
+  if (layout.scan?.file) {
+    try {
+      const showProgress = () => {
+        const progress = document.createElement('div');
+        progress.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:white;padding:20px;border-radius:8px;z-index:100';
+        progress.innerHTML = '<div>Loading scan...</div><div id="progress-bar" style="width:200px;height:4px;background:rgba(255,255,255,0.3);margin-top:10px;overflow:hidden"><div id="progress-fill" style="height:100%;background:white;width:0%"></div></div>';
+        canvas.parentElement.insertAdjacentElement('afterbegin', progress);
+        return progress;
+      };
 
-    // Draw floor grid, scan, device markers
-    // (Simplified; full implementation in space-gl.js)
+      const progressEl = showProgress();
+      const updateProgress = (percent) => {
+        const fill = progressEl.querySelector('#progress-fill');
+        if (fill) fill.style.width = (percent * 100) + '%';
+      };
+
+      // Fetch scan data in chunks for progress
+      const resp = await fetch('/api/space/scan');
+      if (!resp.ok) throw new Error('Failed to load scan');
+      const buffer = await resp.arrayBuffer();
+
+      // Parse based on format
+      let geometry = null;
+      const format = layout.scan.format;
+
+      if (format === 'glb') {
+        geometry = await parseWithProgress(buffer, 'glb', updateProgress);
+      } else if (format === 'obj') {
+        const text = new TextDecoder().decode(new Uint8Array(buffer));
+        geometry = FS.space.parseOBJ(text);
+      } else if (format === 'ply') {
+        geometry = FS.space.parsePLY(buffer);
+      } else if (format === 'roomplan') {
+        const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer)));
+        geometry = FS.space.parseRoomPlan(json);
+      }
+
+      if (geometry) {
+        // Apply transform
+        geometry = applyTransform(geometry, layout.scan.transform);
+
+        // Add to viewer
+        viewer.addMesh(geometry, [0.8, 0.85, 0.9, 0.9], 'Scan');
+
+        // Fit camera
+        viewer.fitToView();
+      }
+
+      progressEl.remove();
+    } catch (e) {
+      console.error('Failed to load scan:', e);
+      const err = document.createElement('div');
+      err.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,0,0,0.8);color:white;padding:20px;border-radius:8px;z-index:100';
+      err.innerHTML = 'Failed to load scan: ' + e.message;
+      canvas.parentElement.insertAdjacentElement('afterbegin', err);
+      setTimeout(() => err.remove(), 5000);
+    }
   }
 
-  resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
-  drawScene();
+  // Add rooms as extruded boxes (translucent)
+  const currentFloorId = layout.floors?.[0]?.id || '0';
+  const currentFloor = layout.floors?.find(f => f.id === currentFloorId);
+  const floorRooms = layout.rooms?.filter(r => r.floor === currentFloorId) || [];
+
+  floorRooms.forEach((room, idx) => {
+    if (!room.polygon || room.polygon.length < 3) return;
+
+    // Create box geometry for room
+    const positions = [];
+    const indices = [];
+
+    // Polygon vertices at floor
+    const z0 = currentFloor?.elevation_m || 0;
+    const z1 = z0 + (room.ceiling_m || 2.6);
+
+    // Bottom polygon
+    room.polygon.forEach((pt, i) => {
+      positions.push(pt[0], pt[1], z0);
+    });
+
+    // Top polygon
+    room.polygon.forEach((pt, i) => {
+      positions.push(pt[0], pt[1], z1);
+    });
+
+    const n = room.polygon.length;
+    const base = 0;
+
+    // Bottom face (reversed for outward normal)
+    for (let i = 1; i < n - 1; i++) {
+      indices.push(base, base + i + 1, base + i);
+    }
+
+    // Top face
+    for (let i = 1; i < n - 1; i++) {
+      indices.push(base + n, base + n + i, base + n + i + 1);
+    }
+
+    // Side faces
+    for (let i = 0; i < n; i++) {
+      const i1 = (i + 1) % n;
+      indices.push(base + i, base + n + i, base + n + i1);
+      indices.push(base + i, base + n + i1, base + i1);
+    }
+
+    if (indices.length > 0) {
+      viewer.addMesh(
+        { positions: new Float32Array(positions), indices: new Uint32Array(indices), normals: null },
+        [0.6, 0.7, 0.9, 0.3], // translucent blue
+        'Room: ' + room.name
+      );
+    }
+  });
+
+  // Place markers for existing placements
+  if (layout.placements) {
+    layout.placements.forEach(p => {
+      // Simple marker as a small sphere or box
+      const positions = [];
+      const indices = [];
+      const size = 0.1;
+
+      // Cube marker
+      const verts = [
+        -size, -size, -size, size, -size, -size, size, size, -size, -size, size, -size,
+        -size, -size, size, size, -size, size, size, size, size, -size, size, size,
+      ];
+
+      positions.push(...verts.map((v, i) => {
+        if (i % 3 === 0) return v + p.x;
+        if (i % 3 === 1) return v + p.y;
+        return v + p.z;
+      }));
+
+      const cubeIndices = [
+        0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6,
+        0, 4, 5, 0, 5, 1, 2, 6, 7, 2, 7, 3,
+        0, 3, 7, 0, 7, 4, 1, 5, 6, 1, 6, 2
+      ];
+
+      indices.push(...cubeIndices);
+
+      viewer.addMesh(
+        { positions: new Float32Array(positions), indices: new Uint32Array(indices), normals: null },
+        [1, 0.2, 0.2, 1],
+        'Device: ' + p.label
+      );
+    });
+  }
+
+  // Store viewer for later access
+  if (!FS.space) FS.space = {};
+  FS.space.viewer = viewer;
+}
+
+async function parseWithProgress(buffer, format, updateProgress) {
+  return new Promise((resolve, reject) => {
+    // Parse in chunks to allow progress updates
+    let result;
+    try {
+      if (format === 'glb') {
+        result = FS.space.parseGLB(buffer);
+      } else {
+        reject(new Error('Unknown format: ' + format));
+      }
+      updateProgress(1);
+      setTimeout(() => resolve(result), 10);
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 // === Palette Pane (Device List) ===
@@ -291,6 +492,9 @@ function initPalettePane(listEl, devices, layout) {
   const search = document.querySelector('#space-device-search');
   const filterPlaced = document.querySelector('#space-filter-placed');
   const filterUnplaced = document.querySelector('#space-filter-unplaced');
+  const canvas3d = document.querySelector('#space-canvas-3d');
+
+  let draggedDevice = null;
 
   function renderDevices() {
     const query = (search?.value || '').toLowerCase();
@@ -315,7 +519,76 @@ function initPalettePane(listEl, devices, layout) {
         ${d.placed ? `<div class="space-device-item-addr">📍 ${esc(d.placement?.room || 'Unknown')}</div>` : ''}
       </div>
     `).join('');
+
+    // Add drag handlers
+    listEl.querySelectorAll('.space-device-item').forEach(item => {
+      item.addEventListener('dragstart', (e) => {
+        const mac = item.dataset.mac;
+        const label = item.dataset.label;
+        draggedDevice = { mac, label };
+        e.dataTransfer.effectAllowed = 'move';
+      });
+
+      item.addEventListener('dragend', () => {
+        draggedDevice = null;
+      });
+    });
   }
+
+  // Canvas drop handlers
+  canvas3d.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    canvas3d.style.opacity = '0.8';
+  });
+
+  canvas3d.addEventListener('dragleave', () => {
+    canvas3d.style.opacity = '1';
+  });
+
+  canvas3d.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    canvas3d.style.opacity = '1';
+
+    if (!draggedDevice) return;
+
+    const rect = canvas3d.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Ray-cast from screen coordinates
+    if (FS.space?.viewer?.raycast) {
+      const hit = FS.space.viewer.raycast(x, y);
+      if (hit) {
+        // Place device
+        try {
+          const roomId = pointInRoom(hit.x, hit.y, layout);
+          const resp = await fetch('/api/space/place', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              mac: draggedDevice.mac,
+              x: hit.x,
+              y: hit.y,
+              z: hit.z,
+              floor: layout.floors?.[0]?.id || '0',
+              room: roomId
+            })
+          });
+
+          if (resp.ok) {
+            // Reload page to refresh placement
+            location.reload();
+          } else {
+            const err = await resp.text();
+            console.error('Failed to place device:', err);
+          }
+        } catch (err) {
+          console.error('Failed to place device:', err);
+        }
+      }
+    }
+  });
 
   search?.addEventListener('input', renderDevices);
   filterPlaced?.addEventListener('change', renderDevices);
@@ -333,6 +606,22 @@ function esc(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Find which room contains a point
+function pointInRoom(x, y, layout) {
+  const currentFloor = layout.floors?.[0]?.id || '0';
+  const rooms = layout.rooms?.filter(r => r.floor === currentFloor) || [];
+
+  for (const room of rooms) {
+    if (FS.space3D?.pointInPolygon && room.polygon) {
+      if (FS.space3D.pointInPolygon([x, y], room.polygon)) {
+        return room.id;
+      }
+    }
+  }
+
+  return 'unknown';
 }
 
 // Export FS.space and add format parsers
