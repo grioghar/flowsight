@@ -222,7 +222,7 @@ func TestOpenAPIArrayField(t *testing.T) {
 		Items: &Field{
 			Type: "object",
 			Properties: map[string]*Field{
-				"id": {Type: "string", Example: "123"},
+				"id":   {Type: "string", Example: "123"},
 				"name": {Type: "string", Example: "Item"},
 			},
 		},

@@ -50,7 +50,7 @@ type session struct {
 // Field describes a single field in a request/response schema.
 type Field struct {
 	Name        string
-	Type        string      // "string", "integer", "boolean", "object", "array", "number"
+	Type        string // "string", "integer", "boolean", "object", "array", "number"
 	Required    bool
 	Description string
 	Example     any
@@ -117,18 +117,18 @@ type Route struct {
 	Handler              Handler
 	Description          string
 	Write                bool
-	Feature              string // tier feature this route belongs to ("" = free)
+	Feature              string            // tier feature this route belongs to ("" = free)
 	Params               map[string]string // Legacy: query param descriptions
-	Tags                 []string // OpenAPI tags for grouping
-	OperationId          string   // unique operation identifier
-	RequestBodyType      string   // describes the request body for docs
+	Tags                 []string          // OpenAPI tags for grouping
+	OperationId          string            // unique operation identifier
+	RequestBodyType      string            // describes the request body for docs
 
 	// New rich documentation fields
 	Parameters     []*ParameterInfo
-	RequestBody    *Field              // Request body schema
-	RequestExample any                 // Request body example
-	Response       *ResponseInfo       // Response documentation
-	Examples       map[string]string   // Named curl examples
+	RequestBody    *Field            // Request body schema
+	RequestExample any               // Request body example
+	Response       *ResponseInfo     // Response documentation
+	Examples       map[string]string // Named curl examples
 }
 
 type RouteOption func(*Route)
@@ -475,8 +475,8 @@ func (a *API) OpenAPI() map[string]any {
 		// Add rich parameters first
 		for _, p := range r.Parameters {
 			param := map[string]any{
-				"name": p.Name,
-				"in":   p.In,
+				"name":     p.Name,
+				"in":       p.In,
 				"required": p.Required,
 			}
 			if p.Description != "" {
@@ -499,10 +499,10 @@ func (a *API) OpenAPI() map[string]any {
 			sort.Strings(pk)
 			for _, n := range pk {
 				ps = append(ps, map[string]any{
-					"name": n,
-					"in": "query",
+					"name":        n,
+					"in":          "query",
 					"description": r.Params[n],
-					"schema": map[string]any{"type": "string"},
+					"schema":      map[string]any{"type": "string"},
 				})
 			}
 		}
@@ -596,7 +596,7 @@ func (a *API) OpenAPI() map[string]any {
 	}
 
 	info := map[string]any{
-		"title": "FlowSight API",
+		"title":   "FlowSight API",
 		"version": a.core.Version,
 		"description": `Complete REST API for FlowSight network monitoring and policy.
 

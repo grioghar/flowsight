@@ -14,13 +14,13 @@ import (
 
 // OpDoc describes an operation from OpenAPI spec
 type OpDoc struct {
-	Path      string
-	Method    string
-	Summary   string
-	Module    string
-	Params    []ParamDoc
-	ReqBody   map[string]any
-	RespBody  map[string]any
+	Path     string
+	Method   string
+	Summary  string
+	Module   string
+	Params   []ParamDoc
+	ReqBody  map[string]any
+	RespBody map[string]any
 }
 
 type ParamDoc struct {
