@@ -83,6 +83,41 @@ device exists. For the far end, the enrich module can add a reverse-DNS
 name and a country to addresses nothing else named; it is off until you
 turn it on.
 
+## Where names come from
+
+Every name and location (country) in FlowSight carries provenance: where it
+was learned and how confident that answer is. Names have sources in this order
+of trust:
+
+| Priority | Source | Confidence | How it works |
+|----------|--------|-----------|------------|
+| 1 | Operator-assigned | 100% | A name you entered in the UI. Overrides everything. |
+| 2 | DHCP lease hostname | 88% | The device itself told the DHCP server its name. |
+| 3 | Static reservation | 80% | You reserved this address with a name in your firewall or `/etc/hosts`. |
+| 4 | Device enrollment | 70% | FlowSight learned the device's name from DHCP fingerprints and behavior. |
+| 5 | Reverse DNS | 20% | A resolver answered a `PTR` query for this address. This is the weakest signal: a resolver's cache may be stale, and its answer is often not authoritative. |
+
+A lower-confidence name never overwrites a higher one. A resolver answer never
+attaches to a local address (the identity module already named those with a
+lease or reservation) nor to special addresses (loopback, link-local,
+multicast).
+
+Domains in flows come from these sources:
+
+| Source | How it works |
+|--------|-------------|
+| SNI | The client announced the domain in the TLS ClientHello. |
+| HTTP Host | The client sent the domain in the HTTP `Host:` header. |
+| DNS query | The local device queried for the domain. |
+| Probe cache | The probe (ntopng) saw a DNS answer point at this address. (Low confidence: shared servers and CDNs muddy this signal.) |
+| None | No source identified the domain. |
+
+Countries for addresses come from the GeoIP database when enabled (and always
+from it for flows: any server with a country in ntopng's data used the
+database). Reverse DNS enrichment does not populate countries; it only fills
+names. Because enrichment is off by default and IP geography is coarse, country
+information is optional for every report and is absent from the plan.
+
 ## The policy document
 
 Everything you decide is one JSON document, `policy.json`, which the UI

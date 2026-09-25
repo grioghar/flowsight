@@ -107,6 +107,8 @@ type Device struct {
 	Iface       string `json:"iface,omitempty"`
 	FirstSeen   int64  `json:"first_seen"`
 	LastSeen    int64  `json:"last_seen"`
+	NameSource  string `json:"name_source,omitempty"`  // where the hostname came from
+	NameConfidence int `json:"name_confidence,omitempty"` // 0-100 confidence score
 
 	// Set on the way out of the API, never stored: whether the policy's
 	// exclusion list keeps this device out of interception and inspection,
@@ -1102,6 +1104,23 @@ func (m *Module) apiDevices(r *core.Req) (any, error) {
 		}
 		c.ExcludedBy = excl.covers(&c)
 		c.Excluded = c.ExcludedBy != ""
+
+		// Add name provenance from identity module
+		if m.identity != nil && c.IP != "" {
+			// Get the NameInfo from the identity service
+			type NameInfoProvider interface {
+				NameInfo(ip string) struct {
+					Name       string
+					Source     string
+					Confidence float64
+				}
+			}
+			if ni, ok := m.ctx.Service("identity").(NameInfoProvider); ok {
+				info := ni.NameInfo(c.IP)
+				c.NameSource = info.Source
+				c.NameConfidence = int(info.Confidence * 100)
+			}
+		}
 
 		// Look up Proxmox guest reference by MAC or IP
 		if proxmoxSvc != nil {

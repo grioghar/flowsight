@@ -12,6 +12,29 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252329
+
+**Every name and domain carries where it came from.** Names now show their
+source (DHCP lease, static reservation, device enrollment, reverse DNS, or
+operator-assigned) and a confidence level (0–100%), replacing guesswork with
+clarity. In the IP Addresses and Devices tables and elsewhere, a quiet mark
+(superscript bullet) on a name reveals its source and confidence in the
+tooltip. Sessions show which source gave the domain (SNI, HTTP Host, DNS
+query, flow probe, or none) and when it comes from the probe cache, the domain
+appears muted since that source may not be authoritative. Countries for
+addresses likewise carry their source: GeoIP database or none.
+
+The API includes `name_source` and `name_confidence` on `/api/identity/hosts`
+and `/api/enroll/devices`, and flows include `domain_source` and
+`country_source` on `/api/visibility/flows`. The UI helpers `FS.ipTag` and
+`FS.hostLink` now accept optional provenance info to show marks inline.
+
+Precedence is enforced at ingest: operator-assigned names override all others
+(100% confidence); DHCP hostnames (88%) beat device table names (70%); resolver
+answers (20%) never replace local addresses and never attach to loopback,
+link-local or multicast. Durable-by-MAC names report their original source when
+a device moves addresses. See CONCEPTS.md for the full precedence table and
+USER-GUIDE.md for notes on the marks.
 ## 0.9.8r202609252328
 
 **Anomaly detection: know when a device does something new.** A new Baseline

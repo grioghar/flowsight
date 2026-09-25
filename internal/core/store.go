@@ -46,14 +46,14 @@ CREATE TABLE IF NOT EXISTS flows (
     ts INTEGER NOT NULL, end_ts INTEGER,
     key TEXT,
     src_ip TEXT, src_port INTEGER, dst_ip TEXT, dst_port INTEGER, proto TEXT,
-    app TEXT, category TEXT, domain TEXT,
+    app TEXT, category TEXT, domain TEXT, domain_source TEXT,
     bytes_in INTEGER DEFAULT 0, bytes_out INTEGER DEFAULT 0, packets INTEGER DEFAULT 0,
     duration REAL DEFAULT 0,
     verdict TEXT DEFAULT 'observed', policy TEXT,
     anycast INTEGER DEFAULT 0,
     source TEXT, iface TEXT,
     tls_version TEXT, tls_sni TEXT, tls_ja3 TEXT, tls_cert TEXT,
-    country TEXT, asn TEXT, attrs TEXT
+    country TEXT, country_source TEXT, asn TEXT, attrs TEXT
 );
 CREATE INDEX IF NOT EXISTS flows_ts ON flows(ts);
 CREATE INDEX IF NOT EXISTS flows_src ON flows(src_ip, ts);
@@ -217,6 +217,12 @@ func (s *Store) migrate() error {
 	if err := s.ensureColumn("flows", "anycast", "INTEGER DEFAULT 0"); err != nil {
 		return err
 	}
+	if err := s.ensureColumn("flows", "domain_source", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("flows", "country_source", "TEXT"); err != nil {
+		return err
+	}
 	_, err := s.db.Exec(`INSERT OR REPLACE INTO meta VALUES('schema_version', ?)`, fmt.Sprint(schemaVersion))
 	return err
 }
@@ -376,12 +382,14 @@ type Flow struct {
 	DstPort                    int
 	Proto, App, Category       string
 	Domain                     string
+	DomainSource               string // sni | http_host | dns_query | probe_name | none
 	BytesIn, BytesOut, Packets int64
 	Duration                   float64
 	Verdict, Policy            string
 	Source, Iface              string
 	TLSVersion, TLSSNI, TLSJA3 string
 	TLSCert, Country, ASN      string
+	CountrySource              string // database | none
 	// Anycast: the far end is in a range announced from many sites at once,
 	// so Country is where the range is registered, not where it answered.
 	Anycast bool
@@ -439,6 +447,7 @@ func (s *Store) AddFlows(flows []Flow) error {
 		var deltas []rollupDelta
 		upd, err := tx.Prepare(`UPDATE flows SET end_ts=?, bytes_in=?, bytes_out=?, packets=?,
 			duration=?, app=COALESCE(?,app), category=COALESCE(?,category), domain=COALESCE(?,domain),
+			domain_source=COALESCE(?,domain_source), country_source=COALESCE(?,country_source),
 			verdict=?, policy=COALESCE(?,policy), tls_version=COALESCE(?,tls_version),
 			tls_sni=COALESCE(?,tls_sni), tls_ja3=COALESCE(?,tls_ja3), attrs=COALESCE(?,attrs)
 			WHERE id=(SELECT id FROM flows WHERE key=? ORDER BY id DESC LIMIT 1)`)
@@ -447,9 +456,9 @@ func (s *Store) AddFlows(flows []Flow) error {
 		}
 		defer upd.Close()
 		ins, err := tx.Prepare(`INSERT INTO flows(ts,end_ts,key,src_ip,src_port,dst_ip,dst_port,proto,
-			app,category,domain,bytes_in,bytes_out,packets,duration,verdict,policy,source,iface,
-			tls_version,tls_sni,tls_ja3,tls_cert,country,asn,attrs,anycast)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+			app,category,domain,domain_source,bytes_in,bytes_out,packets,duration,verdict,policy,source,iface,
+			tls_version,tls_sni,tls_ja3,tls_cert,country,country_source,asn,attrs,anycast)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 		if err != nil {
 			return err
 		}
@@ -486,7 +495,7 @@ func (s *Store) AddFlows(flows []Flow) error {
 			}
 			if f.Key != "" {
 				res, err := upd.Exec(end, f.BytesIn, f.BytesOut, f.Packets, f.Duration,
-					nz(f.App), nz(f.Category), nz(f.Domain), f.Verdict, nz(f.Policy),
+					nz(f.App), nz(f.Category), nz(f.Domain), nz(f.DomainSource), nz(f.CountrySource), f.Verdict, nz(f.Policy),
 					nz(f.TLSVersion), nz(f.TLSSNI), nz(f.TLSJA3), jsonOrNil(f.Attrs), f.Key)
 				if err != nil {
 					return err
@@ -498,9 +507,9 @@ func (s *Store) AddFlows(flows []Flow) error {
 			}
 			deltas = append(deltas, d)
 			if _, err := ins.Exec(f.TS, nzInt(f.EndTS), nz(f.Key), nz(f.SrcIP), f.SrcPort, nz(f.DstIP),
-				f.DstPort, nz(f.Proto), nz(f.App), nz(f.Category), nz(f.Domain), f.BytesIn, f.BytesOut,
+				f.DstPort, nz(f.Proto), nz(f.App), nz(f.Category), nz(f.Domain), nz(f.DomainSource), f.BytesIn, f.BytesOut,
 				f.Packets, f.Duration, f.Verdict, nz(f.Policy), nz(f.Source), nz(f.Iface),
-				nz(f.TLSVersion), nz(f.TLSSNI), nz(f.TLSJA3), nz(f.TLSCert), nz(f.Country), nz(f.ASN),
+				nz(f.TLSVersion), nz(f.TLSSNI), nz(f.TLSJA3), nz(f.TLSCert), nz(f.Country), nz(f.CountrySource), nz(f.ASN),
 				jsonOrNil(f.Attrs), b2i(f.Anycast)); err != nil {
 				return err
 			}
