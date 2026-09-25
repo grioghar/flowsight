@@ -14,6 +14,7 @@ with every release.
 | Chapter | Read it when |
 |---|---|
 | [Getting started](GETTING-STARTED.md) | You have a gateway and thirty minutes. Install, first look, first policy, interception, TLS inspection. |
+| [How-tos](howto/README.md) | You want step-by-step guides for common tasks: setup, identifying devices, blocking traffic, alerting, reports, and more. |
 | [Concepts](CONCEPTS.md) | You want to understand the model before trusting it: modules, capabilities, providers, the policy document, tiers. |
 | [User guide](USER-GUIDE.md) | Page by page: what every screen shows, what every button does. |
 | [The policy document](POLICY.md) | The exact grammar of groups, schedules, policies, exclusions, and what each denial compiles to. |
@@ -46,4 +47,4 @@ shown at the bottom of the left-hand menu and under FlowSight › Updates.
 
 ## How-tos
 
-- [See what your IoT devices send abroad, and block it](HOWTO-IOT-ABROAD.md)
+Task-first guides for common operations: [How-tos](howto/README.md)

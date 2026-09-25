@@ -12,6 +12,10 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252311
+
+**How-to guides for every task.** A new section `docs/howto/` with 15 task-first guides covers: first hour after install, seeing device traffic, identifying unknowns, blocking by country, reading policy matches, tracing the Map, watching DLP transfers, scheduling policies, TLS inspection, packet capture, alerting, reports, Proxmox inventory, physical space, API automation, and understanding blocked traffic. Each guide names exact pages and buttons, shows prerequisites and limits, and walks through to a working result. The existing HOWTO-IOT-ABROAD.md moved to `howto/iot-abroad.md` with a stub at the old path pointing to it.
+
 ## 0.9.8r202609252300
 
 **A route's trail stops where the story ends.** Once the destination itself

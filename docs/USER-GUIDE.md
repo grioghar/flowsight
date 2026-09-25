@@ -92,7 +92,7 @@ there is no path across the internet to show.
 (FlowSight learns your own country from its public address once *Country
 lookup* is on under *Settings › enrich*), and a country pill narrows to that
 country. The DLP page's **Leaving the country** card lists this per device.
-There is a step-by-step guide in [HOWTO-IOT-ABROAD.md](HOWTO-IOT-ABROAD.md).
+There is a step-by-step guide in [See what your IoT devices send abroad, and block it](howto/iot-abroad.md).
 
 ### Applications
 
