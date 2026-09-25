@@ -58,6 +58,43 @@ type Field struct {
 	Properties  map[string]*Field
 }
 
+// Fld is a shorthand constructor for Field.
+func Fld(name, typ string, required bool, desc string, example any) *Field {
+	return &Field{
+		Name:        name,
+		Type:        typ,
+		Required:    required,
+		Description: desc,
+		Example:     example,
+	}
+}
+
+// FldObj creates an object Field with the given properties.
+func FldObj(name string, required bool, desc string, props ...*Field) *Field {
+	f := &Field{
+		Name:        name,
+		Type:        "object",
+		Required:    required,
+		Description: desc,
+		Properties:  make(map[string]*Field),
+	}
+	for _, p := range props {
+		f.Properties[p.Name] = p
+	}
+	return f
+}
+
+// FldArr creates an array Field with the given item type.
+func FldArr(name string, required bool, desc string, items *Field) *Field {
+	return &Field{
+		Name:        name,
+		Type:        "array",
+		Required:    required,
+		Description: desc,
+		Items:       items,
+	}
+}
+
 // ParameterInfo describes a query or path parameter.
 type ParameterInfo struct {
 	Name        string
