@@ -220,3 +220,102 @@ func TestFuzzPackets(t *testing.T) {
 		}()
 	}
 }
+
+func TestNetFlow9TemplateCache(t *testing.T) {
+	cache := newTemplateCache(2) // small cache for testing LRU
+
+	// Store two templates
+	fields1 := []field9{{fieldType: 8, length: 4}, {fieldType: 12, length: 4}}
+	cache.Store9(1, 0, &template9{templateID: 100}, fields1)
+
+	fields2 := []field9{{fieldType: 8, length: 4}, {fieldType: 12, length: 4}, {fieldType: 7, length: 2}}
+	cache.Store9(2, 0, &template9{templateID: 100}, fields2)
+
+	// Verify both are cached
+	if retrieved, ok := cache.Get9(1, 0, 100); !ok || len(retrieved) != 2 {
+		t.Error("first template not cached")
+	}
+	if retrieved, ok := cache.Get9(2, 0, 100); !ok || len(retrieved) != 3 {
+		t.Error("second template not cached")
+	}
+
+	// Store a third template; should evict the oldest (first one)
+	fields3 := []field9{{fieldType: 4, length: 1}}
+	cache.Store9(3, 0, &template9{templateID: 100}, fields3)
+
+	if _, ok := cache.Get9(1, 0, 100); ok {
+		t.Error("oldest template should have been evicted")
+	}
+
+	// The other two should still be there
+	if _, ok := cache.Get9(2, 0, 100); !ok {
+		t.Error("second template should still be cached")
+	}
+	if _, ok := cache.Get9(3, 0, 100); !ok {
+		t.Error("third template should be cached")
+	}
+}
+
+func TestNetFlow9TemplateReplacement(t *testing.T) {
+	cache := newTemplateCache(10)
+
+	// Store original template
+	fields1 := []field9{{fieldType: 8, length: 4}}
+	cache.Store9(1, 0, &template9{templateID: 100}, fields1)
+
+	retrieved, _ := cache.Get9(1, 0, 100)
+	if len(retrieved) != 1 {
+		t.Error("original template should have 1 field")
+	}
+
+	// Replace with new template (different field list)
+	fields2 := []field9{{fieldType: 8, length: 4}, {fieldType: 12, length: 4}}
+	cache.Store9(1, 0, &template9{templateID: 100}, fields2)
+
+	retrieved, _ = cache.Get9(1, 0, 100)
+	if len(retrieved) != 2 {
+		t.Error("replaced template should have 2 fields")
+	}
+}
+
+func TestIPFIXVariableLengthFields(t *testing.T) {
+	// IPFIX field with variable length (marked by length == 65535)
+	cache := newTemplateCache(10)
+
+	fields := []fieldIP{
+		{id: 8, length: 4, length_: false},
+		{id: 96, length: 65535, length_: true}, // variable length
+		{id: 12, length: 4, length_: false},
+	}
+	cache.StoreIP(0, 100, fields)
+
+	retrieved, ok := cache.GetIP(0, 100)
+	if !ok {
+		t.Error("IPFIX template not cached")
+	}
+	if len(retrieved) != 3 {
+		t.Error("should have 3 fields")
+	}
+	if !retrieved[1].length_ {
+		t.Error("second field should be marked as variable length")
+	}
+}
+
+func TestTemplateCacheIsolation(t *testing.T) {
+	// Test that different source IDs have isolated template caches
+	cache := newTemplateCache(10)
+
+	fields1 := []field9{{fieldType: 8, length: 4}}
+	cache.Store9(1, 0, &template9{templateID: 100}, fields1)
+
+	fields2 := []field9{{fieldType: 8, length: 4}, {fieldType: 12, length: 4}}
+	cache.Store9(2, 0, &template9{templateID: 100}, fields2)
+
+	// Each source should have its own template even with the same templateID
+	retrieved1, _ := cache.Get9(1, 0, 100)
+	retrieved2, _ := cache.Get9(2, 0, 100)
+
+	if len(retrieved1) == len(retrieved2) {
+		t.Error("templates from different sources should be isolated")
+	}
+}

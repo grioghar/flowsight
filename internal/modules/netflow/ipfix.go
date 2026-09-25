@@ -53,8 +53,6 @@ const (
 	IPFIX_APPLICATION_CATEGORY_NAME = 207
 	IPFIX_FLOW_START_MILLISECONDS   = 152
 	IPFIX_FLOW_END_MILLISECONDS     = 153
-	IPFIX_FLOW_START_SYSUPTIME_MS   = 156
-	IPFIX_FLOW_END_SYSUPTIME_MS     = 157
 	IPFIX_DELTA_IN_BYTES            = 29
 	IPFIX_DELTA_OUT_BYTES           = 30
 	IPFIX_DELTA_IN_PKTS             = 31
@@ -108,19 +106,18 @@ func (c *collector) handleIPFIX(packet []byte, remoteAddr *net.UDPAddr) {
 		}
 
 		if set.SetID == 2 {
-			// Template Set; skip for now
-			pos += int(set.Length)
-			continue
-		}
-		if set.SetID == 3 {
+			// Template Set
+			c.parseIPFIXTemplateSet(packet[pos:pos+int(set.Length)], hdr.DomainID, exporter)
+		} else if set.SetID == 3 {
 			// Options Template Set; skip
-			pos += int(set.Length)
-			continue
+		} else {
+			// Data Set
+			dataFlows, dropped := c.parseIPFIXDataSet(packet[pos:pos+int(set.Length)], hdr.DomainID, exportTime, exporter, remoteAddr)
+			flows = append(flows, dataFlows...)
+			if dropped > 0 {
+				atomic.AddUint64(&exporter.dropsTotal, dropped)
+			}
 		}
-
-		// Data Set
-		dataFlows, _ := c.parseIPFIXDataSet(packet[pos:pos+int(set.Length)], hdr.DomainID, exportTime, exporter, remoteAddr)
-		flows = append(flows, dataFlows...)
 
 		pos += int(set.Length)
 	}
@@ -138,43 +135,67 @@ func (c *collector) handleIPFIX(packet []byte, remoteAddr *net.UDPAddr) {
 	}
 }
 
-func (c *collector) parseIPFIXDataSet(data []byte, domainID uint32, exportTime int64, exporter *exporterState, remoteAddr *net.UDPAddr) ([]core.Flow, error) {
+// parseIPFIXTemplateSet extracts templates from a template set.
+func (c *collector) parseIPFIXTemplateSet(data []byte, domainID uint32, exporter *exporterState) {
 	if len(data) < 4 {
-		return nil, nil
+		return
+	}
+
+	pos := 4 // skip set header
+	for pos+4 <= len(data) {
+		templateID := binary.BigEndian.Uint16(data[pos : pos+2])
+		fieldCount := binary.BigEndian.Uint16(data[pos+2 : pos+4])
+		pos += 4
+
+		fields := make([]fieldIP, 0, fieldCount)
+
+		for j := 0; j < int(fieldCount); j++ {
+			if pos+4 > len(data) {
+				return
+			}
+
+			id := binary.BigEndian.Uint16(data[pos : pos+2])
+			length := binary.BigEndian.Uint16(data[pos+2 : pos+4])
+			pos += 4
+
+			// Check for enterprise bit
+			isEnterprise := (id & 0x8000) != 0
+			if isEnterprise {
+				// Enterprise element; skip the 4-byte enterprise number
+				if pos+4 > len(data) {
+					return
+				}
+				pos += 4
+			}
+
+			fields = append(fields, fieldIP{id: id & 0x7fff, length: length, length_: length == 65535})
+		}
+
+		// Cache the template
+		exporter.tmplCacheI.StoreIP(domainID, templateID, fields)
+	}
+}
+
+// parseIPFIXDataSet parses data records for a template.
+func (c *collector) parseIPFIXDataSet(data []byte, domainID uint32, exportTime int64, exporter *exporterState, remoteAddr *net.UDPAddr) ([]core.Flow, uint64) {
+	if len(data) < 4 {
+		return nil, 0
 	}
 
 	setID := binary.BigEndian.Uint16(data[0:2])
-	length := binary.BigEndian.Uint16(data[2:4])
 
 	// Get template for this set
-	tmplKey := fmt.Sprintf("%d,%d", domainID, setID)
-	exporter.mu.RLock()
-	tmpl := exporter.templatesI[tmplKey]
-	exporter.mu.RUnlock()
-
-	if tmpl == nil {
-		return nil, nil
-	}
-
-	recordLen := 0
-	hasVarLen := false
-	for _, f := range tmpl.fields {
-		if f.length_ {
-			hasVarLen = true
-			break
-		}
-		recordLen += int(f.length)
-	}
-
-	if recordLen == 0 && !hasVarLen {
-		return nil, nil
+	fields, ok := exporter.tmplCacheI.GetIP(domainID, setID)
+	if !ok {
+		// No template known; count as drop and skip
+		return nil, 1
 	}
 
 	var flows []core.Flow
 	pos := 4
 
-	for pos < int(length) {
-		flow, consumed := c.decodeIPFIXRecord(data[pos:], tmpl, exportTime, exporter, remoteAddr)
+	for pos < len(data) {
+		flow, consumed := c.decodeIPFIXRecord(data[pos:], fields, exportTime, exporter, remoteAddr)
 		if consumed == 0 {
 			break
 		}
@@ -185,10 +206,11 @@ func (c *collector) parseIPFIXDataSet(data []byte, domainID uint32, exportTime i
 		pos += consumed
 	}
 
-	return flows, nil
+	return flows, 0
 }
 
-func (c *collector) decodeIPFIXRecord(data []byte, tmpl *templateIP, exportTime int64, exporter *exporterState, remoteAddr *net.UDPAddr) (core.Flow, int) {
+// decodeIPFIXRecord turns one IPFIX record into a core.Flow.
+func (c *collector) decodeIPFIXRecord(data []byte, fields []fieldIP, exportTime int64, exporter *exporterState, remoteAddr *net.UDPAddr) (core.Flow, int) {
 	flow := core.Flow{
 		Source: "ipfix:" + remoteAddr.IP.String(),
 		TS:     exportTime,
@@ -201,22 +223,26 @@ func (c *collector) decodeIPFIXRecord(data []byte, tmpl *templateIP, exportTime 
 	var inBytes, outBytes, inPkts, outPkts int64
 	var flowStartMs, flowEndMs int64
 
-	for _, f := range tmpl.fields {
+	for _, f := range fields {
 		if f.length_ {
-			// Variable length; would need to read length byte first
-			// Simplified: skip variable-length fields for now
+			// Variable length field
 			if pos >= len(data) {
 				break
 			}
 			lenByte := data[pos]
 			pos++
+			var fieldLen int
 			if lenByte == 255 && pos+1 < len(data) {
-				length := int(binary.BigEndian.Uint16(data[pos : pos+2]))
+				fieldLen = int(binary.BigEndian.Uint16(data[pos : pos+2]))
 				pos += 2
-				pos += length
 			} else {
-				pos += int(lenByte)
+				fieldLen = int(lenByte)
 			}
+			if pos+fieldLen > len(data) {
+				break
+			}
+			// Skip variable-length field for now
+			pos += fieldLen
 			continue
 		}
 
@@ -344,12 +370,4 @@ func (c *collector) decodeIPFIXRecord(data []byte, tmpl *templateIP, exportTime 
 	flow.Key = fmt.Sprintf("ipfix:%s:%d-%s:%d/%s@%d", srcIP, srcPort, dstIP, dstPort, proto, flow.TS)
 
 	return flow, pos
-}
-
-// StoreTemplateIP stores an IPFIX template for later use
-func (ex *exporterState) storeTemplateIP(domainID uint32, tmpl *templateIP) {
-	ex.mu.Lock()
-	defer ex.mu.Unlock()
-	key := fmt.Sprintf("%d,%d", domainID, tmpl.templateID)
-	ex.templatesI[key] = tmpl
 }

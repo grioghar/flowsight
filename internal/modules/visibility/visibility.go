@@ -614,6 +614,15 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 		q += ` AND app=?`
 		args = append(args, app)
 	}
+	source, err := r.QSafe("source", "", 128)
+	if err != nil {
+		return nil, err
+	}
+	if source != "" {
+		// Source can be exact match or prefix match (e.g., "netflow5:" matches all netflow5 sources)
+		q += ` AND source=?`
+		args = append(args, source)
+	}
 	if r.Q("blocked", "") != "" {
 		q += ` AND verdict='blocked'`
 	}

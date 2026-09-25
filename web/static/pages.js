@@ -182,13 +182,14 @@
       const p = ctx.params; const qs = new URLSearchParams({ minutes: p.minutes || 30, limit: 500 });
       if (p.ip) qs.set('ip', p.ip); if (p.app) qs.set('app', p.app); if (p.blocked) qs.set('blocked', '1');
       if (p.country) qs.set('country', p.country); if (p.abroad) qs.set('abroad', '1'); if (p.anycast) qs.set('anycast', '1');
+      if (p.source) qs.set('source', p.source);
       const d = await get('/api/visibility/flows?' + qs);
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
       let rows = d.flows || [];
       if (p.domain) rows = rows.filter(f => (f.domain || '').includes(p.domain));
       const filt = (k, v) => v ? `<span class="chip"${k === 'country' ? ` title="${esc(FS.countryName(v))}"` : ''}>${esc(k)}: ${esc(v)} <button data-k="${esc(k)}">×</button></span>` : '';
       const home = d.home_country || '';
-      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${filt('country', p.country)}${p.abroad ? filt('only', 'outside ' + (home || 'home')) : ''}${p.anycast ? filt('only', 'anycast') : ''}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?abroad=1${p.ip ? '&ip=' + p.ip : ''}" title="${home ? 'Sessions whose far end is outside ' + esc(home) : 'Sessions whose far end is outside this country (needs the country database under Settings › enrich)'}">Outside ${esc(home || 'the country')}${home ? ` <span class="muted small">(${esc(FS.countryName(home))})</span>` : ''}</a><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
+      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${filt('country', p.country)}${filt('source', p.source)}${p.abroad ? filt('only', 'outside ' + (home || 'home')) : ''}${p.anycast ? filt('only', 'anycast') : ''}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?abroad=1${p.ip ? '&ip=' + p.ip : ''}" title="${home ? 'Sessions whose far end is outside ' + esc(home) : 'Sessions whose far end is outside this country (needs the country database under Settings › enrich)'}">Outside ${esc(home || 'the country')}${home ? ` <span class="muted small">(${esc(FS.countryName(home))})</span>` : ''}</a><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
         card(`${rows.length} sessions`, table(rows, [
           { t: 'When', f: r => when(r.end_ts || r.ts), sort: 'ts' },
           { t: 'Client', f: r => hostLink(r.src_ip, r.src_name), sort: 'src_ip' },
@@ -359,6 +360,39 @@
       });
       const cr = FS.$('#ca-create', el); if (cr) cr.onclick = async () => { const name = prompt('Common name for the CA', 'FlowSight Inspection CA'); if (!name) return; const r = await post('/api/tls/ca/create', { name }); if (r.error) FS.toast(r.error, true); else { FS.toast('CA created'); FS.render(); } };
       const dl = FS.$('#ca-del', el); if (dl) dl.onclick = async () => { if (!await FS.confirm('Delete the inspection CA? Every policy with TLS inspection stops decrypting, and a new CA would have to be installed on devices again.')) return; const r = await post('/api/tls/ca/delete', {}); if (r.error) FS.toast(r.error, true); else FS.render(); };
+    }
+  });
+})();
+
+  // --------- Flow sources (NetFlow, IPFIX, sFlow exporters)
+  FS.registerPage('flowsources', {
+    title: 'Flow sources', refresh: 10,
+    async render(el) {
+      const st = await get('/api/netflow/status');
+      if (st.error) { el.innerHTML = FS.err('Flow sources unavailable: ' + st.error); return; }
+      
+      const exporters = st.exporters || [];
+      el.innerHTML = `
+        <div class="help">
+          <b>Add a switch or router as a flow source.</b> Any device that exports NetFlow v5/v9, IPFIX, or sFlow v5 
+          can point flows here to extend visibility beyond the gateway. Configure the exporter to send to FlowSight at 
+          <span class="mono">${window.location.hostname}:2055</span> (or <span class="mono">:6343</span> for sFlow).
+          See the how-to guide: <a href="#" target="_blank">Add a switch or another router as a flow source</a>.
+        </div>
+        <div style="margin-top:14px">
+          ${exporters.length ? 
+            card('Connected exporters', table(exporters, [
+              { t: 'Address', k: 'address' },
+              { t: 'Protocol', f: r => esc(r.protocol) },
+              { t: 'Records', f: r => num(r.records_total), num: true },
+              { t: 'Flows', f: r => num(r.flows_total), num: true },
+              { t: 'Dropped', f: r => r.drops_total ? `<span style="color:var(--sev-high)">${num(r.drops_total)}</span>` : '—', num: true },
+              { t: 'Templates', f: r => num(r.templates) },
+              { t: 'Last seen', f: r => ago(r.last_seen) }
+            ])) 
+            : '<div class="empty">No exporters connected</div>'}
+        </div>
+      `;
     }
   });
 })();

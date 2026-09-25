@@ -105,6 +105,12 @@ page's cards rank the same way: a backup moving a terabyte is not what the
 household is doing. The catalogue used for policy (names and categories) is
 the same one nDPI reports.
 
+### Flow sources
+
+Extend visibility beyond the gateway: switches, routers and other devices that export flows via NetFlow v5/v9, IPFIX, or sFlow v5 appear here. Each exporter shows the protocol, number of records and flows ingested, any drops (if templates timed out and data arrived without one), templates known (cached schema definitions per exporter) and when it last sent data. The help text shows the address and ports to point exporters at.
+
+Flows from these sources are enriched the same way as gateway-observed flows and appear in the Sessions page, filterable by source. See the how-to guide: [Add a switch or another router as a flow source](howto/flow-sources.md).
+
 ### Web
 
 Web activity from the proxy log: top sites, categories, blocked requests,

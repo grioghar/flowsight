@@ -47,10 +47,9 @@ type exporterState struct {
 	dropsTotal   uint64
 	lastSeen     time.Time
 
-	// NetFlow v9/IPFIX templates per (source-id, domain-id)
-	mu         sync.RWMutex
-	templates9 map[string]*template9  // "(source_id,domain_id)" -> template
-	templatesI map[string]*templateIP // "(source_id,domain_id)" -> template
+	// Template caches: LRU with max 64 templates per exporter
+	tmplCache9 *templateCache
+	tmplCacheI *templateCache
 }
 
 type template9 struct {
@@ -383,8 +382,8 @@ func (c *collector) getExporter(addr string) *exporterState {
 		addr:       addr,
 		protocol:   c.protocol,
 		lastSeen:   time.Now(),
-		templates9: make(map[string]*template9),
-		templatesI: make(map[string]*templateIP),
+		tmplCache9: newTemplateCache(64),
+		tmplCacheI: newTemplateCache(64),
 	}
 	c.m.exporters[addr] = ex
 	return ex
@@ -408,9 +407,13 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 
 	var exporters []map[string]any
 	for addr, ex := range m.exporters {
-		ex.mu.RLock()
-		templates := len(ex.templates9) + len(ex.templatesI)
-		ex.mu.RUnlock()
+		templates := 0
+		if ex.tmplCache9 != nil {
+			templates += ex.tmplCache9.Count()
+		}
+		if ex.tmplCacheI != nil {
+			templates += ex.tmplCacheI.Count()
+		}
 		exporters = append(exporters, map[string]any{
 			"address":       addr,
 			"protocol":      ex.protocol,

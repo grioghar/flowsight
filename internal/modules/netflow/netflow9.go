@@ -111,19 +111,18 @@ func (c *collector) handleNetFlow9(packet []byte, remoteAddr *net.UDPAddr) {
 		}
 
 		if fs.FlowSetID == 0 {
-			// Template FlowSet; skip for now (templates are cached)
-			pos += int(fs.Length)
-			continue
+			// Template FlowSet
+			c.parseNetFlow9TemplateSet(packet[pos:pos+int(fs.Length)], hdr.SourceID, exporter)
+		} else if fs.FlowSetID == 1 {
+			// Options Template FlowSet; skip for now
+		} else {
+			// Data FlowSet
+			dataFlows, dropped := c.parseNetFlow9DataSet(packet[pos:pos+int(fs.Length)], hdr.SourceID, baseTime, sysUptime, exporter, remoteAddr)
+			flows = append(flows, dataFlows...)
+			if dropped > 0 {
+				atomic.AddUint64(&exporter.dropsTotal, dropped)
+			}
 		}
-		if fs.FlowSetID == 1 {
-			// Options Template FlowSet; skip
-			pos += int(fs.Length)
-			continue
-		}
-
-		// Data FlowSet
-		dataFlows, _ := c.parseNetFlow9DataSet(packet[pos:pos+int(fs.Length)], hdr.SourceID, baseTime, sysUptime, exporter, remoteAddr)
-		flows = append(flows, dataFlows...)
 
 		pos += int(fs.Length)
 	}
@@ -141,46 +140,69 @@ func (c *collector) handleNetFlow9(packet []byte, remoteAddr *net.UDPAddr) {
 	}
 }
 
-func (c *collector) parseNetFlow9DataSet(data []byte, sourceID uint32, baseTime, sysUptime int64, exporter *exporterState, remoteAddr *net.UDPAddr) ([]core.Flow, error) {
+// parseNetFlow9TemplateSet extracts templates from a template flowset.
+func (c *collector) parseNetFlow9TemplateSet(data []byte, sourceID uint32, exporter *exporterState) {
 	if len(data) < 4 {
-		return nil, nil
+		return
+	}
+
+	pos := 4 // skip flowset header
+	for pos+4 <= len(data) {
+		templateID := binary.BigEndian.Uint16(data[pos : pos+2])
+		fieldCount := binary.BigEndian.Uint16(data[pos+2 : pos+4])
+		pos += 4
+
+		fields := make([]field9, 0, fieldCount)
+		recordLen := 0
+
+		for j := 0; j < int(fieldCount); j++ {
+			if pos+4 > len(data) {
+				return
+			}
+			fieldType := binary.BigEndian.Uint16(data[pos : pos+2])
+			fieldLen := binary.BigEndian.Uint16(data[pos+2 : pos+4])
+			pos += 4
+
+			fields = append(fields, field9{fieldType: fieldType, length: fieldLen})
+			recordLen += int(fieldLen)
+		}
+
+		// Cache the template
+		tmpl := &template9{domainID: 0, templateID: templateID}
+		exporter.tmplCache9.Store9(sourceID, 0, tmpl, fields)
+	}
+}
+
+// parseNetFlow9DataSet parses data records for a flowset.
+func (c *collector) parseNetFlow9DataSet(data []byte, sourceID uint32, baseTime, sysUptime int64, exporter *exporterState, remoteAddr *net.UDPAddr) ([]core.Flow, uint64) {
+	if len(data) < 4 {
+		return nil, 0
 	}
 
 	flowSetID := binary.BigEndian.Uint16(data[0:2])
 	length := binary.BigEndian.Uint16(data[2:4])
 
-	// For now, store one default template per source ID and parse with it
-	// A full implementation would cache templates per (sourceID, domainID)
-	// and parse options templates to learn the schema
-
-	tmplKey := fmt.Sprintf("%d,%d", sourceID, 0)
-	exporter.mu.RLock()
-	tmpl := exporter.templates9[tmplKey]
-	exporter.mu.RUnlock()
-
-	if tmpl == nil || tmpl.templateID != flowSetID {
-		// No template known; skip this flow set
-		return nil, nil
-	}
-
-	if len(data) < 4 {
-		return nil, nil
+	// Get template for this set
+	fields, ok := exporter.tmplCache9.Get9(sourceID, 0, flowSetID)
+	if !ok {
+		// No template known; count as drop and skip
+		return nil, 1
 	}
 
 	recordLen := 0
-	for _, f := range tmpl.fields {
+	for _, f := range fields {
 		recordLen += int(f.length)
 	}
 
 	if recordLen == 0 {
-		return nil, nil
+		return nil, 1
 	}
 
 	var flows []core.Flow
 	pos := 4
 	for pos+recordLen <= int(length) {
 		rec := data[pos : pos+recordLen]
-		flow := c.decodeNetFlow9Record(rec, tmpl, baseTime, sysUptime, exporter, remoteAddr)
+		flow := c.decodeNetFlow9Record(rec, fields, baseTime, sysUptime, exporter, remoteAddr)
 		if flow.SrcIP != "" && flow.DstIP != "" {
 			flows = append(flows, flow)
 			atomic.AddUint64(&exporter.recordsTotal, 1)
@@ -188,10 +210,11 @@ func (c *collector) parseNetFlow9DataSet(data []byte, sourceID uint32, baseTime,
 		pos += recordLen
 	}
 
-	return flows, nil
+	return flows, 0
 }
 
-func (c *collector) decodeNetFlow9Record(rec []byte, tmpl *template9, baseTime, sysUptime int64, exporter *exporterState, remoteAddr *net.UDPAddr) core.Flow {
+// decodeNetFlow9Record turns one NetFlow v9 record into a core.Flow.
+func (c *collector) decodeNetFlow9Record(rec []byte, fields []field9, baseTime, sysUptime int64, exporter *exporterState, remoteAddr *net.UDPAddr) core.Flow {
 	flow := core.Flow{
 		Source: "netflow9:" + remoteAddr.IP.String(),
 		TS:     baseTime,
@@ -204,7 +227,7 @@ func (c *collector) decodeNetFlow9Record(rec []byte, tmpl *template9, baseTime, 
 	var bytes, packets int64
 	var firstTime, lastTime uint32
 
-	for _, f := range tmpl.fields {
+	for _, f := range fields {
 		if pos+int(f.length) > len(rec) {
 			break
 		}
@@ -220,6 +243,14 @@ func (c *collector) decodeNetFlow9Record(rec []byte, tmpl *template9, baseTime, 
 		case NF9_IPV4_DST_ADDR:
 			if len(field) >= 4 {
 				dstIP = net.IP(field[:4]).String()
+			}
+		case NF9_IPV6_SRC_ADDR:
+			if len(field) >= 16 {
+				srcIP = net.IP(field[:16]).String()
+			}
+		case NF9_IPV6_DST_ADDR:
+			if len(field) >= 16 {
+				dstIP = net.IP(field[:16]).String()
 			}
 		case NF9_L4_SRC_PORT:
 			if len(field) >= 2 {
@@ -238,10 +269,8 @@ func (c *collector) decodeNetFlow9Record(rec []byte, tmpl *template9, baseTime, 
 				bytes = int64(binary.BigEndian.Uint32(field))
 			}
 		case NF9_OUT_BYTES:
-			if len(field) >= 4 {
-				// Some implementations report direction; we use IN as BytesIn
-				// and OUT or total as BytesOut
-			}
+			// Some implementations report direction; we use IN as BytesIn
+			// and OUT or total as BytesOut
 		case NF9_IN_PKTS:
 			if len(field) >= 4 {
 				packets = int64(binary.BigEndian.Uint32(field))
@@ -272,7 +301,7 @@ func (c *collector) decodeNetFlow9Record(rec []byte, tmpl *template9, baseTime, 
 	flow.Packets = packets
 
 	if firstTime > 0 {
-		flow.TS = (baseTime * 1000) - int64(sysUptime) + int64(firstTime)
+		flow.TS = (baseTime * 1000) - sysUptime + int64(firstTime)
 		if flow.TS < 0 {
 			flow.TS = baseTime
 		}
@@ -285,12 +314,4 @@ func (c *collector) decodeNetFlow9Record(rec []byte, tmpl *template9, baseTime, 
 	flow.Key = fmt.Sprintf("netflow9:%s:%d-%s:%d/%s@%d", srcIP, srcPort, dstIP, dstPort, proto, flow.TS)
 
 	return flow
-}
-
-// StoreTemplate stores a NetFlow v9 template for later use
-func (ex *exporterState) storeTemplate9(sourceID uint32, tmpl *template9) {
-	ex.mu.Lock()
-	defer ex.mu.Unlock()
-	key := fmt.Sprintf("%d,%d", sourceID, tmpl.domainID)
-	ex.templates9[key] = tmpl
 }
