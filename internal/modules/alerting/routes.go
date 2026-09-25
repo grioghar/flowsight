@@ -96,6 +96,8 @@ func (m *Module) registerRoutes() {
 		core.Doc("List all channel types with schemas grouped by family"))
 
 	// Channel CRUD operations
+	ctx.Route("GET", "/api/alerting/channels", m.apiGetChannels,
+		core.Doc("List all notification channels"))
 	ctx.Route("POST", "/api/alerting/channels", m.apiCreateChannel,
 		core.Write(), core.Needs("alerting.notify"),
 		core.Doc("Create a new notification channel"))
@@ -104,8 +106,16 @@ func (m *Module) registerRoutes() {
 	ctx.Route("PUT", "/api/alerting/channels/{id}", m.apiUpdateChannel,
 		core.Write(), core.Needs("alerting.notify"),
 		core.Doc("Update a notification channel"))
+	ctx.Route("DELETE", "/api/alerting/channels/{id}", m.apiDeleteChannel,
+		core.Write(), core.Needs("alerting.notify"),
+		core.Doc("Delete a notification channel"))
+	ctx.Route("POST", "/api/alerting/channels/{id}/test", m.apiTestChannel,
+		core.Write(),
+		core.Doc("Send a test message to a channel"))
 
 	// Rule CRUD operations
+	ctx.Route("GET", "/api/alerting/rules", m.apiGetRules,
+		core.Doc("List all alert rules"))
 	ctx.Route("POST", "/api/alerting/rules", m.apiCreateRule,
 		core.Write(), core.Needs("alerting.notify"),
 		core.Doc("Create a new alert rule"))
@@ -114,6 +124,9 @@ func (m *Module) registerRoutes() {
 	ctx.Route("PUT", "/api/alerting/rules/{id}", m.apiUpdateRule,
 		core.Write(), core.Needs("alerting.notify"),
 		core.Doc("Update an alert rule"))
+	ctx.Route("DELETE", "/api/alerting/rules/{id}", m.apiDeleteRule,
+		core.Write(), core.Needs("alerting.notify"),
+		core.Doc("Delete an alert rule"))
 
 	// Delivery log
 	ctx.Route("GET", "/api/alerting/deliveries", m.apiGetDeliveries,
