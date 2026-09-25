@@ -25,9 +25,10 @@ import (
 func init() { core.Register(func() core.Module { return &Module{} }) }
 
 type Module struct {
-	ctx     *core.Context
-	mu      sync.RWMutex
-	lastErr string
+	ctx              *core.Context
+	mu               sync.RWMutex
+	lastErr          string
+	deliveryEngine   *DeliveryEngine
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -47,6 +48,7 @@ func (m *Module) Info() core.ModuleInfo {
 
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
+	m.deliveryEngine = NewDeliveryEngine(200)
 
 	// Initialize channels and rules from KV if not present
 	if !ctx.Store.KVGet("alerting.channels", &[]Channel{}) {
@@ -63,15 +65,11 @@ func (m *Module) Setup(ctx *core.Context) error {
 	// Run rules every minute
 	ctx.Every("rules", time.Minute, m.evaluateRules)
 
-	// API routes
+	// Register new API routes
+	m.registerRoutes()
+
+	// Also keep old /api/alerting/status for backward compatibility
 	ctx.Route("GET", "/api/alerting/status", m.apiStatus, core.Doc("Channel status and recent notifications"))
-	ctx.Route("GET", "/api/alerting/channels", m.apiGetChannels, core.Doc("List all notification channels"))
-	ctx.Route("POST", "/api/alerting/channels", m.apiSetChannels, core.Write(), core.Needs("alerting.notify"), core.Doc("Replace notification channels"))
-	ctx.Route("DELETE", "/api/alerting/channels/{name}", m.apiDeleteChannel, core.Write(), core.Needs("alerting.notify"), core.Doc("Delete a notification channel"))
-	ctx.Route("POST", "/api/alerting/channels/test", m.apiTestChannel, core.Write(), core.Needs("alerting.notify"), core.Doc("Send test message to a channel"))
-	ctx.Route("GET", "/api/alerting/rules", m.apiGetRules, core.Doc("List all alert rules"))
-	ctx.Route("POST", "/api/alerting/rules", m.apiSetRules, core.Write(), core.Doc("Replace alert rules"))
-	ctx.Route("DELETE", "/api/alerting/rules/{name}", m.apiDeleteRule, core.Write(), core.Doc("Delete an alert rule"))
 	ctx.Route("GET", "/api/alerting/notifications", m.apiNotifications, core.Doc("Recent notifications"),
 		core.Params("limit", "rows"))
 
@@ -685,64 +683,6 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	}, nil
 }
 
-func (m *Module) apiSetChannels(r *core.Req) (any, error) {
-	var channels []Channel
-	if err := r.Decode(&channels); err != nil {
-		return nil, err
-	}
-
-	if err := m.ctx.Store.KVSet("alerting.channels", channels); err != nil {
-		return nil, err
-	}
-
-	return map[string]any{"ok": true}, nil
-}
-
-func (m *Module) apiTestChannel(r *core.Req) (any, error) {
-	body := r.Body()
-	chName, ok := body["channel"].(string)
-	if !ok {
-		return nil, core.BadRequest("channel name required")
-	}
-
-	ch := make([]Channel, 0)
-	m.ctx.Store.KVGet("alerting.channels", &ch)
-
-	var target *Channel
-	for i := range ch {
-		if ch[i].Name == chName {
-			target = &ch[i]
-			break
-		}
-	}
-
-	if target == nil {
-		return nil, core.NotFound("channel not found")
-	}
-
-	err := m.send(*target, "test", "FlowSight Test Alert", "This is a test message from your FlowSight alerting system.")
-	if err != nil {
-		m.mu.Lock()
-		m.lastErr = err.Error()
-		m.mu.Unlock()
-		return nil, core.Errorf(500, "send failed: %v", err)
-	}
-
-	return map[string]any{"ok": true}, nil
-}
-
-func (m *Module) apiSetRules(r *core.Req) (any, error) {
-	rules := make(map[string]Rule)
-	if err := r.Decode(&rules); err != nil {
-		return nil, err
-	}
-
-	if err := m.ctx.Store.KVSet("alerting.rules", rules); err != nil {
-		return nil, err
-	}
-
-	return map[string]any{"ok": true}, nil
-}
 
 func (m *Module) apiNotifications(r *core.Req) (any, error) {
 	limit := r.QInt("limit", 100, 1, 10000)
