@@ -1044,6 +1044,58 @@ device location links on the Devices page.
    placement is saved with its room and coordinates, linked to the device's network
    location on the Devices page.
 
+### Proxmox
+
+Your hypervisors, seen from the network side. With a Proxmox API token
+entered under *Settings › proxmox* (hosts, token id and secret, and the
+server certificate's SHA-256 fingerprint to pin, since Proxmox uses a
+self-signed certificate; the configuration guide has the `pveum` commands
+for a least-privilege token), FlowSight polls each node every few minutes:
+node health and version, every VM and container with its configuration,
+status, hardware addresses, and, where a QEMU guest agent answers, the
+guest's own addresses, operating system and hostname. Containers report
+their interfaces directly.
+
+What it learns flows into the rest of FlowSight. A guest's addresses gain
+its name (when no DHCP lease already names them), its maker reads
+"Proxmox VE qemu on <node>" or "lxc", its operating system comes from the
+agent, and the Devices page and the host page show node, type, VM ID and
+guest name under the device.
+
+**Notes.** With *write notes* on (off by default), FlowSight keeps a block
+inside each guest's Notes in the Proxmox web interface, between
+`<!-- flowsight:begin -->` and `<!-- flowsight:end -->`: the FlowSight
+name, class and zone, addresses, maker, first and last seen, traffic in the
+last day, open ports and OS guess from the latest scan, and a link back to
+the host page. Everything you wrote outside the markers is preserved; the
+block is rewritten only when its content changed, using the configuration
+digest so a concurrent edit is never overwritten. *Preview* shows exactly
+what would be written; a guest tagged `flowsight:off` or listed in
+*exclude VM IDs* is left alone.
+
+**Map.** The *Map* tab draws the guests grouped by node and the traffic
+between them: solid edges are connections FlowSight observed at the
+gateway, dashed edges are declared relationships from the Proxmox
+configuration (startup order, shared storage, shared bridges), dotted
+edges are what a VM reported from the inside. Edge width follows bytes and
+the label is the port. Hover a guest to see only its edges; click it for
+the requirements panel: cores and memory, the storage each disk lives on,
+bridges and VLAN tags, startup order and delays, who it talks to and who
+talks to it with ports, its external dependencies (top destinations outside
+the house), and what the guest agent reported. *Export JSON* saves the whole
+map; *Export requirements* renders the selected guest as a Markdown table.
+
+**What the map can and cannot see.** Traffic between two guests on the same
+bridge and subnet never crosses the gateway, so the flow probe cannot see
+it; observed edges cover traffic routed between your subnets and to the
+internet. With *Ask VMs for their connections* on (`probe_sockets`, off by
+default), FlowSight runs one fixed command, `ss -Htn state established`,
+inside each running VM through the guest agent and draws what the VM's own
+kernel reports, which does cover same-subnet traffic for VMs. That needs
+the VM.Monitor privilege on the token. Containers have no agent, so
+container-to-container traffic on one subnet appears only through declared
+relationships.
+
 ## Administration
 
 ### Reports
