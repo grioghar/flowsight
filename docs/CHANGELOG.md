@@ -12,6 +12,19 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251931
+
+**Notes write-back, whole.** The block written into a guest's Proxmox Notes
+now carries what FlowSight knows: its name, class and zone, addresses and
+hardware addresses, maker, OS from the agent, what Identify found (with
+open ports), traffic in the last day, first and last seen, agent state and
+a link back to the host page (set *FlowSight URL* under Settings \u203a
+proxmox). *Write* with no guest writes every eligible guest in the
+background, and every poll rewrites only the guests whose facts changed;
+the status card counts written, skipped and failed. Containers now carry
+their node name, and Proxmox tags separated by semicolons are read as
+separate tags, so `flowsight:off` works.
+
 ## 0.9.8r202609251924
 
 **The Proxmox map no longer holds up the Devices page.** The map held the

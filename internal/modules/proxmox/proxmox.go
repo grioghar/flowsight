@@ -36,6 +36,12 @@ type Module struct {
 	sockEdges     []Edge   // from the optional in-VM socket probe
 	sockNotes     []string // per-VM probe failures, for the status card
 	sockAt        int64
+	notesMu       sync.Mutex
+	notesWritten  int
+	notesSkippedN int
+	notesFailed   int
+	notesLastErr  string
+	notesAt       int64
 	polling       sync.Mutex
 }
 
@@ -108,6 +114,7 @@ func (m *Module) Info() core.ModuleInfo {
 			"exclude_vmids": []string{},
 			"name_guests":   true,
 			"probe_sockets": false,
+			"gateway_url":   "",
 		},
 		Schema: []core.SettingField{
 			{Key: "hosts", Label: "Proxmox nodes", Type: "list",
@@ -125,6 +132,7 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "guests or guests+nodes"},
 			{Key: "exclude_vmids", Label: "Exclude VMs (comma-separated vmids)", Type: "list"},
 			{Key: "name_guests", Label: "Use guest names when no lease hostname", Type: "bool"},
+			{Key: "gateway_url", Label: "FlowSight URL for links in Notes", Type: "string", Placeholder: "https://opnsense.example.lan", Help: "Used only to build the link back to the host page inside each guest's Notes."},
 			{Key: "probe_sockets", Label: "Ask VMs for their connections", Type: "bool", Help: "Off by default. Runs one fixed command (ss -Htn state established) inside running VMs through the guest agent, which needs the VM.Monitor privilege on the token. Shows container-to-VM and VM-to-VM traffic the gateway never sees."},
 		},
 	}
@@ -279,6 +287,18 @@ func (l *looseString) UnmarshalJSON(b []byte) error {
 }
 
 func (l looseString) String() string { return string(l) }
+
+// splitTags reads a Proxmox tag list, which is ";"-separated (","
+// accepted on the way in).
+func splitTags(s string) []string {
+	var out []string
+	for _, t := range strings.FieldsFunc(s, func(r rune) bool { return r == ';' || r == ',' || r == ' ' }) {
+		if t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
 
 // unwrapData returns the object inside {"data": ...} when the API wrapped
 // its answer, else the body as it came (pvesh output is unwrapped).
@@ -595,6 +615,9 @@ func (m *Module) doPoll() error {
 	// Save inventory
 	m.setInventory(inventory)
 
+	// Notes write-back: only guests whose block changed.
+	m.writeAllNotes(append([]Guest(nil), inventory.Guests...), false)
+
 	m.ctx.Store.KVSet("proxmox.inventory", inventory)
 
 	return nil
@@ -655,7 +678,7 @@ func (m *Module) pollHost(hostURL string, inv *Inventory, excludeVMIDs map[strin
 					Description: qData.Config.Description,
 					Cores:       qData.Config.Cores,
 					Memory:      int64(qData.Config.Memory),
-					Tags:        strings.Fields(qData.Tags),
+					Tags:        splitTags(qData.Tags),
 					OSType:      qData.Config.OSType,
 				}
 
@@ -736,10 +759,10 @@ func (m *Module) pollHost(hostURL string, inv *Inventory, excludeVMIDs map[strin
 				g := Guest{
 					VMID:   lxcData.VMID,
 					Type:   "lxc",
-					Node:   lxcData.Node,
+					Node:   nodeData.Node,
 					Name:   lxcData.Name,
 					Status: lxcData.Status,
-					Tags:   strings.Fields(lxcData.Tags),
+					Tags:   splitTags(lxcData.Tags),
 				}
 
 				// Get config for memory
@@ -932,6 +955,9 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		status["node_count"] = len(m.inventory.Nodes)
 		status["guest_count"] = len(m.inventory.Guests)
 	}
+	status["write_notes"] = core.Bool(m.ctx.Settings(), "write_notes", false)
+	status["notes"] = map[string]any{"written": m.notesWritten, "skipped": m.notesSkippedN, "failed": m.notesFailed, "last_error": m.notesLastErr, "at": m.notesAt}
+	status["sockets"] = map[string]any{"on": core.Bool(m.ctx.Settings(), "probe_sockets", false), "edges": len(m.sockEdges), "notes": m.sockNotes, "at": m.sockAt}
 
 	return status, nil
 }
@@ -979,44 +1005,108 @@ func (m *Module) apiNotesPreview(r *core.Req) (any, error) {
 
 func (m *Module) apiNotesWrite(r *core.Req) (any, error) {
 	if !core.Bool(m.ctx.Settings(), "write_notes", false) {
-		return nil, errors.New("notes writing is disabled")
+		return nil, errors.New("notes writing is disabled: turn on write notes under Settings \u203a proxmox")
 	}
-
 	var req struct {
 		VMID *int   `json:"vmid"`
 		Node string `json:"node"`
+		All  bool   `json:"all"`
 	}
-	if err := r.Decode(&req); err != nil {
-		return nil, err
+	_ = r.Decode(&req)
+	guests := m.snapshotGuests()
+	if len(guests) == 0 {
+		return nil, errors.New("no inventory yet; poll first")
 	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.inventory == nil {
-		return nil, errors.New("no inventory")
-	}
-
-	var guestToWrite *Guest
 	if req.VMID != nil {
-		for i := range m.inventory.Guests {
-			if m.inventory.Guests[i].VMID == *req.VMID && m.inventory.Guests[i].Node == req.Node {
-				guestToWrite = &m.inventory.Guests[i]
-				break
+		for i := range guests {
+			if guests[i].VMID == *req.VMID && (req.Node == "" || guests[i].Node == req.Node) {
+				if skip, why := m.notesSkipped(guests[i]); skip {
+					return nil, fmt.Errorf("not written: %s", why)
+				}
+				if err := m.writeGuestNotes(&guests[i]); err != nil {
+					return nil, err
+				}
+				m.mu.Lock()
+				m.notesWritten++
+				m.mu.Unlock()
+				return map[string]any{"written": 1, "vmid": *req.VMID}, nil
 			}
 		}
-	}
-
-	if guestToWrite == nil {
 		return nil, errors.New("guest not found")
 	}
+	// Everything, in the background; the status card reports progress.
+	go m.writeAllNotes(guests, true)
+	return map[string]any{"queued": len(guests)}, nil
+}
 
-	// Actually write the notes
-	if err := m.writeGuestNotes(guestToWrite); err != nil {
-		return nil, err
+// notesSkipped says whether a guest is kept out of the write-back, and why.
+func (m *Module) notesSkipped(g Guest) (bool, string) {
+	for _, t := range g.Tags {
+		if strings.EqualFold(t, "flowsight:off") {
+			return true, "tagged flowsight:off"
+		}
 	}
+	for _, v := range core.Strs(m.ctx.Settings(), "exclude_vmids") {
+		if strings.TrimSpace(v) == fmt.Sprintf("%d", g.VMID) {
+			return true, "listed in exclude_vmids"
+		}
+	}
+	return false, ""
+}
 
-	return map[string]bool{"written": true}, nil
+// writeAllNotes writes the block for every eligible guest whose content
+// changed since the last write (the hash is kept in the KV store), one
+// guest at a time. force rewrites unchanged ones too.
+func (m *Module) writeAllNotes(guests []Guest, force bool) {
+	if !core.Bool(m.ctx.Settings(), "write_notes", false) {
+		return
+	}
+	m.notesMu.Lock()
+	defer m.notesMu.Unlock()
+	hashes := map[string]string{}
+	_ = m.ctx.Store.KVGet("proxmox.notes.hashes", &hashes)
+	written, skipped, failed := 0, 0, 0
+	var lastErr string
+	for i := range guests {
+		g := guests[i]
+		if skip, _ := m.notesSkipped(g); skip {
+			skipped++
+			continue
+		}
+		key := fmt.Sprintf("%s/%s/%d", g.Node, g.Type, g.VMID)
+		block := m.buildNotesBlock(g)
+		// The timestamp line changes every time; hash the block without it.
+		sum := sha256.Sum256([]byte(stripUpdatedLine(block)))
+		h := hex.EncodeToString(sum[:8])
+		if !force && hashes[key] == h {
+			skipped++
+			continue
+		}
+		if err := m.writeGuestNotes(&g); err != nil {
+			failed++
+			lastErr = fmt.Sprintf("%s: %v", g.Name, err)
+			continue
+		}
+		hashes[key] = h
+		written++
+	}
+	_ = m.ctx.Store.KVSet("proxmox.notes.hashes", hashes)
+	m.mu.Lock()
+	m.notesWritten, m.notesSkippedN, m.notesFailed, m.notesLastErr, m.notesAt = written, skipped, failed, lastErr, time.Now().Unix()
+	m.mu.Unlock()
+}
+
+// stripUpdatedLine removes the "Updated ... by FlowSight" line so that a
+// block whose facts did not change hashes the same.
+func stripUpdatedLine(block string) string {
+	var out []string
+	for _, l := range strings.Split(block, "\n") {
+		if strings.HasPrefix(l, "_Updated ") {
+			continue
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
 }
 
 func (m *Module) findGuest(vmidStr, node string) (Guest, bool) {
@@ -1031,29 +1121,173 @@ func (m *Module) findGuest(vmidStr, node string) (Guest, bool) {
 	return Guest{}, false
 }
 
+// notesFacts is everything the block says, gathered before rendering so
+// the renderer is pure and testable.
+type notesFacts struct {
+	Guest      Guest
+	Device     string // FlowSight's name for it
+	Class      string
+	Zone       string
+	Vendor     string
+	FirstSeen  int64
+	LastSeen   int64
+	BytesIn    int64
+	BytesOut   int64
+	OSGuess    string
+	OSConf     float64
+	OpenPorts  []string
+	GatewayURL string
+	Now        time.Time
+}
+
+// gatherNotesFacts reads the device table, the traffic rollup and the latest
+// scan for the guest's addresses.
+func (m *Module) gatherNotesFacts(g Guest) notesFacts {
+	f := notesFacts{Guest: g, Now: time.Now(), GatewayURL: strings.TrimRight(core.Str(m.ctx.Settings(), "gateway_url", ""), "/")}
+	if m.ctx == nil || m.ctx.Store == nil {
+		return f
+	}
+	for _, mac := range g.MACs {
+		row, err := m.ctx.Store.Row(`SELECT hostname, class, zone, vendor, first_seen, last_seen FROM devices WHERE lower(mac)=?`, strings.ToLower(mac))
+		if err != nil || row == nil {
+			continue
+		}
+		f.Device, _ = row["hostname"].(string)
+		f.Class, _ = row["class"].(string)
+		f.Zone, _ = row["zone"].(string)
+		f.Vendor, _ = row["vendor"].(string)
+		f.FirstSeen = toInt64(row["first_seen"])
+		f.LastSeen = toInt64(row["last_seen"])
+		break
+	}
+	if len(g.IPs) > 0 {
+		ph := strings.TrimSuffix(strings.Repeat("?,", len(g.IPs)), ",")
+		args := []any{time.Now().Add(-24 * time.Hour).Unix()}
+		for _, ip := range g.IPs {
+			args = append(args, ip)
+		}
+		if row, err := m.ctx.Store.Row(`SELECT SUM(bytes_in) AS bi, SUM(bytes_out) AS bo FROM rollup_app WHERE bucket >= ? AND src_ip IN (`+ph+`)`, args...); err == nil && row != nil {
+			f.BytesIn, f.BytesOut = toInt64(row["bi"]), toInt64(row["bo"])
+		}
+		args = args[1:]
+		if row, err := m.ctx.Store.Row(`SELECT result_json FROM scans WHERE ip IN (`+ph+`) AND finished IS NOT NULL ORDER BY started DESC LIMIT 1`, args...); err == nil && row != nil {
+			if js, _ := row["result_json"].(string); js != "" {
+				var res struct {
+					OpenPorts []struct {
+						Port    int    `json:"port"`
+						Service string `json:"service"`
+					} `json:"open_ports"`
+					OSGuesses []struct {
+						OS         string  `json:"os"`
+						Confidence float64 `json:"confidence"`
+					} `json:"os_guesses"`
+				}
+				if json.Unmarshal([]byte(js), &res) == nil {
+					if len(res.OSGuesses) > 0 {
+						f.OSGuess, f.OSConf = res.OSGuesses[0].OS, res.OSGuesses[0].Confidence
+					}
+					for _, p := range res.OpenPorts {
+						if p.Service != "" {
+							f.OpenPorts = append(f.OpenPorts, fmt.Sprintf("%d %s", p.Port, p.Service))
+						} else {
+							f.OpenPorts = append(f.OpenPorts, fmt.Sprintf("%d", p.Port))
+						}
+					}
+				}
+			}
+		}
+	}
+	return f
+}
+
+func toInt64(v any) int64 {
+	switch x := v.(type) {
+	case int64:
+		return x
+	case int:
+		return int64(x)
+	case float64:
+		return int64(x)
+	}
+	return 0
+}
+
+func humanBytes(b int64) string {
+	const k = 1024
+	switch {
+	case b >= k*k*k:
+		return fmt.Sprintf("%.1f GB", float64(b)/(k*k*k))
+	case b >= k*k:
+		return fmt.Sprintf("%.1f MB", float64(b)/(k*k))
+	case b >= k:
+		return fmt.Sprintf("%.0f KB", float64(b)/k)
+	}
+	return fmt.Sprintf("%d B", b)
+}
+
+// renderNotesBlock is the Markdown Proxmox shows between the markers.
+func renderNotesBlock(f notesFacts) string {
+	g := f.Guest
+	var b bytes.Buffer
+	b.WriteString("<!-- flowsight:begin -->\n")
+	name := f.Device
+	if name == "" {
+		name = g.Name
+	}
+	b.WriteString(fmt.Sprintf("### FlowSight: %s\n\n", name))
+	b.WriteString("| | |\n|---|---|\n")
+	row := func(k, v string) {
+		if strings.TrimSpace(v) != "" {
+			b.WriteString(fmt.Sprintf("| %s | %s |\n", k, v))
+		}
+	}
+	kind := g.Type
+	if kind == "qemu" {
+		kind = "VM"
+	} else if kind == "lxc" {
+		kind = "container"
+	}
+	row("Guest", fmt.Sprintf("%s %d on %s", kind, g.VMID, g.Node))
+	if f.Class != "" || f.Zone != "" {
+		row("Class / zone", strings.TrimSpace(strings.Trim(f.Class+" / "+f.Zone, " /")))
+	}
+	row("Addresses", strings.Join(g.IPs, ", "))
+	row("Hardware", strings.Join(g.MACs, ", "))
+	row("Maker", f.Vendor)
+	if g.OS != "" {
+		row("OS (agent)", g.OS)
+	}
+	if g.Hostname != "" && g.Hostname != g.Name {
+		row("Hostname", g.Hostname)
+	}
+	if f.OSGuess != "" {
+		row("Identified as", fmt.Sprintf("%s (%.0f%%)", f.OSGuess, f.OSConf*100))
+	}
+	if len(f.OpenPorts) > 0 {
+		row("Open ports", strings.Join(f.OpenPorts, ", "))
+	}
+	if f.BytesIn+f.BytesOut > 0 {
+		row("Traffic, last 24 h", fmt.Sprintf("%s down, %s up", humanBytes(f.BytesIn), humanBytes(f.BytesOut)))
+	}
+	if f.FirstSeen > 0 {
+		row("First seen", time.Unix(f.FirstSeen, 0).UTC().Format("2006-01-02"))
+	}
+	if f.LastSeen > 0 {
+		row("Last seen", time.Unix(f.LastSeen, 0).UTC().Format("2006-01-02 15:04 UTC"))
+	}
+	if g.AgentState != "" {
+		row("Guest agent", g.AgentState)
+	}
+	if f.GatewayURL != "" && len(g.IPs) > 0 {
+		row("In FlowSight", fmt.Sprintf("%s/flowsight.php?page=hosts#host/%s", f.GatewayURL, g.IPs[0]))
+	}
+	b.WriteString(fmt.Sprintf("\n_Updated %s by FlowSight. Edit outside the markers; this block is rewritten._\n", f.Now.UTC().Format("2006-01-02 15:04 UTC")))
+	b.WriteString("<!-- flowsight:end -->\n")
+	return b.String()
+}
+
 func (m *Module) buildNotesBlock(guest Guest) string {
-	var buf bytes.Buffer
-	buf.WriteString("<!-- flowsight:begin -->\n")
-	buf.WriteString(fmt.Sprintf("**FlowSight:** %s\n\n", guest.Name))
-
-	if guest.Type != "" {
-		buf.WriteString(fmt.Sprintf("- **Type:** %s\n", guest.Type))
-	}
-	if len(guest.IPs) > 0 {
-		buf.WriteString(fmt.Sprintf("- **IPs:** %s\n", strings.Join(guest.IPs, ", ")))
-	}
-	if guest.Hostname != "" {
-		buf.WriteString(fmt.Sprintf("- **Hostname:** %s\n", guest.Hostname))
-	}
-	if guest.OS != "" {
-		buf.WriteString(fmt.Sprintf("- **OS:** %s\n", guest.OS))
-	}
-	if guest.AgentState != "" {
-		buf.WriteString(fmt.Sprintf("- **Agent:** %s\n", guest.AgentState))
-	}
-
-	buf.WriteString("\n<!-- flowsight:end -->\n")
-	return buf.String()
+	return renderNotesBlock(m.gatherNotesFacts(guest))
 }
 
 func (m *Module) writeGuestNotes(guest *Guest) error {
@@ -1062,7 +1296,10 @@ func (m *Module) writeGuestNotes(guest *Guest) error {
 		return errors.New("no hosts configured")
 	}
 
-	hostURL := hosts[0] // Use first host for now
+	hostURL := guest.HostURL
+	if hostURL == "" {
+		hostURL = hosts[0]
+	}
 	newBlock := m.buildNotesBlock(*guest)
 
 	// Get current config with digest
