@@ -1143,8 +1143,12 @@ type notesFacts struct {
 // gatherNotesFacts reads the device table, the traffic rollup and the latest
 // scan for the guest's addresses.
 func (m *Module) gatherNotesFacts(g Guest) notesFacts {
-	f := notesFacts{Guest: g, Now: time.Now(), GatewayURL: strings.TrimRight(core.Str(m.ctx.Settings(), "gateway_url", ""), "/")}
-	if m.ctx == nil || m.ctx.Store == nil {
+	f := notesFacts{Guest: g, Now: time.Now()}
+	if m.ctx == nil {
+		return f
+	}
+	f.GatewayURL = strings.TrimRight(core.Str(m.ctx.Settings(), "gateway_url", ""), "/")
+	if m.ctx.Store == nil {
 		return f
 	}
 	for _, mac := range g.MACs {
