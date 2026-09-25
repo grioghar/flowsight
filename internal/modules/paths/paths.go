@@ -269,44 +269,170 @@ func (m *Module) Setup(ctx *core.Context) error {
 	// Asking where routers really are, slowly and forever. See ipmap.go.
 	ctx.Every("locate", time.Minute, m.locateBatch)
 	ctx.Route("GET", "/api/paths/fcc/files", m.apiFCCFiles, core.Needs("paths.map"),
-		core.Doc("The FCC release's file catalogue from the last check"), core.Params("filter", "substring", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Query("filter", "string", "File name substring filter", false, "nbroadband"),
+		core.Query("limit", "integer", "Maximum files to return", false, 100),
+		core.Doc("List files from the FCC broadband deployment release with optional filtering"),
+		core.Returns("FCC file catalogue", map[string]any{
+			"files": []map[string]any{
+				{"name": "nbroadband_deployment_file1.zip", "size": 5000000},
+			},
+		}))
 	ctx.Route("GET", "/api/paths/fcc/summary", m.apiFCCSummary, core.Needs("paths.map"),
-		core.Doc("What was kept from the FCC release: national fixed-broadband providers and the origin state's census places"), core.Params("full", "1 for every provider"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Query("full", "boolean", "Include complete provider list (default false)", false, false),
+		core.Doc("Summarize fixed-broadband providers and census places from the FCC broadband map"),
+		core.Returns("FCC summary data", map[string]any{
+			"providers": []map[string]any{
+				{"id": "12345", "name": "ISP Name", "states": 5},
+			},
+			"census_places": 10000,
+		}))
 	ctx.Route("POST", "/api/paths/fcc/pull", m.apiFCCPull, core.Write(), core.Needs("paths.map"),
-		core.Doc("Run the monthly FCC pull now"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Trigger monthly FCC broadband map data pull and update local database"),
+		core.Body(),
+		core.Returns("Pull result", map[string]any{
+			"ok": true,
+			"downloaded": true,
+			"message": "FCC data updated",
+		}))
 	ctx.Route("POST", "/api/paths/fcc/check", m.apiFCCCheck, core.Write(), core.Needs("paths.map"),
-		core.Doc("Test the FCC broadband map credentials and record the current release"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Test FCC broadband map credentials and record the current available release"),
+		core.Body(),
+		core.Returns("Check result", map[string]any{
+			"ok": true,
+			"authenticated": true,
+			"current_release": "2024_12_01",
+		}))
 	ctx.Route("GET", "/api/paths/shodan", m.apiShodan, core.Needs("paths.map"),
-		core.Doc("Shodan record for a hop: InternetDB always, the keyed host record when a key is set; fetched now with now=1"),
-		core.Params("ip", "the address", "now", "1 to fetch if not cached"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Query("ip", "string", "IP address to look up in Shodan/InternetDB", true, "192.168.1.1"),
+		core.Query("now", "boolean", "Force refresh from Shodan even if cached", false, false),
+		core.Doc("Retrieve Shodan/InternetDB data for a network hop including services and vulnerabilities"),
+		core.Returns("Shodan record for address", map[string]any{
+			"ip": "192.168.1.1",
+			"hostnames": []string{"example.com"},
+			"ports": []int{80, 443},
+			"org": "Example ISP",
+			"country_code": "US",
+		}))
 	ctx.Route("GET", "/api/paths/geofeeds", m.apiGeofeeds, core.Needs("paths.map"),
-		core.Doc("RFC 8805 geofeeds discovered in registry objects, with fetch state"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("List RFC 8805 geofeeds discovered in WHOIS registry objects with their fetch state"),
+		core.Returns("Geofeed list", map[string]any{
+			"geofeeds": []map[string]any{
+				{"url": "https://example.com/geofeed.csv", "found": true, "updated": 1790376243},
+			},
+		}))
 	ctx.Route("GET", "/api/paths/talkers", m.apiTalkers, core.Needs("paths.map"),
-		core.Doc("Which devices talked to an endpoint and over which services (application, name, port)"),
-		core.Params("dst", "the endpoint", "hours", "window, default 24"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Query("dst", "string", "Destination IP address to analyze for talkers", true, "8.8.8.8"),
+		core.Query("hours", "integer", "Time window in hours for analysis (default 24)", false, 24),
+		core.Doc("List all devices and their applications that have traffic to a specific destination"),
+		core.Returns("Talking devices list", map[string]any{
+			"destination": "8.8.8.8",
+			"talkers": []map[string]any{
+				{"device": "MacBookPro", "apps": []string{"dns", "https"}, "bytes": 100000},
+			},
+		}))
 	ctx.Route("GET", "/api/paths/corrections", m.apiCorrections, core.Needs("paths.map"),
-		core.Doc("What the address database has been shown to get wrong: corrected prefixes and distrusted registrant coordinates"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("List corrections to address geolocation and IP prefix data learned from traffic analysis"),
+		core.Returns("Learned corrections", map[string]any{
+			"corrected_prefixes": []string{"203.0.113.0/24"},
+			"distrusted_locations": []map[string]any{
+				{"registrant": "Old Company Inc", "latitude": 0, "longitude": 0},
+			},
+		}))
 	ctx.Route("POST", "/api/paths/corrections/forget", m.apiForgetFix, core.Write(), core.Needs("paths.map"),
-		core.Doc("Forget one learned correction (prefix) or distrusted coordinate (key)"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Forget a learned correction to revert to database values"),
+		core.Body(
+			core.Fld("prefix", "string", false, "IP prefix to forget correction for", "203.0.113.0/24"),
+			core.Fld("registrant", "string", false, "Registrant name to forget distrust for", "Old Company Inc"),
+		),
+		core.Returns("Forget result", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/paths/status", m.apiStatus, core.Needs("paths.map"),
-		core.Doc("Whether tracing is on, how many destinations have a route, and when"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Get current tracing status including destination count and last trace time"),
+		core.Returns("Tracing status", map[string]any{
+			"tracing": true,
+			"destinations": 1000,
+			"last_trace": 1790376243,
+			"last_error": "",
+		}))
 	ctx.Route("GET", "/api/paths/destinations", m.apiDestinations, core.Needs("paths.map"),
-		core.Doc("Destinations with a measured route"), core.Params("limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Query("hours", "integer", "Time window in hours for traffic analysis (default 24)", false, 24),
+		core.Query("limit", "integer", "Maximum destinations to return (default 200)", false, 200),
+		core.Doc("List all destinations with measured routes and associated traffic metrics"),
+		core.Returns("Destination list with traffic", map[string]any{
+			"destinations": []map[string]any{
+				{"dst": "8.8.8.8", "hops": 12, "bytes_in": 500000, "bytes_out": 1000000, "country": "US"},
+			},
+		}))
 	ctx.Route("GET", "/api/paths/path", m.apiPath, core.Needs("paths.map"),
-		core.Doc("Every hop to one destination, with names and locations"), core.Params("dst", "destination"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/paths/who", m.apiWho, core.Needs("paths.map"), core.Params("dsts", "comma-separated destination addresses", "hours", "window, default 24"),
-		core.Doc("The devices whose traffic reached any of the given destinations: what a hop click on the map sets its device filter to"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Query("dst", "string", "Destination IP address to trace", true, "8.8.8.8"),
+		core.Query("device", "string", "Source device address to filter talkers", false, "192.168.1.10"),
+		core.Query("hours", "integer", "Time window in hours for talker analysis (default 24)", false, 24),
+		core.Doc("Retrieve complete hop-by-hop path to a destination with geolocation and latency data"),
+		core.Returns("Path with hops", map[string]any{
+			"destination": "8.8.8.8",
+			"hops": []map[string]any{
+				{"index": 0, "ip": "192.168.1.1", "country": "US", "latency": 10},
+			},
+			"talkers": []map[string]any{},
+		}))
+	ctx.Route("GET", "/api/paths/who", m.apiWho, core.Needs("paths.map"),
+		core.Query("dsts", "string", "Comma-separated destination IP addresses", true, "8.8.8.8,1.1.1.1"),
+		core.Query("hours", "integer", "Time window in hours for analysis (default 24)", false, 24),
+		core.Doc("List all devices whose traffic reached any of the given destination IP addresses"),
+		core.Returns("Devices reaching destinations", map[string]any{
+			"destinations": map[string]any{
+				"8.8.8.8": []map[string]any{
+					{"device": "MacBookPro", "bytes": 500000},
+				},
+			},
+		}))
 	ctx.Route("GET", "/api/paths/devices", m.apiDevices, core.Needs("paths.map"),
-		core.Doc("Devices whose traffic has a measured route, one entry per device"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("List all devices with measured network paths and their trace status"),
+		core.Returns("Device list with paths", map[string]any{
+			"devices": []map[string]any{
+				{"name": "MacBookPro", "ip": "192.168.1.10", "destinations": 50},
+			},
+		}))
 	ctx.Route("GET", "/api/paths/graph", m.apiGraph, core.Needs("paths.map"),
-		core.Doc("The whole picture as nodes and legs, with shared legs collapsed"),
-		core.Params("device", "source address", "country", "filter", "max_latency", "ms"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Query("device", "string", "Device address to filter nodes (comma-separated for multiple)", false, "192.168.1.10"),
+		core.Query("country", "string", "Country code to filter nodes", false, "US"),
+		core.Query("max_latency", "integer", "Maximum latency in milliseconds to include", false, 1000),
+		core.Query("max_hops", "integer", "Maximum hop count to include", false, 30),
+		core.Query("hours", "integer", "Time window in hours for traffic analysis (default 24)", false, 24),
+		core.Doc("Complete network graph as nodes and edges with location, latency and traffic data"),
+		core.Returns("Network topology graph", map[string]any{
+			"nodes": []map[string]any{
+				{"ip": "192.168.1.1", "name": "gateway", "country": "US", "latency": 5},
+			},
+			"edges": []map[string]any{},
+			"home": map[string]any{"country": "US"},
+		}))
 	ctx.Route("GET", "/api/paths/cables", m.apiCables, core.Needs("paths.map"),
-		core.Doc("The submarine cable map, simplified for drawing"), core.Params("detail", "points per cable"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Query("detail", "integer", "Number of points per submarine cable (more = more detailed)", false, 50),
+		core.Doc("Submarine cable map simplified for display with optional detail level"),
+		core.Returns("Submarine cable network", map[string]any{
+			"cables": []map[string]any{
+				{"name": "TAE", "points": []map[string]any{
+					{"lat": 0, "lon": 0},
+				}},
+			},
+		}))
 	ctx.Route("GET", "/api/paths/home", m.apiGetHome, core.Needs("paths.map"),
-		core.Doc("The origin the map is drawn from, and what could be detected for it"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Get the current map origin point and its detected or configured geolocation"),
+		core.Returns("Home location", map[string]any{
+			"latitude": 37.7749,
+			"longitude": -122.4194,
+			"country": "US",
+			"city": "San Francisco",
+			"detected": true,
+		}))
 	ctx.Route("POST", "/api/paths/home", m.apiSetHome, core.Write(), core.Needs("paths.map"),
-		core.Doc("Declare your location ({lat, lon}), or {clear:true} to go back to detecting it"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Set the map origin to a specific location or clear for automatic geolocation"),
+		core.Body(
+			core.Fld("latitude", "number", false, "Latitude coordinate", 37.7749),
+			core.Fld("longitude", "number", false, "Longitude coordinate", -122.4194),
+			core.Fld("clear", "boolean", false, "Clear custom location to use auto-detection", false),
+		),
+		core.Returns("Home location result", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "paths", Title: "Map", Group: "Monitor", Order: 50, Icon: "paths", Feature: "paths.map"})
 	return nil
 }
