@@ -33,6 +33,9 @@ type Module struct {
 	inventory     *Inventory
 	lastPollTime  int64
 	lastPollError string
+	sockEdges     []Edge   // from the optional in-VM socket probe
+	sockNotes     []string // per-VM probe failures, for the status card
+	sockAt        int64
 	polling       sync.Mutex
 }
 
@@ -74,6 +77,7 @@ type Guest struct {
 	NotesSyncedAt  int64                  `json:"notes_synced_at"`
 	DescriptionSet bool                   `json:"description_set"`
 	RawConfig      map[string]interface{} `json:"-"` // unpublished; used to parse declared requirements
+	HostURL        string                 `json:"-"` // which API host serves this guest
 }
 
 type GuestRef struct {
@@ -83,7 +87,6 @@ type GuestRef struct {
 	Name string `json:"name"`
 	OS   string `json:"os"`
 }
-
 
 func (m *Module) Info() core.ModuleInfo {
 	return core.ModuleInfo{
@@ -104,6 +107,7 @@ func (m *Module) Info() core.ModuleInfo {
 			"notes_targets": "guests",
 			"exclude_vmids": []string{},
 			"name_guests":   true,
+			"probe_sockets": false,
 		},
 		Schema: []core.SettingField{
 			{Key: "hosts", Label: "Proxmox nodes", Type: "list",
@@ -121,6 +125,7 @@ func (m *Module) Info() core.ModuleInfo {
 				Help: "guests or guests+nodes"},
 			{Key: "exclude_vmids", Label: "Exclude VMs (comma-separated vmids)", Type: "list"},
 			{Key: "name_guests", Label: "Use guest names when no lease hostname", Type: "bool"},
+			{Key: "probe_sockets", Label: "Ask VMs for their connections", Type: "bool", Help: "Off by default. Runs one fixed command (ss -Htn state established) inside running VMs through the guest agent, which needs the VM.Monitor privilege on the token. Shows container-to-VM and VM-to-VM traffic the gateway never sees."},
 		},
 	}
 }
@@ -185,7 +190,6 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	return nil
 }
-
 
 // Parsers
 
@@ -348,6 +352,51 @@ func (m *Module) makePinVerifier(fingerprint string) func([][]byte, [][]*x509.Ce
 	}
 }
 
+// httpClient is built from the settings as they are now. Proxmox speaks TLS
+// with a self-signed certificate on a private address, so trust is either
+// the pinned SHA-256 fingerprint of that certificate or, when the operator
+// has installed a real one, the system roots. Neither configured means no
+// connection: FlowSight never talks to a hypervisor unverified.
+func (m *Module) httpClient() (*http.Client, error) {
+	fp := normalizeFingerprint(core.Str(m.ctx.Settings(), "fingerprint", ""))
+	switch {
+	case fp == "invalid":
+		return nil, fmt.Errorf("proxmox: the certificate fingerprint must be the SHA-256 of the server certificate, 32 hex pairs")
+	case fp != "":
+		verify := m.makePinVerifier(fp)
+		if verify == nil {
+			return nil, fmt.Errorf("proxmox: the certificate fingerprint could not be parsed")
+		}
+		return &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, VerifyPeerCertificate: verify}}}, nil
+	case core.Bool(m.ctx.Settings(), "verify_tls", false):
+		return &http.Client{Timeout: 30 * time.Second}, nil
+	}
+	return nil, fmt.Errorf("proxmox: set the certificate fingerprint or turn on verify_tls; connections are never made unverified")
+}
+
+// normalizeFingerprint returns "" for none, "invalid" for something that is
+// not 32 hex pairs, else the colon-separated lower-case form.
+func normalizeFingerprint(s string) string {
+	h := strings.ToLower(strings.NewReplacer(":", "", " ", "", "-", "").Replace(strings.TrimSpace(s)))
+	if h == "" {
+		return ""
+	}
+	if len(h) != 64 {
+		return "invalid"
+	}
+	for _, c := range h {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return "invalid"
+		}
+	}
+	parts := make([]string, 0, 32)
+	for i := 0; i < 64; i += 2 {
+		parts = append(parts, h[i:i+2])
+	}
+	return strings.Join(parts, ":")
+}
+
 func (m *Module) get(hostURL, path string) ([]byte, error) {
 	u, err := url.Parse(hostURL)
 	if err != nil {
@@ -359,11 +408,10 @@ func (m *Module) get(hostURL, path string) ([]byte, error) {
 	tokenSecret := core.Str(m.ctx.Settings(), "token_secret", "")
 	req.Header.Set("Authorization", fmt.Sprintf("PVEAPIToken=%s=%s", tokenID, tokenSecret))
 
-	client := m.client
-	if !core.Bool(m.ctx.Settings(), "verify_tls", false) && core.Str(m.ctx.Settings(), "fingerprint", "") == "" {
-		client = m.insecureHTTP
+	client, err := m.httpClient()
+	if err != nil {
+		return nil, err
 	}
-
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -394,7 +442,11 @@ func (m *Module) put(hostURL, path string, form map[string]string) ([]byte, erro
 	tokenSecret := core.Str(m.ctx.Settings(), "token_secret", "")
 	req.Header.Set("Authorization", fmt.Sprintf("PVEAPIToken=%s=%s", tokenID, tokenSecret))
 
-	resp, err := m.client.Do(req)
+	client, err := m.httpClient()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -458,6 +510,7 @@ func (m *Module) doPoll() error {
 	// Save inventory
 	m.mu.Lock()
 	m.inventory = inventory
+	m.probeSockets(inventory)
 	m.lastPollTime = time.Now().Unix()
 	m.lastPollError = strings.Join(inventory.Errors, "; ")
 	m.mu.Unlock()
@@ -587,6 +640,7 @@ func (m *Module) pollHost(hostURL string, inv *Inventory, excludeVMIDs map[strin
 					}
 				}
 
+				g.HostURL = hostURL
 				inv.Guests = append(inv.Guests, g)
 			}
 		}
@@ -645,6 +699,7 @@ func (m *Module) pollHost(hostURL string, inv *Inventory, excludeVMIDs map[strin
 					}
 				}
 
+				g.HostURL = hostURL
 				inv.Guests = append(inv.Guests, g)
 			}
 		}
@@ -989,4 +1044,8 @@ func (m *Module) mergeNotesBlock(currentDesc, newBlock string) string {
 	before := currentDesc[:startIdx]
 	after := currentDesc[endIdx+len(end):]
 	return before + newBlock + after
+}
+
+func readAllLimited(resp *http.Response) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 }

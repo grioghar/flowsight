@@ -118,6 +118,8 @@ func (m *Module) apiMap(r *core.Req) (any, error) {
 	// Get declared edges and requirements from config
 	declaredEdges := m.getDeclaredEdges(guestByVMID)
 	resp.Edges = append(resp.Edges, declaredEdges...)
+	// What VMs report from the inside, when the socket probe is on.
+	resp.Edges = append(resp.Edges, m.socketEdges(ipToGuest)...)
 
 	// Get external dependencies
 	resp.External = m.getExternalDeps(hours, ipToGuest, guestByVMID)
@@ -168,6 +170,7 @@ func (m *Module) apiRequirements(r *core.Req) (any, error) {
 	var edges []Edge
 	edges = append(edges, m.getObservedEdges(hours, ipToGuest, guestByVMID)...)
 	edges = append(edges, m.getDeclaredEdges(guestByVMID)...)
+	edges = append(edges, m.socketEdges(ipToGuest)...)
 
 	req := m.buildRequirements(&guest, guestByVMID, edges, hours)
 	return req, nil
