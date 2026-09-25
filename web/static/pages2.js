@@ -112,7 +112,16 @@
     const [d, caps] = await Promise.all([get('/api/policy'), get('/api/policy/capabilities')]);
     const doc = Object.assign({ groups: {}, schedules: {}, policies: [] }, d.document || {}); doc.policies = doc.policies || []; doc.groups = doc.groups || {}; doc.schedules = doc.schedules || {};
     FS.policyEditor(null, doc, caps);
-    setTimeout(() => { const f = FS.$('#modal form'); if (!f) return; if (deny.apps) { f.apps.value = deny.apps.join('\n'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); } }, 50);
+    setTimeout(() => {
+      const f = FS.$('#modal form'); if (!f) return;
+      if (deny.apps) { f.apps.value = deny.apps.join('\n'); f.name.value = 'block-' + deny.apps[0].toLowerCase().replace(/[^a-z0-9]+/g, '-'); FS.$$('.tabs button', f)[1].click(); }
+      if (deny.members && f.members) { f.members.value = deny.members.join('\n'); }
+      if (deny.countries && deny.countries.length) {
+        if (f.countries) { f.countries.value = deny.countries.join('\n'); }
+        if (!f.name.value) f.name.value = 'block-' + deny.countries.join('-').toLowerCase();
+        if (!f.countries) FS.toast('Enter the countries on the Countries tab: ' + deny.countries.join(', '), false);
+      }
+    }, 50);
   };
 
   // ------------------------------------------------------------- Groups & Schedules

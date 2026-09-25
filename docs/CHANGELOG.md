@@ -12,6 +12,19 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252038
+
+**What leaves the country, per device.** Sessions now filter by the far
+end's country (`country=`) or by *Outside \<home\>* (`abroad=1`), where home
+is the country of the gateway's own public address; the server column shows
+the country as a pill that narrows the list. The DLP page has a *Leaving the
+country* card: per device, the foreign countries it reached with sessions
+and bytes, the destinations behind them, and a *Block* button that opens the
+policy editor pre-filled. The host page links to a device's foreign sessions.
+`GET /api/visibility/abroad` serves the per-device data. A how-to,
+`docs/HOWTO-IOT-ABROAD.md`, walks through seeing and blocking IoT traffic to
+other countries end to end.
+
 ## 0.9.8r202609252021
 
 **Alerting system complete: 54+ notification channels, flexible rules engine, delivery guarantees.**

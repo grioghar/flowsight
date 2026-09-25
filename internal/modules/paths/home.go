@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grioghar/flowsight/internal/core"
 )
@@ -274,4 +275,27 @@ func slackPhrase(slack float64) string {
 		return ""
 	}
 	return fmt.Sprintf(" (measured from %.0f km nearer, in case your own position is out)", slack)
+}
+
+// HomeCountry is the ISO 3166-1 alpha-2 code of the country this gateway's
+// public address is in, "" when it cannot be told (no database, no public
+// address yet). It is what "abroad" means elsewhere in FlowSight.
+func (m *Module) HomeCountry() string {
+	m.mu.Lock()
+	if m.homeCC != "" && time.Since(m.homeCCAt) < time.Hour {
+		cc := m.homeCC
+		m.mu.Unlock()
+		return cc
+	}
+	m.mu.Unlock()
+	cc := ""
+	if ip := m.publicAddress(); ip != "" && m.rdns != nil {
+		if info, ok := m.rdns.Lookup([]string{ip})[ip]; ok {
+			cc = strings.ToUpper(info.Country)
+		}
+	}
+	m.mu.Lock()
+	m.homeCC, m.homeCCAt = cc, time.Now()
+	m.mu.Unlock()
+	return cc
 }

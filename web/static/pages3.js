@@ -561,10 +561,11 @@
   FS.registerPage('egress', {
     title: 'DLP', refresh: 5,
     async render(el, ctx) {
-      const [live, sum, ev] = await Promise.all([
+      const [live, sum, ev, abroad] = await Promise.all([
         get('/api/egress/live?min_kb=' + (ctx.params.all ? 0 : 64)),
         get('/api/egress/summary'),
-        get('/api/egress/events?limit=200')]);
+        get('/api/egress/events?limit=200'),
+        get(`/api/visibility/abroad?${FS.since()}`)]);
       if (live.error && !live.transfers) { el.innerHTML = FS.err(live.error); return; }
       const rows = live.transfers || [];
       // Only connections this network opened count as data leaving. A server
@@ -612,6 +613,19 @@
         { empty: 'Nothing has crossed a threshold. Thresholds are in Settings, under egress.' }))}</div>
 
       <div class="help" style="margin-top:12px">${esc(live.note || '')} Sampled ${live.sampled ? ago(live.sampled) : 'never'}.</div>`;
+      // Which devices talk to other countries, and to whom. Built from the
+      // sessions themselves (each carries the far end's country), so it needs
+      // no extra database; "home" is the country this gateway sits in.
+      const homeCC = (abroad && abroad.home_country) || '';
+      const adev = (abroad && abroad.devices) || [];
+      el.innerHTML += `<div style="margin-top:14px">${card(`Leaving the country${homeCC ? ` (outside ${esc(homeCC)})` : ''}`, adev.length ? table(adev, [
+        { t: 'Device', f: x => FS.hostLink(x.ip, x.name) + (x.mac ? `<div class="muted small mono">${esc(x.mac)}</div>` : ''), sort: 'name' },
+        { t: 'Sessions abroad', f: x => `<a href="#flows?ip=${encodeURIComponent(x.ip)}&abroad=1">${num(x.sessions)}</a>`, num: true, sort: 'sessions' },
+        { t: 'Countries', f: x => (x.countries || []).map(c => `<span class="pill warn" title="${num(c.sessions)} sessions, ${bytes(c.bytes_in + c.bytes_out)}">${esc(c.country)} ${num(c.sessions)}</span>`).join(' ') },
+        { t: 'Talking to', f: x => (x.countries || []).slice(0, 3).map(c => `<div class="small"><b>${esc(c.country)}</b>: ${(c.destinations || []).slice(0, 3).map(d => `<a href="#flows?ip=${encodeURIComponent(x.ip)}&country=${esc(c.country)}" title="${esc(d.ip)}">${esc(d.domain || d.name || d.ip)}</a>`).join(', ')}</div>`).join('') },
+        { t: '', f: x => `<button class="btn small" data-block-abroad="${esc(x.ip)}" data-cc="${esc((x.countries || []).map(c => c.country).join(','))}" title="Open a policy denying these countries for this device">Block…</button>` }]) : `<div class="empty">${homeCC ? 'No device reached another country in this window.' : 'The country of this gateway is not known yet: turn on Country lookup under Settings › enrich so sessions carry a country and "home" can be told.'}</div>`,
+        `<span class="muted small">${num(adev.length)} devices · window ${FS.state.hours}h · <a href="#flows?abroad=1">all sessions outside the country</a></span>`)}</div>`;
+      FS.$$('[data-block-abroad]', el).forEach(b => b.onclick = () => FS.quickPolicy({ countries: b.dataset.cc.split(',').filter(Boolean), members: [b.dataset.blockAbroad] }));
 
       FS.$$('[data-stop]', el).forEach(b => b.onclick = async () => {
         if (!await FS.confirm(`Stop the transfer from ${b.dataset.stop} to ${b.dataset.peer}? The connection is dropped at the firewall. The device may open another one.`)) return;

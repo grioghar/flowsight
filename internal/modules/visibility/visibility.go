@@ -127,8 +127,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("catalog", time.Hour, m.loadCatalog)
 
 	ctx.Route("GET", "/api/visibility/summary", m.apiSummary, core.Doc("Throughput, active flows and hosts right now"))
+	ctx.Route("GET", "/api/visibility/abroad", m.apiAbroad, core.Doc("Per local device, the foreign countries it reached, sessions and bytes per country, and the destinations behind them"),
+		core.Params("hours", "window, default 24", "ip", "one device only"))
 	ctx.Route("GET", "/api/visibility/flows", m.apiFlows, core.Doc("Recent flows"),
-		core.Params("minutes", "window", "ip", "filter by either end", "app", "filter", "limit", "rows"))
+		core.Params("minutes", "window", "ip", "filter by either end", "app", "filter", "limit", "rows", "country", "far end in this country (ISO code)", "abroad", "1 = far end outside this gateway's country", "blocked", "1 = blocked only"))
 	ctx.Route("GET", "/api/visibility/apps", m.apiApps, core.Doc("Application breakdown over a window"),
 		core.Params("hours", "window", "ip", "one host"))
 	ctx.Route("GET", "/api/visibility/top", m.apiTop, core.Doc("Top hosts, applications, categories, destinations"),
@@ -587,6 +589,17 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 	if r.Q("blocked", "") != "" {
 		q += ` AND verdict='blocked'`
 	}
+	// Where the far end is. "country=DE" is one country; "abroad=1" is any
+	// country other than the one this gateway sits in.
+	if cc, _ := r.QSafe("country", "", 2); cc != "" {
+		q += ` AND upper(country)=?`
+		args = append(args, strings.ToUpper(cc))
+	}
+	home := m.homeCountry()
+	if r.Q("abroad", "") != "" && home != "" {
+		q += ` AND country<>'' AND upper(country)<>?`
+		args = append(args, home)
+	}
 	q += ` ORDER BY COALESCE(end_ts,ts) DESC LIMIT ?`
 	args = append(args, limit)
 	rows, err := m.ctx.Store.Rows(q, args...)
@@ -595,7 +608,115 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 	}
 	m.decorate(rows, "src_ip", "src_name")
 	m.decorate(rows, "dst_ip", "dst_name")
-	return map[string]any{"flows": rows}, nil
+	return map[string]any{"flows": rows, "home_country": home}, nil
+}
+
+// homeCountry asks the paths module where this gateway is.
+func (m *Module) homeCountry() string {
+	if h, ok := m.ctx.Service("home").(interface{ HomeCountry() string }); ok && h != nil {
+		return h.HomeCountry()
+	}
+	return ""
+}
+
+// apiAbroad answers "which of my devices talk to other countries, and to
+// whom": per local device, the foreign countries it reached in the window,
+// sessions and bytes per country, and the destinations behind them. Built
+// from the flow table (which carries the far end's country), so it needs
+// no database of its own. A device with no foreign traffic is absent.
+func (m *Module) apiAbroad(r *core.Req) (any, error) {
+	hours := r.Hours(24)
+	since := time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
+	ip, err := r.QSafe("ip", "", 64)
+	if err != nil {
+		return nil, err
+	}
+	home := m.homeCountry()
+	q := `SELECT src_ip, upper(country) AS cc, dst_ip, MAX(domain) AS domain, COUNT(*) AS sessions,
+		SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out, MAX(COALESCE(end_ts,ts)) AS last_seen
+		FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>''`
+	args := []any{since}
+	if home != "" {
+		q += ` AND upper(country)<>?`
+		args = append(args, home)
+	}
+	if ip != "" {
+		q += ` AND src_ip=?`
+		args = append(args, ip)
+	}
+	q += ` GROUP BY src_ip, cc, dst_ip ORDER BY sessions DESC LIMIT 5000`
+	rows, err := m.ctx.Store.Rows(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	type dest struct {
+		IP       string `json:"ip"`
+		Name     string `json:"name,omitempty"`
+		Domain   string `json:"domain,omitempty"`
+		Sessions int64  `json:"sessions"`
+		Bytes    int64  `json:"bytes"`
+	}
+	type country struct {
+		Country  string  `json:"country"`
+		Sessions int64   `json:"sessions"`
+		BytesIn  int64   `json:"bytes_in"`
+		BytesOut int64   `json:"bytes_out"`
+		LastSeen int64   `json:"last_seen"`
+		Dests    []*dest `json:"destinations"`
+	}
+	type device struct {
+		IP        string              `json:"ip"`
+		Name      string              `json:"name,omitempty"`
+		MAC       string              `json:"mac,omitempty"`
+		Sessions  int64               `json:"sessions"`
+		Countries []*country          `json:"countries"`
+		byCC      map[string]*country `json:"-"`
+	}
+	devs := map[string]*device{}
+	var order []string
+	for _, row := range rows {
+		src, _ := row["src_ip"].(string)
+		if src == "" || (m.identity != nil && !m.identity.IsLocal(src)) {
+			continue
+		}
+		cc, _ := row["cc"].(string)
+		d := devs[src]
+		if d == nil {
+			d = &device{IP: src, Name: m.name(src), byCC: map[string]*country{}}
+			if m.identity != nil {
+				d.MAC = m.identity.MAC(src)
+			}
+			devs[src] = d
+			order = append(order, src)
+		}
+		c := d.byCC[cc]
+		if c == nil {
+			c = &country{Country: cc}
+			d.byCC[cc] = c
+			d.Countries = append(d.Countries, c)
+		}
+		n := toI(row["sessions"])
+		c.Sessions += n
+		d.Sessions += n
+		c.BytesIn += toI(row["bytes_in"])
+		c.BytesOut += toI(row["bytes_out"])
+		if ls := toI(row["last_seen"]); ls > c.LastSeen {
+			c.LastSeen = ls
+		}
+		if len(c.Dests) < 5 {
+			dip, _ := row["dst_ip"].(string)
+			dom, _ := row["domain"].(string)
+			c.Dests = append(c.Dests, &dest{IP: dip, Name: m.name(dip), Domain: dom, Sessions: n, Bytes: toI(row["bytes_in"]) + toI(row["bytes_out"])})
+		}
+	}
+	out := make([]*device, 0, len(order))
+	for _, k := range order {
+		d := devs[k]
+		sort.Slice(d.Countries, func(i, j int) bool { return d.Countries[i].Sessions > d.Countries[j].Sessions })
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Sessions > out[j].Sessions })
+	return map[string]any{"home_country": home, "hours": hours, "devices": out}, nil
 }
 
 // topHostsBy answers "who does this": for each key (an app, a category, a

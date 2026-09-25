@@ -303,6 +303,7 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 |---|---|---|---|
 | GET | `/api/visibility/apps` | Application breakdown over a window | hours (window), ip (one host) |
 | GET | `/api/visibility/catalog` | Known applications and categories |  |
+| GET | `/api/visibility/abroad` | Per local device, the foreign countries it reached, sessions and bytes per country, and the destinations behind them | hours, ip |
 | GET | `/api/visibility/flows` | Recent flows | app (filter), ip (filter by either end), limit (rows), minutes (window) |
 | GET | `/api/visibility/host` | Everything about one host | hours (window), ip (address) |
 | GET | `/api/visibility/summary` | Throughput, active flows and hosts right now |  |

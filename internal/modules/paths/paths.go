@@ -52,7 +52,9 @@ type Module struct {
 	landErr        string
 	osmNets        []cableNet // OpenStreetMap telecom lines, at half weight
 	osm            osmState
-	osmUntil       time.Time      // do not ask Overpass again before this
+	osmUntil       time.Time // do not ask Overpass again before this
+	homeCC         string    // cached HomeCountry
+	homeCCAt       time.Time
 	osmPublicUntil time.Time      // the public service, when it is only the fallback
 	osmPublicUsed  int            // public fallbacks used in the current run
 	hopBoxes       map[string]int // placed hops per OSM region, from the last graph
@@ -256,6 +258,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("fccpull", 24*time.Hour, m.fccPull, core.Delayed())
 	_ = m.loadFCCSummary()
 	_ = m.loadRootSites()
+	// Where "home" is, as a country, for anything that asks "did this leave
+	// the country": the country the database gives this gateway's public
+	// address, cached for an hour.
+	ctx.Publish("home", m)
 	// The regions already on disk count from the start, not from the first
 	// job run twenty minutes in.
 	go func() { _ = m.loadOSM() }()
