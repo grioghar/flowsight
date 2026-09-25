@@ -100,7 +100,7 @@ func (p *provider) Compile(doc *core.PolicyDoc) (core.Artifact, error) {
 		}
 		var members []string
 		for _, m := range doc.Members(pol, res) {
-			if !excluded[m] {
+			if !excluded[m] || pol.Match.EvenExcluded {
 				members = append(members, m)
 			}
 		}

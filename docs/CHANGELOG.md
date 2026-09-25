@@ -12,6 +12,17 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252110
+
+**A policy whose members are all excluded now says so.** The IoT subnet on
+the live gateway is in the exclusions list to keep it out of web
+interception, and exclusions beat everything, so a country policy on
+`zone:iot` compiled to nothing without a word. The plan now carries a
+warning per policy (`warning`, `excluded` beside `members`), the Policies
+page shows *all members excluded*, and the Who tab gains **Apply even to
+hosts in the exclusions list**: with it the firewall and DNS rules reach
+excluded members; interception still never does. Documented in POLICY.md.
+
 ## 0.9.8r202609252100
 
 **Anycast is understood everywhere a country is shown or enforced.** Every

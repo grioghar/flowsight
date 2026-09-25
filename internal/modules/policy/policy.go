@@ -46,6 +46,7 @@ type Plan struct {
 	Providers []ProviderPlan `json:"providers"`
 	Unmet     []string       `json:"unmet"` // capabilities no provider offers
 	Errors    []string       `json:"errors"`
+	Warnings  []string       `json:"warnings,omitempty"`
 	Changes   int            `json:"changes"`
 	Policies  []PolicyStatus `json:"policies"`
 }
@@ -69,6 +70,10 @@ type PolicyStatus struct {
 	Requires []string `json:"requires"`
 	Unmet    []string `json:"unmet"`
 	Members  int      `json:"members"`
+	// Excluded counts members that are in the exclusions list; Warning is
+	// set when that leaves nothing for the firewall and DNS to enforce.
+	Excluded int    `json:"excluded,omitempty"`
+	Warning  string `json:"warning,omitempty"`
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -271,11 +276,25 @@ func (m *Module) plan(apply bool) (*Plan, error) {
 	res, _ := m.ctx.Service("member_resolver").(core.MemberResolver)
 	now := time.Now()
 	unmet := map[string]bool{}
+	excl := map[string]bool{}
+	for _, c := range doc.ExcludedCIDRs(res) {
+		excl[c] = true
+	}
 	for i := range doc.Policies {
 		pol := &doc.Policies[i]
+		mems := doc.Members(pol, res)
 		ps := PolicyStatus{Name: pol.Name, Enabled: pol.Enabled, Action: pol.Action,
 			Active: pol.Enabled && doc.Active(pol.Schedule, now), Requires: pol.Requirements(),
-			Members: len(doc.Members(pol, res))}
+			Members: len(mems)}
+		for _, mm := range mems {
+			if excl[mm] {
+				ps.Excluded++
+			}
+		}
+		if pol.Enabled && len(mems) > 0 && ps.Excluded == len(mems) && !pol.Match.EvenExcluded {
+			ps.Warning = "every member is in the exclusions list, so the firewall and DNS enforce nothing for this policy; tick \"even excluded hosts\" on it or change the exclusions"
+			p.Warnings = append(p.Warnings, pol.Name+": "+ps.Warning)
+		}
 		for _, c := range ps.Requires {
 			if !have[c] {
 				ps.Unmet = append(ps.Unmet, c)

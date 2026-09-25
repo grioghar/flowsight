@@ -13,7 +13,7 @@
       const plan = d.plan || {}; const status = {}; (plan.policies || []).forEach(p => status[p.name] = p);
       const provs = (caps.providers || []).map(p => `${esc(p.name)} <span class="muted small">${(p.capabilities || []).join(', ')}</span>`).join(' · ');
       const enforce = d.enforce;
-      const banner = enforce ? `<div class="card" style="border-color:var(--ok)"><b>Enforcing.</b> Every provider is reconciled with this document about once a minute. ${plan.errors && plan.errors.length ? `<span class="sev-high">Last plan had errors: ${esc(plan.errors.join('; '))}</span>` : ''}</div>`
+      const banner = enforce ? `<div class="card" style="border-color:var(--ok)"><b>Enforcing.</b> Every provider is reconciled with this document about once a minute. ${plan.errors && plan.errors.length ? `<span class="sev-high">Last plan had errors: ${esc(plan.errors.join('; '))}</span>` : ''}${plan.warnings && plan.warnings.length ? `<div class="sev-medium small" style="margin-top:6px">${esc(plan.warnings.join(' · '))}</div>` : ''}</div>`
         : `<div class="card" style="border-color:var(--warn)"><b>Monitor mode.</b> Policies are compiled and planned but nothing is written to a backend until you turn on <a href="#modules/policy">Enforce policy</a>. ${d.error ? `<span class="sev-high">Document error: ${esc(d.error)}</span>` : ''}</div>`;
       const summary = (p) => {
         const bits = [];
@@ -37,7 +37,7 @@
         card(`${doc.policies.length} policies (evaluated in order)`, table(doc.policies, [
           { t: '', f: (p, i) => `<button class="btn small" data-move="up" data-name="${esc(p.name)}">↑</button> <button class="btn small" data-move="down" data-name="${esc(p.name)}">↓</button>`, w: '80px' },
           { t: 'Policy', f: p => `<b>${esc(p.name)}</b>${p.description ? `<div class="muted small">${esc(p.description)}</div>` : ''}`, sort: 'name' },
-          { t: 'State', f: p => { const s = status[p.name] || {}; return (p.enabled ? (s.active === false ? pill('scheduled off', '') : pill('on', 'ok')) : pill('disabled', 'warn')) + (p.action === 'monitor' ? ' ' + pill('monitor', 'info') : '') + ((s.unmet || []).length ? ' ' + pill('unmet: ' + s.unmet.join(', '), 'bad') : ''); } },
+          { t: 'State', f: p => { const s = status[p.name] || {}; return (p.enabled ? (s.active === false ? pill('scheduled off', '') : pill('on', 'ok')) : pill('disabled', 'warn')) + (p.action === 'monitor' ? ' ' + pill('monitor', 'info') : '') + ((s.unmet || []).length ? ' ' + pill('unmet: ' + s.unmet.join(', '), 'bad') : '') + (s.warning ? ` <span class="pill bad" title="${esc(s.warning)}">all members excluded</span>` : ''); } },
           { t: 'Applies to', f: p => esc(who(p)) + (p.schedule ? ` <span class="muted small">· ${esc(p.schedule)}</span>` : '') },
           { t: 'Denies', f: summary },
           { t: '', f: p => `<button class="btn small" data-edit="${esc(p.name)}">Edit</button> <button class="btn small danger" data-del="${esc(p.name)}">Delete</button>` }]), '') +
@@ -70,6 +70,7 @@
         <div class="check"><input type="checkbox" name="all" ${pol.match.all ? 'checked' : ''}><span>Everyone on the local networks</span></div>
         <label>Groups</label><select name="groups" multiple size="${Math.min(6, Math.max(2, groups.length))}">${opts(groups, pol.match.groups)}</select><div class="help">Manage groups under Groups &amp; Schedules.</div>
         <label>Extra members</label><textarea name="members" placeholder="10.0.0.5&#10;10.0.1.0/24&#10;mac:aa:bb:cc:dd:ee:ff&#10;device:kids-ipad">${esc(list(pol.match.members))}</textarea>
+        <div class="check"><input type="checkbox" name="even_excluded" ${pol.match.even_excluded ? 'checked' : ''}><span>Apply even to hosts in the exclusions list (firewall and DNS rules only; excluded hosts are still never intercepted). Needed when a whole subnet is excluded from interception but should still be subject to a port, internet or country rule.</span></div>
         <label>Schedule</label><select name="schedule"><option value="">always</option>${opts(schedules, [pol.schedule])}</select>
       </div>
       <div data-pane="what" hidden>
@@ -138,7 +139,7 @@
         const lines = (n) => f[n].value.split(/\n|,/).map(x => x.trim()).filter(Boolean);
         const multi = (n) => Array.from(f[n].selectedOptions).map(o => o.value);
         const out = { name: f.name.value.trim(), description: f.description.value.trim(), enabled: f.enabled.checked, action: f.action.value,
-          match: { all: f.all.checked, groups: multi('groups'), members: lines('members') }, schedule: f.schedule.value,
+          match: { all: f.all.checked, groups: multi('groups'), members: lines('members'), even_excluded: f.even_excluded.checked }, schedule: f.schedule.value,
           deny: { apps: lines('apps'), app_categories: multi('app_categories'), ports: lines('ports'), internet: f.internet.checked, categories: multi('categories'), domains: lines('domains'), tlds: lines('tlds'), countries: f.countries_except.checked ? [] : multi('countries'), countries_except: f.countries_except.checked ? multi('countries') : [] },
           allow: { apps: lines('allow_apps'), domains: lines('allow_domains') }, tls: { inspect: f.inspect.checked, bypass: lines('bypass') },
           safe_search: f.safe_search.checked, youtube: f.youtube.value };

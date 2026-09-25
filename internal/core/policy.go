@@ -66,6 +66,12 @@ type Match struct {
 	All     bool     `json:"all,omitempty"`
 	Groups  []string `json:"groups,omitempty"`
 	Members []string `json:"members,omitempty"`
+	// EvenExcluded applies the policy's firewall and DNS rules to members
+	// that are in the exclusions list too. Exclusions exist to keep hosts out
+	// of interception, and a whole subnet is often listed for that reason;
+	// without this switch such a subnet can never be the subject of a port,
+	// internet or country rule. Excluded hosts are still never intercepted.
+	EvenExcluded bool `json:"even_excluded,omitempty"`
 }
 
 // Deny lists what the policy refuses. Apps and AppCategories use nDPI names;

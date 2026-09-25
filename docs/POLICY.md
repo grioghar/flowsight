@@ -11,6 +11,7 @@ groups:
   kids:
     description: Children's devices
     members: [10.0.1.20, "mac:aa:bb:cc:dd:ee:ff", "device:kids-ipad", "zone:iot"]
+    # even_excluded: true                # firewall/DNS rules apply to excluded members too
 schedules:
   school-nights:
     windows:
@@ -72,7 +73,14 @@ than an error.
 ## Order and precedence
 
 Policies are evaluated in the order listed; the UI has move buttons. Within a
-policy, `allow` beats `deny`. Exclusions beat everything.
+policy, `allow` beats `deny`. Exclusions beat everything, with one deliberate
+exception: a policy with `match.even_excluded: true` (*Apply even to hosts in
+the exclusions list* on the Who tab) still gets its firewall and DNS rules
+for excluded members. Exclusions are usually there to keep a subnet out of
+interception; without the switch that subnet could never be the subject of
+a port, internet or country rule. Excluded hosts are never intercepted
+whatever the policy says. The plan warns, and the Policies page shows *all
+members excluded*, when exclusions leave a policy with nothing to enforce.
 
 ## Country-based blocking
 
