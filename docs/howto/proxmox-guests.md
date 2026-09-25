@@ -4,6 +4,11 @@ Inventory your Proxmox VMs and containers in FlowSight, view the dependency map,
 
 **Tier**: Pro
 
+
+![Proxmox: guests, facts from the guest agent and the dependency map.](img/proxmox.png)
+
+*Proxmox: guests, facts from the guest agent and the dependency map.*
+
 ## Prerequisites
 
 - A Proxmox cluster or standalone Proxmox node

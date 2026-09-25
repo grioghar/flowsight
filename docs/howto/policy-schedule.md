@@ -2,6 +2,15 @@
 
 Create a time-based policy that blocks specific applications or web categories for a group of devices on a recurring schedule.
 
+
+![Policies in evaluation order, with the Firewall tables and rules card at the foot.](img/policies.png)
+
+*Policies in evaluation order, with the Firewall tables and rules card at the foot.*
+
+![Groups and schedules: who a policy applies to and when.](img/groups.png)
+
+*Groups and schedules: who a policy applies to and when.*
+
 ## Prerequisites
 
 - You have identified the devices or zone to protect

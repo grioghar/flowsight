@@ -5,6 +5,15 @@ talk to servers in other countries, what exactly are they doing, and how do I
 stop it at the firewall?* It uses four FlowSight pages and takes about ten
 minutes the first time.
 
+
+![Sessions filtered to far ends outside the home country; anycast far ends are shown apart and never count as abroad.](img/sessions-abroad.png)
+
+*Sessions filtered to far ends outside the home country; anycast far ends are shown apart and never count as abroad.*
+
+![The Leaving the country card on the DLP page, with Block… per device.](img/dlp.png)
+
+*The Leaving the country card on the DLP page, with Block… per device.*
+
 ## What you need switched on
 
 1. **Country lookup.** *Administration › Settings › enrich* › turn on *Country

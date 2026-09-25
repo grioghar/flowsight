@@ -4,6 +4,11 @@ Import a floor plan, place devices on it, and use the spatial view to understand
 
 **Tier**: Pro
 
+
+![Space: the scanned floor plan with devices placed on it.](img/space.png)
+
+*Space: the scanned floor plan with devices placed on it.*
+
 ## Prerequisites
 
 - A floor plan image (PNG, JPG, or PDF of your home/office)

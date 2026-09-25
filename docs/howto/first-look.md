@@ -2,6 +2,11 @@
 
 The Overview page is your network at a glance. Read the cards, set the time window, and understand the key metrics.
 
+
+![The Overview: throughput, active flows and hosts, blocked and threats, then top hosts, applications and categories for the chosen window.](img/overview.png)
+
+*The Overview: throughput, active flows and hosts, blocked and threats, then top hosts, applications and categories for the chosen window.*
+
 ## Prerequisites
 
 - FlowSight is capturing traffic (at least 10 minutes of history)

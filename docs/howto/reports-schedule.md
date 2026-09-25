@@ -2,6 +2,11 @@
 
 Define a report template with custom sections, schedule it to run automatically, and receive the results via email or API.
 
+
+![Reports: definitions, runs and the formats each run produced.](img/reports.png)
+
+*Reports: definitions, runs and the formats each run produced.*
+
 ## Prerequisites
 
 - FlowSight has captured traffic (at least 1 week of history for meaningful reports)

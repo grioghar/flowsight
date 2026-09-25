@@ -2,6 +2,11 @@
 
 Use the FlowSight API to read data, manage policies, and audit changes programmatically.
 
+
+![The API explorer: every route with its parameters, request fields, response example and a curl line for this host.](img/api.png)
+
+*The API explorer: every route with its parameters, request fields, response example and a curl line for this host.*
+
 ## Prerequisites
 
 - FlowSight is running and accessible

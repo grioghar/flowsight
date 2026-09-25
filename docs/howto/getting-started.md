@@ -2,6 +2,11 @@
 
 Run the setup wizard to enable FlowSight to see traffic, capture web requests, and perform TLS inspection.
 
+
+![The setup wizard under Administration: traffic sources, DNS, interception and the CA, in order.](img/setup.png)
+
+*The setup wizard under Administration: traffic sources, DNS, interception and the CA, in order.*
+
 ## Prerequisites
 
 - FlowSight is installed on your gateway

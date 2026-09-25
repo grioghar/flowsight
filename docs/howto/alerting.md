@@ -2,6 +2,11 @@
 
 Configure alert channels and rules to be notified of suspicious activity, policy violations, and findings.
 
+
+![Alerting: channels, rules and recent deliveries.](img/alerting.png)
+
+*Alerting: channels, rules and recent deliveries.*
+
 ## Prerequisites
 
 - FlowSight is capturing traffic

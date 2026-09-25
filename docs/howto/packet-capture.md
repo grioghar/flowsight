@@ -2,6 +2,11 @@
 
 Use Packet Inspection to capture network traffic from a device, view live sessions, and download a pcap file for deeper analysis.
 
+
+![Packet Inspection: the capture ring, live sessions and the pcap download.](img/packet-inspection.png)
+
+*Packet Inspection: the capture ring, live sessions and the pcap download.*
+
 ## Prerequisites
 
 - FlowSight is capturing traffic

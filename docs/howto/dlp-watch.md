@@ -2,6 +2,11 @@
 
 Use the DLP (Data Loss Prevention) page to identify large file transfers, watch for repeated transfers to a destination, and stop them in flight.
 
+
+![DLP: what is leaving now, by destination kind and by device, watched transfers, and the Leaving the country card.](img/dlp.png)
+
+*DLP: what is leaving now, by destination kind and by device, watched transfers, and the Leaving the country card.*
+
 ## Prerequisites
 
 - Traffic is being captured (at least 1 hour)

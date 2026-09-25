@@ -2,6 +2,11 @@
 
 Turn on TLS inspection for a specific device to see inside encrypted traffic, and add exceptions for sites that should not be inspected.
 
+
+![Stateful Packet Inspection: certificates and TLS posture, per device.](img/tls.png)
+
+*Stateful Packet Inspection: certificates and TLS posture, per device.*
+
 ## Prerequisites
 
 - Web interception is enabled in *Administration › Settings › web*

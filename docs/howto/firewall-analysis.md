@@ -2,6 +2,11 @@
 
 Use the Firewall Analysis Engine (FAE) to diagnose why traffic was blocked, understand firewall rules, and validate policies.
 
+
+![Firewall Analysis Engine: findings, the risk score, and rules with live counters.](img/fae.png)
+
+*Firewall Analysis Engine: findings, the risk score, and rules with live counters.*
+
 ## Prerequisites
 
 - A policy with country, domain, category, or application rules is active

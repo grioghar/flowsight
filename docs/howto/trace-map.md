@@ -2,6 +2,11 @@
 
 Find where a server or application really lives using the Map page: see the route from your gateway to its location, understand anycast, and check latency.
 
+
+![The Map with a route chosen: the trail below the map, hop by hop, with anycast and plausibility explained.](img/map.png)
+
+*The Map with a route chosen: the trail below the map, hop by hop, with anycast and plausibility explained.*
+
 ## Prerequisites
 
 - Traffic is being captured

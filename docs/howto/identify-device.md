@@ -2,6 +2,15 @@
 
 Use network scanning and fingerprinting to name an unknown device, and assign it to a zone.
 
+
+![Devices: what each one is, its zone, and the Identify button for the ones nobody has named.](img/devices.png)
+
+*Devices: what each one is, its zone, and the Identify button for the ones nobody has named.*
+
+![Zones: the network split into Personal, Infrastructure, IoT, Media and Unidentified.](img/zones.png)
+
+*Zones: the network split into Personal, Infrastructure, IoT, Media and Unidentified.*
+
 ## Prerequisites
 
 - The device has connected to the network and sent some traffic

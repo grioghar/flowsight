@@ -2,6 +2,15 @@
 
 Find a device on your network and review all its traffic: what it connects to, what applications it runs, and when.
 
+
+![IP Addresses: one row per address, or one per device with the box ticked; names carry their source.](img/ip-addresses.png)
+
+*IP Addresses: one row per address, or one per device with the box ticked; names carry their source.*
+
+![A device page: sessions, applications, sites, DNS and the links to its sessions abroad and its baseline.](img/device-page.png)
+
+*A device page: sessions, applications, sites, DNS and the links to its sessions abroad and its baseline.*
+
 ## Prerequisites
 
 - Traffic is being captured

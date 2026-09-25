@@ -2,6 +2,11 @@
 
 After you create a policy, open the Matches page to see which sessions and firewall packets it matched, and understand what it is actually doing.
 
+
+![Policy matches: what the rule catches per device from the session table, and beside it what pf logged for the rule.](img/policy-matches.png)
+
+*Policy matches: what the rule catches per device from the session table, and beside it what pf logged for the rule.*
+
 ## Prerequisites
 
 - You have created at least one policy with a country rule, domain list, category, or application filter
