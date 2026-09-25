@@ -12,6 +12,20 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609250004
+
+**Identify names the device, not just the ports.** The first run against an
+Amazon speaker found 145 filtered ports and said nothing, because the
+speaker's only open ports (55442/55443, Alexa's local control) are not in
+the top hundred and nothing put the answers next to what the inventory
+knew. The identify profile now also scans the consumer and appliance ports
+(Alexa, Cast, Roku, Sonos, AirPlay, Kasa, Tuya, Plex, Home Assistant,
+Proxmox, printers, consoles), and a signature engine ranks what the device
+is from the open-port shapes, the maker behind the hardware address, the
+DHCP fingerprint and vendor class, the name it gave itself, mDNS model
+strings, the reply TTL and the banners, each guess with its evidence. The
+saved result now carries its finish time.
+
 ## 0.9.8r202609242356
 
 **The scan switch is its own switch.** The scan module's on/off setting was

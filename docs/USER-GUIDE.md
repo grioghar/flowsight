@@ -910,6 +910,14 @@ on the LAN explains to an unplaced device what happens next.
 
 ### Scan
 
+**Identify** on a Devices row or a host page runs the fast profile and then
+says what the device most likely is, ranked, each guess with its evidence:
+an Amazon device with 55443 open is an Echo; 8008/8009 is a Cast device;
+8060 a Roku; 1400 a Sonos; 62078 an iPhone or iPad; 9999 a Kasa plug; 6668 a
+Tuya device; 32400 a Plex server, and so on, combined with the maker behind
+the hardware address, the DHCP fingerprint and vendor class, the device's
+own name, mDNS model strings, the reply TTL and any banners.
+
 Active scanning for local devices: ICMP, TCP/UDP probes, service banners, and
 OS fingerprinting. Restricted to locally-known networks; off by default. Each
 host can be scanned on demand with the **Identify** button (on the Devices or

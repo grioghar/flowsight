@@ -456,6 +456,9 @@ func (m *Module) processQueue() {
 		job.Started = time.Now()
 		job.Result = m.performScan(job)
 		job.Finished = time.Now()
+		if job.Result != nil {
+			job.Result.Finished = job.Finished
+		}
 		job.status = "done"
 
 		// Save result
@@ -513,6 +516,7 @@ func (m *Module) performScan(job *scanJob) *ScanResult {
 	// OS fingerprinting
 	if m.osProbe {
 		m.guessOS(result)
+		m.identifyDevice(result)
 	}
 
 	// Try nmap if available
@@ -532,8 +536,9 @@ func (m *Module) performIdentifyScan(ctx context.Context, result *ScanResult) *S
 	// ICMP probe with TTL
 	m.probeICMP(ctx, result)
 
-	// TCP scan on top 100 ports
-	m.probeTCP(ctx, result, top100Ports)
+	// TCP scan on the top 100 ports plus the consumer and appliance ports
+	// that name a device (Alexa, Cast, Roku, Sonos, Kasa, Tuya, AirPlay...).
+	m.probeTCP(ctx, result, append(append([]int{}, top100Ports...), iotPorts...))
 
 	// UDP identity probes only (DNS, NTP, SNMP, SSDP, mDNS, NetBIOS)
 	identityUDPProbes := map[int]string{
@@ -596,6 +601,7 @@ func (m *Module) performIdentifyScan(ctx context.Context, result *ScanResult) *S
 	// OS fingerprinting
 	if m.osProbe {
 		m.guessOS(result)
+		m.identifyDevice(result)
 	}
 
 	// Try nmap with fast options
