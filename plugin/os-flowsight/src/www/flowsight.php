@@ -170,12 +170,15 @@ if (isset($_GET["app"])) {
     }
     $csrf = (new LegacyCSRF())->getToken();
     $hostTheme = (isset($_GET["theme"]) && in_array($_GET["theme"], ["light", "dark"], true)) ? $_GET["theme"] : "";
-    $boot = "<script>window.FS_API_BASE='flowsight.php?api=';window.FS_CSRF=" . json_encode($csrf["token"])
+    /* The one inline script (the boot values) carries a per-response nonce, so
+     * the policy can refuse every other inline script. */
+    $nonce = rtrim(strtr(base64_encode(random_bytes(18)), '+/', '-_'), '=');
+    $boot = "<script nonce=\"" . $nonce . "\">window.FS_API_BASE='flowsight.php?api=';window.FS_CSRF=" . json_encode($csrf["token"])
         . ";window.FS_HOST_THEME=" . json_encode($hostTheme) . ";</script>";
     $html = str_replace("/static/", "flowsight.php?asset=", $out);
     $html = str_replace("<head>", "<head>" . $boot, $html);
     header("Content-Type: text/html; charset=utf-8");
-    header("Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+    header("Content-Security-Policy: default-src 'none'; script-src 'self' 'nonce-" . $nonce . "'; style-src 'self' 'unsafe-inline'; "
         . "img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'self'");
     echo $html;
     exit;

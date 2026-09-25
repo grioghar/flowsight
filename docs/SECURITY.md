@@ -411,3 +411,9 @@ binary before it replaces the running daemon.
 **Proxmox Notes.** Every value taken from a device (its name, hostname,
 addresses, banners) is escaped before it is written into a guest's Notes: no
 pipes, newlines, HTML, backticks or marker text can come from a device.
+
+**Content-Security-Policy.** Both the daemon's page and the OPNsense page
+allow scripts only from the app's own files; the OPNsense page adds a
+per-response nonce for the single inline boot script. No inline event
+handlers exist in the UI, and `web/uitest/csp-inline.js` fails the test run
+if one is introduced.

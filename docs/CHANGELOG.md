@@ -12,6 +12,16 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252000
+
+**No inline scripts anywhere.** Every inline event handler in the web pages
+(the modal Close buttons, the whole Proxmox page) is gone, replaced by
+data attributes and delegated listeners, and a test fails the build if one
+comes back. The OPNsense page now serves the app under a Content-Security-
+Policy whose script source is the app's own files plus a per-response nonce
+for the boot values, with `unsafe-inline` removed for scripts; the daemon's
+own page was already strict. Plugin page file and static files.
+
 ## 0.9.8r202609251958
 
 **Security review, first fixes.** A code review of FlowSight found that

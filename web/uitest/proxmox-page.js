@@ -5,15 +5,24 @@ var handlers = {};
 function mkEl(){ return { innerHTML:'', style:{}, hidden:true, onclick:null, className: '',
   addEventListener:function(k,f){ handlers[k]=f; }, appendChild:function(){},
   querySelector:function(){ return mkEl(); }, querySelectorAll:function(){ return []; },
-  getBoundingClientRect:function(){ return {bottom:0}; }, parentNode: null }; }
+  getBoundingClientRect:function(){ return {bottom:0}; }, parentNode: null, classList: { add:function(){}, remove:function(){}, contains:function(){} },
+  children: [], offsetHeight: 0, offsetWidth: 0 }; }
 var document = { getElementById:function(){ return mkEl(); }, querySelector:function(){ return mkEl(); },
   querySelectorAll:function(){ return []; }, addEventListener:function(){},
-  body:{ contains:function(){ return true; } }, createElement:function(){ return mkEl(); } };
+  body:{ contains:function(){ return true; } }, createElement:function(){ return mkEl(); }, createRange:function(){ return {}; } };
 var localStorage = { getItem:function(){ return null; }, setItem:function(){} };
+var location = { hash: '' };
+
 var FS = {
   esc:function(x){ return String(x); }, hostLink:function(ip){return ip;}, pill:function(x){return x;},
+  ago:function(t){ return 'ago'; },
   registeredPages:{}, registerPage:function(k,v){ this.registeredPages[k]=v; },
-  proxmox: {} // Initialize the proxmox namespace
+  $: function(sel){ return mkEl(); },
+  $$: function(sel){ return []; },
+  modal: function(html, onMount){ if(onMount) onMount(mkEl()); },
+  closeModal: function(){},
+  toast: function(msg){},
+  proxmox: {}
 };
 
 // Test fixtures
@@ -97,7 +106,7 @@ function testProxmoxLayout() {
   var pos = layout.positions[102];
   if (pos.x === undefined || pos.y === undefined) fail('layout position missing x,y');
   if (layout.totalWidth <= 0 || layout.totalHeight <= 0) fail('layout dimensions invalid');
-  
+
 }
 
 function testEdgePath() {
@@ -107,7 +116,7 @@ function testEdgePath() {
 
   if (!path || path.indexOf('M') !== 0) fail('edgePath missing SVG path');
   if (path.indexOf('C') === -1) fail('edgePath not cubic curve');
-  
+
 }
 
 function testRequirementsMarkdown() {
@@ -116,7 +125,7 @@ function testRequirementsMarkdown() {
 
   if (!md || md.indexOf('102') === -1) fail('requirements missing VMID');
   if (md.indexOf('Resources') === -1) fail('requirements missing Resources section');
-  
+
 }
 
 function testProxmoxPage(){
@@ -124,10 +133,10 @@ function testProxmoxPage(){
   var page = FS.registeredPages['proxmox'];
   if(!page) { fail('proxmox page not registered'); return Promise.resolve(); }
 
-  return page.render(el).then(function(){
+  return page.render(el, { params: {} }).then(function(){
     if(!el.innerHTML || el.innerHTML.length < 10) fail('proxmox page empty');
-    if(!el.innerHTML.includes('Proxmox') && !el.innerHTML.includes('proxmox')) fail('proxmox name missing');
-    
+    if(el.innerHTML.indexOf('Proxmox') === -1 && el.innerHTML.indexOf('proxmox') === -1) fail('proxmox name missing');
+
   }).catch(function(e){ fail(e); });
 }
 
@@ -139,6 +148,6 @@ testRequirementsMarkdown();
 testProxmoxPage().then(function(){
   if(FAILURE) throw FAILURE;
 }).catch(function(e){
-  
+
   process.exit(1);
 });

@@ -277,7 +277,7 @@
         ${row('Seen', `${num(r.seen)} times, first ${ago(r.first_seen)}, last ${ago(r.last_seen)}`)}
         ${row('Recorded by', esc(r.source || 'unknown') + (r.source === 'probe' ? ' <span class="muted">(FlowSight opened a connection and read it)</span>' : r.source === 'squid' ? ' <span class="muted">(seen in a handshake through the proxy)</span>' : ''))}
       </dl>
-      <div class="actions"><button class="btn" onclick="FS.closeModal()">Close</button></div>`;
+      <div class="actions"><button class="btn" data-close>Close</button></div>`;
   };
 
   // ------------------------------------------------------------- TLS

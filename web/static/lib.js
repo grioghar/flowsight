@@ -117,7 +117,7 @@ FS.$ = (sel, root) => (root || document).querySelector(sel);
 FS.$$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 FS.h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 FS.toast = (msg, bad) => { const el = FS.h(`<div class="t ${bad ? 'bad' : ''}">${FS.esc(msg)}</div>`); FS.$('#toast').appendChild(el); setTimeout(() => el.remove(), bad ? 7000 : 3500); };
-FS.modal = (html, onMount) => { const m = FS.$('#modal'); FS.$('#modal-body').innerHTML = html; m.hidden = false; FS.placeModal(); m.onclick = (e) => { if (e.target === m) FS.closeModal(); }; if (onMount) onMount(FS.$('#modal-body')); };
+FS.modal = (html, onMount) => { const m = FS.$('#modal'); const body = FS.$('#modal-body'); body.innerHTML = html; m.hidden = false; FS.placeModal(); m.onclick = (e) => { if (e.target === m) FS.closeModal(); }; FS.$$('[data-close]', body).forEach(el => el.onclick = () => FS.closeModal()); if (onMount) onMount(body); };
 FS.closeModal = () => { FS.$('#modal').hidden = true; FS.$('#modal-body').innerHTML = ''; };
 // Inside the OPNsense panel this document has no scrollbar of its own and can
 // be many screens tall, so a dialog pinned to its top opens far above whatever
@@ -723,7 +723,7 @@ FS.layout = (() => {
       <button class="btn" data-a="default">Save this page's layout as default</button>
       <button class="btn" data-a="reset">Reset to default</button>
       <button class="btn" data-a="builtin">Forget default (built-in order)</button>
-      <button type="button" class="btn" onclick="FS.closeModal()">Close</button></div>
+      <button type="button" class="btn" data-close>Close</button></div>
       <div class="help">Drag any card by its heading to move it. The arrangement is kept in this browser, per page.</div>`;
     FS.modal(html, (b) => {
       FS.$$('[data-a]', b).forEach(btn => btn.onclick = () => {
