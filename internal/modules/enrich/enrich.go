@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -70,20 +71,23 @@ type entry struct {
 	pending bool
 }
 
-// Module implements core.Module and Enricher.
+// Module implements core.Module, Enricher and GeoService.
 type Module struct {
 	ctx      *core.Context
 	identity core.Identity
 	resolver *net.Resolver
 	client   *http.Client
 
-	mu     sync.Mutex
-	cache  map[string]*entry
-	queue  chan string
-	geo    *maxminddb.Reader
-	geoAt  time.Time
-	geoErr string
-	geoTag string // the database's build epoch, for the status page
+	mu           sync.Mutex
+	cache        map[string]*entry
+	queue        chan string
+	geo          *maxminddb.Reader
+	geoAt        time.Time
+	geoErr       string
+	geoTag       string // the database's build epoch, for the status page
+	geoEpoch     int64  // build epoch as unix timestamp
+	geoCountries []core.CountryInfo
+	geoNetworks  map[string][]string // country code -> prefixes, cached
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -121,15 +125,18 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.client = &http.Client{Timeout: 5 * time.Minute}
 	m.cache = map[string]*entry{}
 	m.queue = make(chan string, 4096)
+	m.geoNetworks = make(map[string][]string)
 	for i := 0; i < 4; i++ {
 		go m.worker()
 	}
 	ctx.Publish("enrich", m)
+	ctx.Publish("geo", m)
 	ctx.Every("geoip", 6*time.Hour, m.refreshGeo)
 	ctx.Every("prune", 1*time.Hour, m.prune, core.Delayed())
 	ctx.Route("POST", "/api/enrich/lookup", m.apiLookup, core.Write(),
 		core.Doc("Names and countries for a list of addresses (up to 500); unknown names are resolved in the background and answered on the next call"))
 	ctx.Route("GET", "/api/enrich/status", m.apiStatus, core.Doc("What is enabled, cache size, country database state"))
+	ctx.Route("GET", "/api/enrich/countries", m.apiCountries, core.Doc("Countries available in the GeoIP database"))
 	return nil
 }
 
@@ -365,7 +372,11 @@ func (m *Module) refreshGeo() error {
 		m.geo.Close()
 	}
 	m.geo, m.geoAt, m.geoErr = r, modTime(path), ""
-	m.geoTag = time.Unix(int64(r.Metadata.BuildEpoch), 0).UTC().Format("2006-01-02") + " (" + r.Metadata.DatabaseType + ")"
+	m.geoEpoch = int64(r.Metadata.BuildEpoch)
+	m.geoTag = time.Unix(m.geoEpoch, 0).UTC().Format("2006-01-02") + " (" + r.Metadata.DatabaseType + ")"
+	// Invalidate the country and network caches.
+	m.geoCountries = nil
+	m.geoNetworks = make(map[string][]string)
 	return nil
 }
 
@@ -467,4 +478,113 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 		out["attribution"] = "IP geolocation by DB-IP (db-ip.com), CC BY 4.0"
 	}
 	return out, nil
+}
+
+// ---------------------------------------------------------------- GeoService
+
+// Networks returns IPv4 and IPv6 prefixes for a country code, cached
+// by the database's build epoch.
+func (m *Module) Networks(cc string) ([]string, error) {
+	cc = strings.ToUpper(cc)
+	m.mu.Lock()
+	if m.geo == nil {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("country lookup not available: Settings › enrich › Country lookup")
+	}
+	if cached, ok := m.geoNetworks[cc]; ok {
+		m.mu.Unlock()
+		return cached, nil
+	}
+	m.mu.Unlock()
+
+	// Build the prefix list from the database.
+	var prefixes []string
+	networks := m.geo.Networks(maxminddb.SkipAliasedNetworks)
+	for networks.Next() {
+		var rec geoRecord
+		prefix, err := networks.Network(&rec)
+		if err != nil {
+			continue
+		}
+		if rec.Country.ISOCode == cc {
+			prefixes = append(prefixes, prefix.String())
+		}
+	}
+
+	// Cache it.
+	m.mu.Lock()
+	m.geoNetworks[cc] = prefixes
+	m.mu.Unlock()
+
+	return prefixes, nil
+}
+
+// Countries returns the list of countries in the loaded database.
+func (m *Module) Countries() ([]core.CountryInfo, error) {
+	m.mu.Lock()
+	if m.geo == nil {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("country lookup not available: Settings › enrich › Country lookup")
+	}
+	if len(m.geoCountries) > 0 {
+		out := make([]core.CountryInfo, len(m.geoCountries))
+		copy(out, m.geoCountries)
+		m.mu.Unlock()
+		return out, nil
+	}
+	m.mu.Unlock()
+
+	// Build the country list by iterating the networks.
+	counts := make(map[string]int)
+	networks := m.geo.Networks(maxminddb.SkipAliasedNetworks)
+	for networks.Next() {
+		var rec geoRecord
+		_, err := networks.Network(&rec)
+		if err == nil && rec.Country.ISOCode != "" {
+			counts[rec.Country.ISOCode]++
+		}
+	}
+
+	// Build CountryInfo slice. Use an embedded ISO 3166-1 table for names.
+	isoNames := map[string]string{
+		"US": "United States", "GB": "United Kingdom", "CN": "China", "IN": "India",
+		"DE": "Germany", "FR": "France", "JP": "Japan", "BR": "Brazil",
+		"RU": "Russia", "CA": "Canada", "AU": "Australia", "IT": "Italy",
+		"ES": "Spain", "MX": "Mexico", "NL": "Netherlands", "KR": "South Korea",
+		"TR": "Turkey", "SA": "Saudi Arabia", "ZA": "South Africa", "NG": "Nigeria",
+		"SG": "Singapore", "HK": "Hong Kong", "SE": "Sweden", "CH": "Switzerland",
+		// Add more as needed; the database may include names for en
+	}
+
+	var out []core.CountryInfo
+	for cc, count := range counts {
+		name := isoNames[cc]
+		if name == "" {
+			name = cc // Fallback to code if name not in table
+		}
+		out = append(out, core.CountryInfo{Code: cc, Name: name, Prefixes: count})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
+
+	// Cache it.
+	m.mu.Lock()
+	m.geoCountries = out
+	m.mu.Unlock()
+
+	return out, nil
+}
+
+// DatabaseEpoch returns the build epoch of the loaded database, or 0.
+func (m *Module) DatabaseEpoch() int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.geoEpoch
+}
+
+func (m *Module) apiCountries(r *core.Req) (any, error) {
+	countries, err := m.Countries()
+	if err != nil {
+		return map[string]any{"error": err.Error()}, nil
+	}
+	return map[string]any{"countries": countries}, nil
 }

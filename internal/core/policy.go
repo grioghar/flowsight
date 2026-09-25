@@ -508,3 +508,23 @@ type AppCatalog interface {
 	Apps() map[string]AppInfo
 	AppCategory(app string) string
 }
+
+// GeoService provides country-level network blocks for policy enforcement.
+type GeoService interface {
+	// Networks returns IPv4 and IPv6 prefixes for a country code.
+	// Returns error if the database is not loaded.
+	Networks(cc string) ([]string, error)
+	// Countries returns the list of countries available in the database
+	// with their ISO codes, names, and prefix counts.
+	Countries() ([]CountryInfo, error)
+	// DatabaseEpoch returns the build epoch of the currently loaded database,
+	// or 0 if none is loaded.
+	DatabaseEpoch() int64
+}
+
+// CountryInfo is one country in the GeoIP database.
+type CountryInfo struct {
+	Code     string `json:"code"`
+	Name     string `json:"name"`
+	Prefixes int    `json:"prefixes"`
+}
