@@ -106,9 +106,20 @@ func (m *Module) Info() core.ModuleInfo {
 
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
-	ctx.Route("GET", "/api/mitm/status", m.apiStatus, core.Doc("Stateful Packet Inspection: whether it is listening and what it has seen"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/mitm/status", m.apiStatus, core.Doc("Check if deep packet inspection is listening and retrieve decoded traffic statistics"),
+		core.Returns("Inspection status", map[string]any{
+			"active": true, "licensed": true, "listening": true, "port": 1344,
+			"requests": 5000, "decoded": 3000, "bytes": 1000000000, "error": "",
+		}))
 	ctx.Route("GET", "/api/mitm/requests", m.apiRequests, core.Needs("deep.inspect"),
-		core.Doc("The most recent decrypted requests with their headers"), core.Params("limit", "rows", "q", "substring"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Retrieve recent decrypted HTTPS requests with headers, methods and hostnames"),
+		core.Query("limit", "integer", "Maximum results to return", false, 200),
+		core.Query("q", "string", "Search filter by URL or client", false, "github.com"),
+		core.Returns("Captured requests", map[string]any{
+			"requests": []map[string]any{
+				{"ts": 1790376243, "client": "192.168.1.10", "url": "https://github.com", "method": "GET"},
+			},
+		}))
 	ctx.Panel(core.Panel{ID: "deep", Title: "Stateful Packet Inspection", Group: "Protect", Order: 75, Icon: "deep", Feature: "deep.inspect"})
 	ctx.Every("supervise", 30*time.Second, m.supervise)
 	ctx.Publish("mitm", m)

@@ -115,8 +115,22 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 	ctx.Every("refresh", time.Duration(hours)*time.Hour, m.refreshJob, core.Delayed())
 
-	ctx.Route("GET", "/api/license", m.apiStatus, core.Doc("Current tier, license, features and limits"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/license/features", m.apiFeatures, core.Doc("The feature catalogue with what this installation has"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/license", m.apiStatus, core.Doc("Retrieve current license tier, key, limits, and refresh status"),
+		core.Returns("License status", map[string]any{
+			"tier": "Business", "installation": "inst-id-123", "verifiable": true,
+			"limits": map[string]int{"flows": 1000000, "rules": 5000},
+			"last_error": "", "revoked": false, "key_hint": "FSI-****-****-****-WXYZ",
+		}))
+	ctx.Route("GET", "/api/license/features", m.apiFeatures, core.Doc("List all features with enabled status and limits by tier"),
+		core.Returns("Feature catalog", map[string]any{
+			"features": []map[string]any{
+				{"key": "deep.inspect", "name": "Deep Inspection", "included": true},
+			},
+			"tier": "Business",
+			"limits_by_tier": map[string]map[string]int{
+				"Community": {"flows": 100000},
+			},
+		}))
 	ctx.Route("POST", "/api/license/activate", m.apiActivate, core.Write(),
 		core.Doc("Activate an activation key against the license server"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/install", m.apiInstall, core.Write(),

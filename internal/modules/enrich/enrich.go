@@ -145,8 +145,19 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("prune", 1*time.Hour, m.prune, core.Delayed())
 	ctx.Route("POST", "/api/enrich/lookup", m.apiLookup, core.Write(),
 		core.Doc("Names and countries for a list of addresses (up to 500); unknown names are resolved in the background and answered on the next call"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/enrich/status", m.apiStatus, core.Doc("What is enabled, cache size, country database state"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/enrich/countries", m.apiCountries, core.Doc("Countries available in the GeoIP database"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/enrich/status", m.apiStatus, core.Doc("Query what enrichment is enabled, cache size, and database state"),
+		core.Returns("Enrichment status", map[string]any{
+			"reverse_dns": true, "geoip": true, "cached_names": 150, "database": "maxmind_geolite",
+			"database_updated": 1790376243, "database_bytes": 10485760, "attribution": "IP geolocation by...",
+		}))
+	ctx.Route("GET", "/api/enrich/countries", m.apiCountries, core.Doc("List all countries available in the GeoIP database for location lookups"),
+		core.Returns("Country list", map[string]any{
+			"countries": []map[string]any{
+				{"code": "US", "name": "United States"},
+				{"code": "GB", "name": "United Kingdom"},
+			},
+			"epoch": 1790376243, "counted": true,
+		}))
 	return nil
 }
 
