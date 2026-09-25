@@ -617,30 +617,87 @@ func (m *Module) topHostsBy(table, keyExpr string, keys []string, since int64, p
 	if err != nil {
 		return out
 	}
+	// One device, not one address: a laptop with an IPv4 lease and five
+	// rotating IPv6 addresses is one host doing this, so rows fold by the
+	// hardware address when identity knows it.
+	type acc struct {
+		row  map[string]any
+		seen map[string]bool
+	}
+	byKey := map[string]map[string]*acc{}
+	order := map[string][]string{}
 	for _, r := range rows {
 		k, _ := r["k"].(string)
-		if len(out[k]) >= per {
-			continue
-		}
 		ip, _ := r["ip"].(string)
-		if n := m.name(ip); n != "" {
-			r["name"] = n
+		dev := ip
+		if m.identity != nil {
+			if mac := m.identity.MAC(ip); mac != "" {
+				dev = "mac:" + mac
+			}
 		}
-		delete(r, "k")
-		out[k] = append(out[k], r)
+		if byKey[k] == nil {
+			byKey[k] = map[string]*acc{}
+		}
+		a := byKey[k][dev]
+		if a == nil {
+			a = &acc{row: map[string]any{"ip": ip, "flows": int64(0), "bytes_in": int64(0), "bytes_out": int64(0), "last_seen": int64(0)}, seen: map[string]bool{}}
+			if n := m.name(ip); n != "" {
+				a.row["name"] = n
+			}
+			byKey[k][dev] = a
+			order[k] = append(order[k], dev)
+		}
+		a.row["flows"] = toI(a.row["flows"]) + toI(r["flows"])
+		a.row["bytes_in"] = toI(a.row["bytes_in"]) + toI(r["bytes_in"])
+		a.row["bytes_out"] = toI(a.row["bytes_out"]) + toI(r["bytes_out"])
+		if toI(r["last_seen"]) > toI(a.row["last_seen"]) {
+			a.row["last_seen"] = toI(r["last_seen"])
+		}
+		// Prefer the IPv4 address as the device's face when it has one.
+		if cur, _ := a.row["ip"].(string); strings.Contains(cur, ":") && !strings.Contains(ip, ":") {
+			a.row["ip"] = ip
+			if n := m.name(ip); n != "" {
+				a.row["name"] = n
+			}
+		}
+		a.seen[ip] = true
+	}
+	for k, devs := range byKey {
+		list := make([]map[string]any, 0, len(devs))
+		for _, dev := range order[k] {
+			list = append(list, devs[dev].row)
+		}
+		sort.SliceStable(list, func(i, j int) bool { return toI(list[i]["flows"]) > toI(list[j]["flows"]) })
+		total := len(list)
+		if len(list) > per {
+			list = list[:per]
+		}
+		// The first entry carries the device count for the key.
+		if len(list) > 0 {
+			list[0]["_devices"] = int64(total)
+		}
+		out[k] = list
 	}
 	return out
 }
 
-// attachTopHosts puts top_hosts on each row, keyed by keyCol.
+// attachTopHosts puts top_hosts on each row, keyed by keyCol, and replaces
+// the address count with the device count where it was folded.
 func attachTopHosts(rows []map[string]any, keyCol string, top map[string][]map[string]any) {
 	for _, r := range rows {
 		k, _ := r[keyCol].(string)
-		if th := top[k]; th != nil {
-			r["top_hosts"] = th
-		} else {
+		th := top[k]
+		if th == nil {
 			r["top_hosts"] = []map[string]any{}
+			continue
 		}
+		if len(th) > 0 {
+			if n, ok := th[0]["_devices"].(int64); ok {
+				r["hosts"] = n
+				delete(th[0], "_devices")
+			}
+		}
+		r["top_hosts"] = th
 	}
 }
 

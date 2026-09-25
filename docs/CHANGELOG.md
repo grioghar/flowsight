@@ -12,6 +12,13 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251941
+
+**One device, not one address.** The "who did it" lists counted a laptop's
+IPv4 lease and each of its rotating IPv6 addresses as separate hosts, so
+one MacBook filled all three places. Hosts fold into devices by hardware
+address before ranking, and the host count is a device count.
+
 ## 0.9.8r202609251939
 
 **Activity, not volume; and who did it.** Applications, top sites and
