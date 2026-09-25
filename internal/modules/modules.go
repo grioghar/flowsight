@@ -22,6 +22,7 @@ import (
 	_ "github.com/grioghar/flowsight/internal/modules/reports"
 	_ "github.com/grioghar/flowsight/internal/modules/rulehygiene"
 	_ "github.com/grioghar/flowsight/internal/modules/scan"
+	_ "github.com/grioghar/flowsight/internal/modules/space"
 	_ "github.com/grioghar/flowsight/internal/modules/telemetry"
 	_ "github.com/grioghar/flowsight/internal/modules/tls"
 	_ "github.com/grioghar/flowsight/internal/modules/ui"

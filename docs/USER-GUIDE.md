@@ -930,6 +930,115 @@ all banners). *Scan a host* prompts for an IP or MAC; *Sweep all local*
 starts a scheduled sweep of devices seen in the last 7 days, respecting a
 time window and rate limit from Settings. Scans originate from the gateway and
 may be detected or rate-limited by host firewalls or IDS.
+### Space
+
+Map your physical space in 3D, place devices at their real locations, and track
+their network locations. See a walkthrough below to get started.
+
+**What works:**
+
+**3D Scan viewer:** Upload scans from your phone or camera app in GLB (recommended),
+OBJ, PLY, or RoomPlan JSON format via the **⬆ Scan** button. The viewer applies
+any stored transform (scale, rotation, offset, Y-up/Z-up conversion) and displays
+the geometry with spatial indexing for fast ray-casting. A progress bar shows
+during parsing. Max 50 MB; decimate large scans in your app before upload. Scenes
+with no scan show the floor grid and axes.
+
+**Marker interaction:** Click a placed device marker to open a popover showing the
+device name, MAC, position, floor, room, placement date, and a 60-point visibility
+sparkline from the last hour. Links let you jump to the device details or Devices
+page. Click **Unplace** to remove the device from the space. Drag a marker to move it
+to a new position; release saves the placement. Scroll the mouse wheel while dragging
+to adjust the z (height) coordinate. Highlight a device in the Palette pane to fly
+the camera to it over 600 ms with a smooth animation.
+
+**Device placement:** Drag a device from the Palette pane onto the 3D canvas. The
+viewer ray-casts the click to find a hit point on the scan mesh, or falls back to
+the floor plane at z=0. The placement is saved with its MAC, 3D coordinates, floor,
+and room (auto-detected from polygon containment if a room contains the point).
+Placed devices are shown as small red markers in the 3D view.
+
+**3D controls:** Left-click and drag to orbit (single-finger touch also orbits).
+Right-click and drag, or shift+drag, to pan. Mouse wheel or two-finger pinch to zoom.
+The viewer automatically fits the camera to all loaded geometry on load. Rooms from
+all floors are shown as extruded 3D boxes; the current floor's rooms are opaque,
+other floors are faint to show context.
+
+**Calibration tools:**
+- **Level:** Click **📐 Level** to collect three points on the floor. The tool fits
+  a plane through them and stores the up-axis rotation and z offset to transform the
+  scan.
+- **Align:** Click **⚙ Align** to pick two points in the 3D scan, then two corresponding
+  points on the plan. The tool computes scale, rotation about the up axis, and offset
+  to align the scan to the plan.
+
+**Plan pane (2D room editor):** Click **✏ Draw** to enter draw mode, then click to
+place vertices and double-click or click the first point to close a room. A dialog
+prompts for the room name and ceiling height. Rooms appear as filled polygons with
+vertices. Drag vertices to edit rooms in real time (grid snap is 0.1 m). Click a room
+interior to select it (highlighted in blue); a **✎ Rename** button appears to edit
+the name, and a **🗑 Delete** button to remove it. Pan with right-click or shift+drag;
+zoom with the mouse wheel.
+
+**Placement dragging:** Placement dots (small red circles) appear on the plan for devices
+on the current floor. Drag them to reposition devices; release saves the new coordinates.
+
+**Calibration:** **📏 Scale** lets you calibrate distances: click two points on the
+plan, then enter the real distance between them (in metres) to rescale all coordinates
+on the current floor.
+
+**Import:** **🗺 Import OSM** imports the building footprint from OpenStreetMap, if
+available, as a new room.
+
+**Undo/Redo:** **↶ Undo** and **↷ Redo** buttons work for all operations: drawing,
+scaling, importing, room operations (rename, delete), and placement edits. Ctrl+Z
+(or Cmd+Z on Mac) also undoes; Ctrl+Y (Cmd+Y) redoes. An unsaved indicator (● Unsaved)
+shows when the layout differs from the saved state.
+
+**Floors:** The floor select dropdown shows each floor with its elevation. Each floor
+is edited independently; switching floors hides non-current rooms on the plan, but
+3D view shows all floors.
+
+**Mobile:** At viewports ≤768 px wide, the three panes (3D, Plan, Devices) become tabs
+with the 3D view first. Touch orbit and pinch-to-zoom work. Network errors show as
+toasts at the bottom-left and auto-dismiss after 3 seconds.
+
+**Address records:** Geocoding from the US Census Geocoder (no API key); elevation
+from USGS; building footprints from OpenStreetMap when available. Placements update
+device location links on the Devices page.
+
+#### Getting started: How to scan your apartment
+
+1. **Scan your space:** Use an app that exports 3D geometry:
+   - **iOS:** LiDAR Scanner or SpatialIO (export as GLB)
+   - **Android:** 3D Scanner App (export as OBJ or PLY)
+   - **Any platform:** Capture a RoomPlan JSON if your device supports it
+   Choose **GLB** (GLTF binary) for best results; it's the smallest and fastest to parse.
+
+2. **Upload the scan:** Click **⬆ Scan** in the 3D pane and select your exported file.
+   A progress bar shows during parsing. Max 50 MB; decimate large scans in your app.
+
+3. **Level the floor:** Click **📐 Level** and click three points on the floor plane to
+   fit a horizontal plane. The tool stores the rotation and z offset so placements sit
+   at the correct height.
+
+4. **Draw or import your floor plan:** Either:
+   - Click **✏ Draw** and trace the walls by clicking vertices. Double-click or click
+     the first point to close. Name the room and set ceiling height.
+   - Click **🗺 Import OSM** if your building is in OpenStreetMap.
+
+5. **Calibrate scale:** Click **📏 Scale** and click two known points (e.g., opposite
+   corners of a room), then enter the real distance between them in metres. The entire
+   plan rescales.
+
+6. **Align scan to plan (optional):** Click **⚙ Align**, click two points in the 3D scan,
+   switch to the Plan tab, and click the two corresponding points on the plan. The tool
+   computes rotation and offset to align the scan to your drawn layout.
+
+7. **Place devices:** Drag devices from the Palette pane onto the 3D canvas. Click and
+   drag a placed marker to move it; scroll the mouse wheel to adjust height. Each
+   placement is saved with its room and coordinates, linked to the device's network
+   location on the Devices page.
 
 ## Administration
 
