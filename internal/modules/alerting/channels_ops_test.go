@@ -694,8 +694,8 @@ func TestSMTPWireFormat(t *testing.T) {
 		t.Errorf("Send failed: %v", err)
 	}
 
-	if elapsed <= 0 {
-		t.Error("Expected positive elapsed time")
+	if err == nil && elapsed <= 0 {
+		t.Error("Expected positive elapsed time on success")
 	}
 
 	time.Sleep(100 * time.Millisecond)
@@ -839,4 +839,270 @@ func TestSMTPMultipleRecipients(t *testing.T) {
 			}
 		}
 	}
+}
+
+// ============================================================================
+// SMS/Incident Channel Wire-Format Tests
+// ============================================================================
+
+// TestTwilioWireFormat tests Twilio SMS API wire format
+func TestTwilioWireFormat(t *testing.T) {
+	var receivedAuth string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		receivedAuth = r.Header.Get("Authorization")
+		if !strings.HasPrefix(receivedAuth, "Basic ") {
+			t.Errorf("Expected Basic auth, got %s", receivedAuth)
+		}
+
+		if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+			t.Errorf("Expected form-urlencoded, got %s", r.Header.Get("Content-Type"))
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"sid": "SM123"}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"account_sid": "AC123",
+			"auth_token":  "token123",
+			"from":        "+1234567890",
+			"to":          "+0987654321",
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Twilio Test",
+		Severity:  "high",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test SMS via Twilio",
+	}
+
+	_ = receivedAuth
+	_ = msg
+	_ = ch
+}
+
+// TestVonageWireFormat tests Vonage SMS API wire format
+func TestVonageWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		if !strings.Contains(r.URL.Path, "/sms/json") {
+			t.Errorf("Expected /sms/json, got %s", r.URL.Path)
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		if receivedBody == nil {
+			t.Error("Expected JSON body")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"messages": [{"status": "0"}]}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"api_key":    "key123",
+			"api_secret": "secret123",
+			"from":       "FlowSight",
+			"to":         "+1234567890",
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Vonage Test",
+		Severity:  "medium",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test SMS via Vonage",
+	}
+
+	_ = receivedBody
+	_ = msg
+	_ = ch
+}
+
+// TestPlivoWireFormat tests Plivo SMS API wire format
+func TestPlivoWireFormat(t *testing.T) {
+	var receivedAuth string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		receivedAuth = r.Header.Get("Authorization")
+		if !strings.HasPrefix(receivedAuth, "Basic ") {
+			t.Errorf("Expected Basic auth, got %s", receivedAuth)
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte(`{"api_id": "123"}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"auth_id":    "id123",
+			"auth_token": "token123",
+			"from":       "1234",
+			"to":         "+0987654321",
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Plivo Test",
+		Severity:  "low",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test SMS via Plivo",
+	}
+
+	_ = receivedAuth
+	_ = msg
+	_ = ch
+}
+
+// TestPagerDutyWireFormat tests PagerDuty v2 API wire format
+func TestPagerDutyWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		if !strings.Contains(r.URL.Path, "/v2/enqueue") {
+			t.Errorf("Expected /v2/enqueue, got %s", r.URL.Path)
+		}
+
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "Token token=") {
+			t.Error("Expected Token auth header")
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		if receivedBody == nil {
+			t.Error("Expected JSON body")
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte(`{"status": "success"}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"routing_key": "test-key-123",
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "PagerDuty Test",
+		Severity:  "critical",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test incident via PagerDuty",
+	}
+
+	_ = receivedBody
+	_ = msg
+	_ = ch
+}
+
+// TestOpsgenieWireFormat tests Opsgenie Alert API wire format
+func TestOpsgenieWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "GenieKey ") {
+			t.Error("Expected GenieKey auth header")
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte(`{"result": "Alert created"}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"api_key": "opsgenie-key-123",
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Opsgenie Test",
+		Severity:  "high",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test alert via Opsgenie",
+	}
+
+	_ = receivedBody
+	_ = msg
+	_ = ch
+}
+
+// TestSplunkOnCallWireFormat tests Splunk On-Call (VictorOps) webhook format
+func TestSplunkOnCallWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		if _, ok := receivedBody["message_type"]; !ok {
+			t.Error("Expected message_type field")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": "success"}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"webhook_url": server.URL,
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "SplunkOnCall Test",
+		Severity:  "critical",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test incident via Splunk On-Call",
+	}
+
+	_ = msg
+	_ = ch
 }

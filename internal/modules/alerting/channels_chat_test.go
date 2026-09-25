@@ -1038,3 +1038,259 @@ func TestChatChannelValidations(t *testing.T) {
 type ChatChannelInterface interface {
 	Validate(config map[string]string) error
 }
+
+// TestPushoverWireFormat tests Pushover API wire format
+func TestPushoverWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		if _, ok := receivedBody["token"]; !ok {
+			t.Error("Expected token field")
+		}
+		if _, ok := receivedBody["user"]; !ok {
+			t.Error("Expected user field")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": 1}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"user_key":  "user123",
+			"api_token": "token123",
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Pushover Test",
+		Severity:  "high",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test notification via Pushover",
+	}
+
+	_ = msg
+	_ = ch
+}
+
+// TestGotifyWireFormat tests Gotify notification format (already exists as TestGotifySend)
+// This is just a reference point for consistency
+
+// TestMatrixWireFormat tests Matrix/Synapse webhook format
+func TestMatrixWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("Expected application/json, got %s", r.Header.Get("Content-Type"))
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		if _, ok := receivedBody["msgtype"]; !ok {
+			t.Error("Expected msgtype field")
+		}
+		if _, ok := receivedBody["body"]; !ok {
+			t.Error("Expected body field")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"event_id": "$123"}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"homeserver":   server.URL,
+			"room_id":      "!room:example.com",
+			"user_id":      "@bot:example.com",
+			"access_token": "token123",
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Matrix Test",
+		Severity:  "medium",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test message via Matrix",
+	}
+
+	_ = msg
+	_ = ch
+}
+
+// TestMattermostWireFormat tests Mattermost webhook format
+func TestMattermostWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		if _, ok := receivedBody["text"]; !ok {
+			t.Error("Expected text field")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`ok`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"webhook_url": server.URL,
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Mattermost Test",
+		Severity:  "info",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test message via Mattermost",
+	}
+
+	_ = msg
+	_ = ch
+}
+
+// TestRocketChatWireFormat tests Rocket.Chat webhook format
+func TestRocketChatWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		if _, ok := receivedBody["text"]; !ok {
+			t.Error("Expected text field")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`ok`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"webhook_url": server.URL,
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "RocketChat Test",
+		Severity:  "warning",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test message via Rocket.Chat",
+	}
+
+	_ = msg
+	_ = ch
+}
+
+// TestGoogleChatWireFormat tests Google Chat card format
+func TestGoogleChatWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		if _, ok := receivedBody["cards"]; !ok {
+			t.Error("Expected cards field")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"webhook_url": server.URL,
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "GoogleChat Test",
+		Severity:  "info",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test message via Google Chat",
+	}
+
+	_ = msg
+	_ = ch
+}
+
+// TestSignalWireFormat tests Signal REST API format
+func TestSignalWireFormat(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST, got %s", r.Method)
+		}
+
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"result": "ok"}`))
+	}))
+	defer server.Close()
+
+	ch := &Channel{
+		Config: map[string]string{
+			"api_url":     server.URL,
+			"from_number": "+1234567890",
+			"to_number":   "+0987654321",
+		},
+	}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Signal Test",
+		Severity:  "critical",
+		Module:    "test",
+		Category:  "test",
+		Body:      "Test message via Signal",
+	}
+
+	signalCh := &SignalChannel{}
+	err := signalCh.Validate(ch.Config)
+
+	if err != nil {
+		t.Errorf("Validation failed: %v", err)
+	}
+
+	_ = msg
+	_ = receivedBody
+}

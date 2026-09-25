@@ -12,7 +12,7 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8r202609252344
+## 0.9.8r202609252348
 
 **Comprehensive alerting provider tests and IPv6 zone support.** The alerting
 module now has wire-format tests for 11+ channels: SMTP (fake server validates

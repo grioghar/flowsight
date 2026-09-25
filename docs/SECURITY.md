@@ -187,17 +187,26 @@ name a destination.
 
 ## Reviewing the host firewall
 
-FlowSight sees, reports, and can enforce policy only on traffic the gateway already forwards. It does not rewrite rules that are already in place; it adds a policy layer. Before deploying FlowSight:
+FlowSight's own review scope covers:
 
-- **Examine the base firewall ruleset**: Disable any rules that serve the functions FlowSight will take over (e.g., category blocks, per-host rate limits, time-based access). FlowSight policies are less brittle and easier to audit than static pf rules; running both creates confusion and wastes rules.
-- **Test in monitor mode first**: Leave enforcement off for a day, so FlowSight can learn which applications your network runs and which category feeds need tuning. A policy that blocks YouTube on a network where the conference room streams announcements will fail visibly in monitor mode; in enforce mode, the room's TV goes dark during a board meeting.
-- **Understand ICAP scope**: If you enable Stateful Packet Inspection (Business tier), it runs on every decrypted request from the policy it covers. It does not see pinned sessions or bypassed hosts; it does not block on its own (only in monitor mode for testing). If you want to block a content type, use the content filter rules or set up a HTTP sniff handler in the policy editor.
+- **Daemon process and listeners**: TCP on loopback for the API; listening only on 127.0.0.1 and [::1] unless explicitly bound elsewhere
+- **Anchors and pf tables**: FlowSight creates named anchors (e.g., `flowsight-dns`, `flowsight-web`) and populates tables; these are added alongside existing rules and do not replace them
+- **Proxy configuration**: Squid configuration is generated and validated; every operator-typed entry is checked before being written
+- **Resolver configuration**: DNS configuration is applied to dnsmasq and system resolvers
 
-Because FlowSight is stateless with respect to the base firewall, you can:
+**OPNsense firewall ruleset review**: The Firewall Analysis Engine (FAE) in FlowSight provides read-only visibility into the OPNsense ruleset through the OPNsense API. To audit and review the base firewall configuration with FAE:
 
-- Remove it from the gateway without reboot and without affecting rules already in place.
-- Roll back to an older policy by reverting `policy.json` and restarting the daemon.
-- Run FlowSight in monitor mode indefinitely; it will not drop any traffic.
+- Request a **read-only API key** from OPNsense (System › API › Create Token, select "Administrators in read-only mode")
+- FlowSight will read `System › Firewall › Rules`, `NAT › Port Forward`, and state table information
+- FAE detects shadowed rules, permissive rules, and redundancies without modifying anything
+- API key should be placed in FlowSight settings (Administration › API Credentials or via CLI)
+
+FlowSight enforces policy only on traffic the OPNsense ruleset already forwards. Because FlowSight's anchors are added alongside existing rules (not replacing them), you can:
+
+- Remove FlowSight from the gateway without reboot and without affecting rules already in place
+- Roll back to an older policy by reverting `policy.json` and restarting the daemon
+- Run FlowSight in monitor mode indefinitely; it will not drop any traffic
+- Review FlowSight's own configuration changes in the audit log (Events › Audit)
 
 ## Hardening checklist
 
