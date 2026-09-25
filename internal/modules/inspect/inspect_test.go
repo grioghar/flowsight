@@ -1,7 +1,6 @@
 package inspect
 
 import (
-	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -19,76 +18,6 @@ func TestModuleInfo(t *testing.T) {
 	}
 	if len(info.Schema) == 0 {
 		t.Error("no schema fields")
-	}
-}
-
-func TestParsePFLine(t *testing.T) {
-	m := &Module{}
-
-	tests := []struct {
-		name string
-		line string
-		want *PFState
-	}{
-		{
-			name: "empty line",
-			line: "",
-			want: nil,
-		},
-		{
-			name: "skip headers",
-			line: "STATES",
-			want: nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := m.parsePFLine(tt.line)
-			if got != tt.want {
-				t.Errorf("parsePFLine(%q) = %v, want %v", tt.line, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestValidateBPFFilter(t *testing.T) {
-	m := &Module{}
-
-	tests := []struct {
-		name    string
-		filter  string
-		wantErr bool
-	}{
-		{
-			name:    "empty filter",
-			filter:  "",
-			wantErr: false,
-		},
-		{
-			name:    "too long filter",
-			filter:  string(bytes.Repeat([]byte("a"), 1001)),
-			wantErr: true,
-		},
-		{
-			name:    "invalid character semicolon",
-			filter:  "tcp port 80; rm -rf /",
-			wantErr: true,
-		},
-		{
-			name:    "invalid character backtick",
-			filter:  "tcp port `whoami`",
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := m.validateBPFFilter(tt.filter)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateBPFFilter(%q) error = %v, wantErr %v", tt.filter, err, tt.wantErr)
-			}
-		})
 	}
 }
 

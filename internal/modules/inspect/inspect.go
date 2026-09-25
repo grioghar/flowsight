@@ -309,19 +309,7 @@ func (m *Module) getPFStates() ([]*PFState, error) {
 		return nil, fmt.Errorf("pfctl failed: %w", err)
 	}
 
-	states := []*PFState{}
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" || strings.HasPrefix(line, "STATES") || strings.HasPrefix(line, "ALL") {
-			continue
-		}
-
-		state := m.parsePFLine(line)
-		if state != nil {
-			states = append(states, state)
-		}
-	}
+	states := parsePFStates(string(out), time.Now())
 
 	// Keep only the newest maxStates
 	if len(states) > m.maxStates {
@@ -334,8 +322,6 @@ func (m *Module) getPFStates() ([]*PFState, error) {
 	return states, nil
 }
 
-// parsePFLine parses a line from pfctl -ss -vv output
-// Expected format is complex; simplified here for headers-only capture
 func (m *Module) parsePFLine(line string) *PFState {
 	parts := strings.Fields(line)
 	if len(parts) < 5 {

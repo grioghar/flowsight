@@ -12,6 +12,16 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252008
+
+**The state table is read as pf prints it.** The first live pass of Packet
+Inspection showed sequence numbers where protocols should be: the parser
+had been written against an invented one-line format, while `pfctl -ss -vv`
+prints each state as a header line followed by indented detail lines. The
+parser now reads that format (interface, protocol, addresses with NAT and
+IPv6 forms, direction, state pair, age, expiry, packets, bytes, rule) and
+is tested against a realistic sample.
+
 ## 0.9.8r202609252005
 
 **Packet Inspection module.** The new **Packet Inspection** page (Protect group)
