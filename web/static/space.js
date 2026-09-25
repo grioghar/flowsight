@@ -39,12 +39,16 @@ FS.registerPage('space', {
             <div class="space-toolbar">
               <button id="btn-plan-draw" class="btn-icon" title="Draw rooms (click points, double-click to close)">✏ Draw</button>
               <button id="btn-plan-undo" class="btn-icon" title="Undo last action">↶ Undo</button>
+              <button id="btn-plan-redo" class="btn-icon" title="Redo last action">↷ Redo</button>
               <button id="btn-plan-import-osm" class="btn-icon" title="Import building footprint from OSM">🗺 Import OSM</button>
               <button id="btn-plan-set-scale" class="btn-icon" title="Set scale by two points">📏 Scale</button>
               <label>Floor: <select id="space-floor-select" style="margin:0 8px">
                 <option value="0">Ground</option>
               </select></label>
-              <button id="btn-plan-export" class="btn-icon" title="Export layout as JSON">⬇ Export</button>
+              <button id="btn-plan-rename-room" class="btn-icon" title="Rename selected room" style="display:none">✎ Rename</button>
+              <button id="btn-plan-delete-room" class="btn-icon" title="Delete selected room" style="display:none">🗑 Delete</button>
+              <span id="space-unsaved-indicator" style="margin-left:8px;color:var(--text-muted);font-size:10px"></span>
+              <button id="btn-plan-export" class="btn-icon" title="Export layout as JSON" style="margin-left:auto">⬇ Export</button>
             </div>
             <canvas id="space-canvas-plan" class="space-canvas"></canvas>
           </div>
@@ -136,6 +140,7 @@ function initPlanPane(el, canvas, layout) {
   const ctx = canvas.getContext('2d');
   const GRID_SIZE = 1; // metres
   const SNAP_DIST = 0.1; // metres
+  const VERTEX_HIT_RADIUS = 8; // pixels
 
   let viewState = {
     scale: 20, // pixels per metre
@@ -150,12 +155,15 @@ function initPlanPane(el, canvas, layout) {
     drawPath: [],
     scalePoints: [],
     levelPoints: [],
-    draggingVertex: null,
+    draggingVertex: null, // { roomId, vertexIndex }
+    draggingPlacement: null, // { mac }
+    selectedRoom: null, // roomId
     undoStack: [],
-    redoStack: []
+    redoStack: [],
+    lastSavedLayout: JSON.stringify(layout)
   };
 
-  let currentLayout = { ...layout };
+  let currentLayout = JSON.parse(JSON.stringify(layout));
 
   // Resize canvas to fit parent
   function resizeCanvas() {
@@ -213,9 +221,11 @@ function initPlanPane(el, canvas, layout) {
     floorRooms.forEach(room => {
       if (!room.polygon || room.polygon.length < 2) return;
 
-      ctx.fillStyle = 'rgba(200, 200, 200, 0.1)';
-      ctx.strokeStyle = 'rgba(100, 100, 100, 0.5)';
-      ctx.lineWidth = 2 / viewState.zoom;
+      const isSelected = editorState.selectedRoom === room.id;
+
+      ctx.fillStyle = isSelected ? 'rgba(150, 200, 255, 0.2)' : 'rgba(200, 200, 200, 0.1)';
+      ctx.strokeStyle = isSelected ? 'rgba(50, 100, 200, 0.8)' : 'rgba(100, 100, 100, 0.5)';
+      ctx.lineWidth = isSelected ? 3 / viewState.zoom : 2 / viewState.zoom;
 
       ctx.beginPath();
       const [sx0, sy0] = worldToScreen(room.polygon[0][0], room.polygon[0][1]);
@@ -233,9 +243,9 @@ function initPlanPane(el, canvas, layout) {
       // Room vertices
       room.polygon.forEach((pt, i) => {
         const [sx, sy] = worldToScreen(pt[0], pt[1]);
-        ctx.fillStyle = 'rgba(100, 100, 100, 0.7)';
+        ctx.fillStyle = isSelected ? 'rgba(50, 100, 200, 1)' : 'rgba(100, 100, 100, 0.7)';
         ctx.beginPath();
-        ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+        ctx.arc(sx, sy, isSelected ? 5 : 4, 0, Math.PI * 2);
         ctx.fill();
       });
 
@@ -243,10 +253,28 @@ function initPlanPane(el, canvas, layout) {
       if (room.polygon.length > 0) {
         const [sx, sy] = worldToScreen(room.polygon[0][0], room.polygon[0][1]);
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-base').trim();
-        ctx.font = '12px sans-serif';
+        ctx.font = isSelected ? 'bold 12px sans-serif' : '12px sans-serif';
         ctx.fillText(room.name, sx + 8, sy + 16);
       }
     });
+
+    // Draw placements as draggable dots
+    if (currentLayout.placements) {
+      currentLayout.placements.forEach(p => {
+        if (p.floor !== editorState.currentFloor) return;
+
+        const [sx, sy] = worldToScreen(p.x, p.y);
+        ctx.fillStyle = 'rgba(255, 100, 100, 0.7)';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Label
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-base').trim();
+        ctx.font = '10px sans-serif';
+        ctx.fillText(p.label || p.mac.substr(0, 8), sx + 6, sy + 3);
+      });
+    }
 
     // Draw in-progress path
     if (editorState.drawPath.length > 0) {
@@ -283,12 +311,58 @@ function initPlanPane(el, canvas, layout) {
     }
   }
 
+  // Helper: find which room vertex is clicked
+  function findVertexAtScreen(screenX, screenY) {
+    const floorRooms = currentLayout.rooms?.filter(r => r.floor === editorState.currentFloor) || [];
+    for (const room of floorRooms) {
+      if (!room.polygon) continue;
+      for (let i = 0; i < room.polygon.length; i++) {
+        const [sx, sy] = worldToScreen(room.polygon[i][0], room.polygon[i][1]);
+        const dist = Math.hypot(sx - screenX, sy - screenY);
+        if (dist < VERTEX_HIT_RADIUS) {
+          return { roomId: room.id, vertexIndex: i };
+        }
+      }
+    }
+    return null;
+  }
+
+  // Helper: find which placement is clicked
+  function findPlacementAtScreen(screenX, screenY) {
+    if (!currentLayout.placements) return null;
+    for (const p of currentLayout.placements) {
+      if (p.floor !== editorState.currentFloor) continue;
+      const [sx, sy] = worldToScreen(p.x, p.y);
+      const dist = Math.hypot(sx - screenX, sy - screenY);
+      if (dist < VERTEX_HIT_RADIUS) {
+        return p.mac;
+      }
+    }
+    return null;
+  }
+
+  // Helper: find which room polygon is clicked (interior)
+  function findRoomAtWorld(wx, wy) {
+    const floorRooms = currentLayout.rooms?.filter(r => r.floor === editorState.currentFloor) || [];
+    for (const room of floorRooms) {
+      if (FS.space3D?.pointInPolygon && room.polygon) {
+        if (FS.space3D.pointInPolygon([wx, wy], room.polygon)) {
+          return room.id;
+        }
+      }
+    }
+    return null;
+  }
+
   // Canvas mouse/touch events
   canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    const [wx, wy] = screenToWorld(screenX, screenY);
+
     if (editorState.mode === 'draw') {
-      const rect = canvas.getBoundingClientRect();
-      const [x, y] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-      const snapped = [snap(x), snap(y)];
+      const snapped = [snap(wx), snap(wy)];
 
       // Check if clicking first point to close
       if (editorState.drawPath.length >= 3) {
@@ -302,15 +376,23 @@ function initPlanPane(el, canvas, layout) {
       editorState.drawPath.push(snapped);
       draw();
     } else if (editorState.mode === 'scale') {
-      const rect = canvas.getBoundingClientRect();
-      const [x, y] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-      const snapped = [snap(x), snap(y)];
+      const snapped = [snap(wx), snap(wy)];
 
       editorState.scalePoints.push(snapped);
       if (editorState.scalePoints.length === 2) {
         showScaleDialog();
       }
       draw();
+    } else if (editorState.mode === 'view') {
+      // Click on room interior to select
+      const roomId = findRoomAtWorld(wx, wy);
+      if (roomId) {
+        editorState.selectedRoom = roomId;
+        draw();
+      } else {
+        editorState.selectedRoom = null;
+        draw();
+      }
     }
   });
 
@@ -320,16 +402,67 @@ function initPlanPane(el, canvas, layout) {
     }
   });
 
-  // Pan/zoom with mouse
-  let panStart = null;
-
+  // Vertex and placement dragging
   canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    if (e.button === 0 && editorState.mode === 'view') {
+      // Check for vertex drag
+      const vertex = findVertexAtScreen(screenX, screenY);
+      if (vertex) {
+        editorState.draggingVertex = vertex;
+        return;
+      }
+
+      // Check for placement drag
+      const mac = findPlacementAtScreen(screenX, screenY);
+      if (mac) {
+        editorState.draggingPlacement = { mac };
+        return;
+      }
+    }
+
+    // Pan/zoom
     if (e.button === 2 || (e.button === 0 && e.shiftKey)) {
       panStart = { x: e.clientX, y: e.clientY };
     }
   });
 
+  let panStart = null;
+
   canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    const [wx, wy] = screenToWorld(screenX, screenY);
+
+    // Vertex dragging
+    if (editorState.draggingVertex) {
+      const { roomId, vertexIndex } = editorState.draggingVertex;
+      const room = currentLayout.rooms?.find(r => r.id === roomId);
+      if (room && room.polygon) {
+        room.polygon[vertexIndex] = [snap(wx), snap(wy)];
+        saveLayout();
+        draw();
+      }
+      return;
+    }
+
+    // Placement dragging
+    if (editorState.draggingPlacement) {
+      const placement = currentLayout.placements?.find(p => p.mac === editorState.draggingPlacement.mac);
+      if (placement && placement.floor === editorState.currentFloor) {
+        placement.x = wx;
+        placement.y = wy;
+        saveLayout();
+        draw();
+      }
+      return;
+    }
+
+    // Pan
     if (panStart) {
       viewState.panX += e.clientX - panStart.x;
       viewState.panY += e.clientY - panStart.y;
@@ -339,6 +472,14 @@ function initPlanPane(el, canvas, layout) {
   });
 
   canvas.addEventListener('mouseup', () => {
+    if (editorState.draggingVertex) {
+      editorState.draggingVertex = null;
+      draw();
+    }
+    if (editorState.draggingPlacement) {
+      editorState.draggingPlacement = null;
+      draw();
+    }
     panStart = null;
   });
 
@@ -352,6 +493,25 @@ function initPlanPane(el, canvas, layout) {
     draw();
   });
 
+  // Update unsaved indicator
+  function updateUnsavedIndicator() {
+    const indicator = el.querySelector('#space-unsaved-indicator');
+    const currentStr = JSON.stringify(currentLayout);
+    const isUnsaved = currentStr !== editorState.lastSavedLayout;
+    indicator.textContent = isUnsaved ? '● Unsaved' : '';
+
+    // Show/hide room operation buttons
+    const renameBtn = el.querySelector('#btn-plan-rename-room');
+    const deleteBtn = el.querySelector('#btn-plan-delete-room');
+    if (editorState.selectedRoom) {
+      renameBtn.style.display = 'inline-block';
+      deleteBtn.style.display = 'inline-block';
+    } else {
+      renameBtn.style.display = 'none';
+      deleteBtn.style.display = 'none';
+    }
+  }
+
   // Toolbar events
   el.querySelector('#btn-plan-draw').addEventListener('click', () => {
     editorState.mode = editorState.mode === 'draw' ? 'view' : 'draw';
@@ -361,8 +521,29 @@ function initPlanPane(el, canvas, layout) {
   });
 
   el.querySelector('#btn-plan-undo').addEventListener('click', () => {
-    if (editorState.drawPath.length > 0) {
-      editorState.drawPath.pop();
+    if (editorState.undoStack.length > 0) {
+      const prev = editorState.undoStack.pop();
+      editorState.redoStack.push(JSON.stringify(currentLayout));
+      currentLayout = JSON.parse(prev);
+      editorState.selectedRoom = null;
+      editorState.drawPath = [];
+      editorState.mode = 'view';
+      updateUnsavedIndicator();
+      saveLayout();
+      draw();
+    }
+  });
+
+  el.querySelector('#btn-plan-redo').addEventListener('click', () => {
+    if (editorState.redoStack.length > 0) {
+      const next = editorState.redoStack.pop();
+      editorState.undoStack.push(JSON.stringify(currentLayout));
+      currentLayout = JSON.parse(next);
+      editorState.selectedRoom = null;
+      editorState.drawPath = [];
+      editorState.mode = 'view';
+      updateUnsavedIndicator();
+      saveLayout();
       draw();
     }
   });
@@ -374,12 +555,15 @@ function initPlanPane(el, canvas, layout) {
         const fp = resp.building_footprints[0];
         if (fp.polygon) {
           // Create a new room from the footprint
+          editorState.undoStack.push(JSON.stringify(currentLayout));
+          editorState.redoStack = [];
           currentLayout = FS.space.reduce(currentLayout, {
             type: 'ADD_ROOM',
             name: fp.name || 'Building',
             floor: editorState.currentFloor,
             polygon: fp.polygon
           });
+          updateUnsavedIndicator();
           saveLayout();
           draw();
         }
@@ -395,10 +579,45 @@ function initPlanPane(el, canvas, layout) {
     draw();
   });
 
+  el.querySelector('#btn-plan-rename-room').addEventListener('click', () => {
+    if (!editorState.selectedRoom) return;
+
+    const room = currentLayout.rooms?.find(r => r.id === editorState.selectedRoom);
+    if (!room) return;
+
+    const newName = prompt('Room name:', room.name);
+    if (newName && newName !== room.name) {
+      editorState.undoStack.push(JSON.stringify(currentLayout));
+      editorState.redoStack = [];
+      room.name = newName;
+      updateUnsavedIndicator();
+      saveLayout();
+      draw();
+    }
+  });
+
+  el.querySelector('#btn-plan-delete-room').addEventListener('click', () => {
+    if (!editorState.selectedRoom) return;
+
+    const room = currentLayout.rooms?.find(r => r.id === editorState.selectedRoom);
+    if (!room) return;
+
+    if (confirm(`Delete room "${room.name}"?`)) {
+      editorState.undoStack.push(JSON.stringify(currentLayout));
+      editorState.redoStack = [];
+      currentLayout.rooms = currentLayout.rooms.filter(r => r.id !== editorState.selectedRoom);
+      editorState.selectedRoom = null;
+      updateUnsavedIndicator();
+      saveLayout();
+      draw();
+    }
+  });
+
   el.querySelector('#space-floor-select').addEventListener('change', (e) => {
     editorState.currentFloor = e.target.value;
     editorState.drawPath = [];
     editorState.mode = 'view';
+    editorState.selectedRoom = null;
     draw();
   });
 
@@ -469,6 +688,10 @@ function initPlanPane(el, canvas, layout) {
         const name = nameInput.value || 'Room';
         const ceiling = parseFloat(ceilingInput.value) || 2.6;
 
+        // Push undo before modifying
+        editorState.undoStack.push(JSON.stringify(currentLayout));
+        editorState.redoStack = [];
+
         currentLayout = FS.space.reduce(currentLayout, {
           type: 'ADD_ROOM',
           name,
@@ -477,7 +700,7 @@ function initPlanPane(el, canvas, layout) {
           ceiling_m: ceiling
         });
 
-        editorState.undoStack.push(currentLayout);
+        updateUnsavedIndicator();
         saveLayout();
         FS.closeModal();
         draw();
@@ -514,10 +737,13 @@ function initPlanPane(el, canvas, layout) {
         const realDist = parseFloat(input.value);
         if (realDist > 0) {
           const factor = realDist / pixelDist;
+          editorState.undoStack.push(JSON.stringify(currentLayout));
+          editorState.redoStack = [];
           currentLayout = FS.space.reduce(currentLayout, {
             type: 'SCALE_COORDINATES',
             factor
           });
+          updateUnsavedIndicator();
           saveLayout();
         }
 
