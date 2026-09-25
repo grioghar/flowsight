@@ -100,6 +100,7 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 |---|---|---|---|
 | POST | `/api/enrich/lookup` | Names and countries for a list of addresses (up to 500); unknown names are resolved in the background and answered on the next call |  |
 | GET | `/api/enrich/status` | What is enabled, cache size, country database state |  |
+| GET | `/api/enrich/countries` | Countries available in the GeoIP database with ISO code, name, and network count (used by policy editor) |  |
 
 ### enroll
 

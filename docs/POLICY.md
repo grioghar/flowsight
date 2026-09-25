@@ -27,6 +27,7 @@ policies:
       categories: [gambling, adult, ads]
       domains: [example.com]
       tlds: [zip, mov]
+      countries: [CN, RU]                  # block destinations in these countries
       ports: [tcp/25, udp/6881-6889]
     allow:
       domains: [classroom.google.com]
@@ -59,6 +60,7 @@ options:
 | `domains`, `categories`, `tlds` | Unbound RPZ zone per policy, tagged to the policy's clients; squid ACLs | the DNS answer, then the TLS ClientHello or HTTP request for anything that slipped past DNS |
 | `apps`, `app_categories` | pf table per policy filled by app control from nDPI identifications | the first identified flow is cut and every later connection to that endpoint is dropped |
 | `ports`, `internet` | pf rules in `flowsight/policy` | the first packet |
+| `countries` | pf tables per country from the MaxMind GeoIP database | the first outbound packet to any address in that country |
 | `safe_search`, `youtube` | Unbound view with CNAME redirects | the DNS answer |
 | `tls.inspect` | squid bumps the client with the FlowSight CA | the handshake; bypassed names are spliced |
 
@@ -70,6 +72,36 @@ than an error.
 
 Policies are evaluated in the order listed; the UI has move buttons. Within a
 policy, `allow` beats `deny`. Exclusions beat everything.
+
+## Country-based blocking
+
+Country denials block outbound traffic to IP addresses in specified countries
+using two-letter ISO 3166-1 codes (e.g., `CN` for China, `RU` for Russia).
+FlowSight looks up every destination's country in the MaxMind GeoIP database
+and blocks the flow if it matches the policy.
+
+**Requirements:**
+- Country lookup must be enabled in the enrich module settings
+- The GeoIP database must be downloaded (check enrich module status)
+
+**How it works:**
+- Country-level blocks are compiled into pf firewall rules with one table per country
+- Each table is populated from the GeoIP database and contains all IPv4 and IPv6
+  address ranges for that country
+- The rules block at the first packet, before any application or DNS handling
+- Because CDNs and anycast services reuse the same IPs for multiple countries,
+  geographic blocking is coarse; edge cases where traffic maps to the "wrong"
+  country are normal
+
+**Performance:**
+- Tables are built once per GeoIP database update (typically monthly)
+- Memory usage scales with the number of networks: roughly 10,000–50,000 prefixes
+  per country depending on size
+- Lookups are O(1) in pf, so performance impact is minimal
+
+**Precedence:**
+Like other denials, country blocks respect the `allow` exceptions and do not
+override exclusions.
 
 ## Monitor first
 

@@ -12,6 +12,27 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251900
+
+**Country-level GeoIP blocking in policies.**
+
+New in policies:
+
+- **`deny.countries`**: Block outbound traffic to IP addresses in specified countries using two-letter ISO codes (e.g., `CN`, `RU`).
+- **GeoService**: New service in the enrich module that extracts IPv4/IPv6 network prefixes from the MaxMind GeoIP database, cached per database epoch.
+- **Firewall tables**: One pf table per country, `fs_geo_<CC>`, populated during policy apply. Blocks at the first packet.
+- **Countries API route**: `GET /api/enrich/countries` lists available countries with ISO code, name, and network count for the UI selector.
+- **Policy editor UI**: New *Countries* tab with searchable multi-select. Shows prefix counts per country. Requires country lookup enabled in enrich settings.
+- **Status reporting**: `GET /api/firewall/status` now includes geo tables with prefix count and database epoch.
+- **Documentation**: POLICY.md covers country blocking, requirements, how it works, performance, and precedence. See also SECURITY and CONFIGURATION for geolocation settings.
+
+How it works:
+
+- Country denials compile to pf rules with tables loaded from the GeoIP database
+- Rules respect monitor mode, allow exceptions, and policy order
+- Tables scale with countries in use, not all countries (load only what you block)
+- CDNs/anycast may map to unexpected countries; geographic blocking is coarse
+
 ## 0.9.8r202609252021
 
 **Alerting system complete: 54+ notification channels, flexible rules engine, delivery guarantees.**
