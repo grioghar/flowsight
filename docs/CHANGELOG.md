@@ -14,7 +14,6 @@ The newest entry is first.
 
 ## 0.9.8r202609250020
 
-
 **Space: your rooms, your devices, in 3D.** A new *Space* page under
 Inventory. Scan the flat with a phone app (Polycam or Scaniverse on iPhone
 and Android, or a RoomPlan-based app), export GLB, OBJ, PLY or the RoomPlan
@@ -77,44 +76,6 @@ building footprints from OpenStreetMap, elevation from USGS, and broadband
 provider data when available. Three panes: Plan (2D room editor with OSM import),
 3D viewer with scan mesh and interactive device placement, and Palette for
 device search and filtering.
-
-**Complete CRUD API for all configuration.** Every policy, group, schedule,
-zone, device, notification channel, alert rule, QoS rule, category, name override,
-and pinned TLS name can now be created, read, updated, and deleted via the API.
-New endpoints added for policy (groups, schedules), enrollment (zones, devices),
-alerting (channels, rules), QoS (rules), categories, identity (name overrides),
-and web (pinned TLS names).
-
-**API endpoints now accept `{param}` in paths.** Routes like `/api/policy/groups/{name}`
-resolve parameters from the request path; the pattern is matched against the request
-and available in handlers, enabling granular resource manipulation.
-
-**Interactive OpenAPI explorer at the API page.** Operations are grouped by the four
-menu areas (Monitor, Inventory, Protect, Administration), with parameter templates,
-live request/response, and copy-as-curl for easy testing.
-
-**The menu has four areas.** Twenty-five pages in one flat list became
-four groups by what you are doing: *Monitor* (Overview, Sessions,
-Applications, Web, DNS, Map), *Inventory* (IP Addresses, Devices, Zones),
-*Protect* (Policies, Priority, Groups & schedules, Categories, Deep
-inspection, TLS, Threats, Data out, Firewall hygiene) and *Administration*
-(Reports, Alerting, API, Updates, License, Status, Settings). The OPNsense
-menu nests the same way, and the in-product sidebar follows. Page addresses
-are unchanged, so bookmarks keep working.
-
-**Hosts is now IP Addresses.** The page lists addresses, so it says so; the
-address is the row and the device it belongs to reads under it, with a
-*Device* column to sort by. The one-row-per-device checkbox still folds a
-device's addresses together.
-
-**Complete OpenAPI documentation and interactive API explorer.** Every API route
-now has proper OpenAPI tags organized into four areas: Monitor (visibility, hosts,
-flows, applications, web, DNS, map, data out), Inventory (devices, zones),
-Protect (policy, QoS, categories, TLS, threats, firewall), and Administration
-(reports, alerts, updates, license, API). The in-product API explorer at the API
-page (Administration group) provides grouped operations, request/response templates,
-live testing, and curl export. All 122+ routes emit proper operationIds and are
-downloadable as an OpenAPI 3.0 JSON specification.
 
 ## 0.9.8r202609250004
 
