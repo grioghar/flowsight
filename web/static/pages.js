@@ -181,18 +181,18 @@
     async render(el, ctx) {
       const p = ctx.params; const qs = new URLSearchParams({ minutes: p.minutes || 30, limit: 500 });
       if (p.ip) qs.set('ip', p.ip); if (p.app) qs.set('app', p.app); if (p.blocked) qs.set('blocked', '1');
-      if (p.country) qs.set('country', p.country); if (p.abroad) qs.set('abroad', '1');
+      if (p.country) qs.set('country', p.country); if (p.abroad) qs.set('abroad', '1'); if (p.anycast) qs.set('anycast', '1');
       const d = await get('/api/visibility/flows?' + qs);
       if (d.error) { el.innerHTML = FS.err(d.error); return; }
       let rows = d.flows || [];
       if (p.domain) rows = rows.filter(f => (f.domain || '').includes(p.domain));
       const filt = (k, v) => v ? `<span class="chip">${esc(k)}: ${esc(v)} <button data-k="${esc(k)}">×</button></span>` : '';
       const home = d.home_country || '';
-      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${filt('country', p.country)}${p.abroad ? filt('only', 'outside ' + (home || 'home')) : ''}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?abroad=1${p.ip ? '&ip=' + p.ip : ''}" title="${home ? 'Sessions whose far end is outside ' + esc(home) : 'Sessions whose far end is outside this country (needs the country database under Settings › enrich)'}">Outside ${esc(home || 'the country')}</a><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
+      el.innerHTML = `<div class="actions"><div class="chips">${filt('ip', p.ip)}${filt('app', p.app)}${filt('domain', p.domain)}${filt('country', p.country)}${p.abroad ? filt('only', 'outside ' + (home || 'home')) : ''}${p.anycast ? filt('only', 'anycast') : ''}${p.blocked ? filt('only', 'blocked') : ''}</div><span style="flex:1"></span><div class="seg" id="win">${[15, 30, 60, 240, 1440].map(m => `<button data-m="${m}" class="${String(p.minutes || 30) === String(m) ? 'on' : ''}">${m < 60 ? m + 'm' : (m / 60) + 'h'}</button>`).join('')}</div><a class="btn" href="#flows?abroad=1${p.ip ? '&ip=' + p.ip : ''}" title="${home ? 'Sessions whose far end is outside ' + esc(home) : 'Sessions whose far end is outside this country (needs the country database under Settings › enrich)'}">Outside ${esc(home || 'the country')}</a><a class="btn" href="#flows?blocked=1${p.ip ? '&ip=' + p.ip : ''}">Blocked only</a></div>` +
         card(`${rows.length} sessions`, table(rows, [
           { t: 'When', f: r => when(r.end_ts || r.ts), sort: 'ts' },
           { t: 'Client', f: r => hostLink(r.src_ip, r.src_name), sort: 'src_ip' },
-          { t: 'Server', f: r => `${FS.ipTag(r.dst_ip, r.dst_name)}:${r.dst_port}${r.country && r.country !== '-' ? ` <a class="pill ${home && r.country.toUpperCase() !== home ? 'warn' : ''}" href="#flows?country=${esc(r.country)}${p.ip ? '&ip=' + p.ip : ''}" title="Sessions to ${esc(r.country)}">${esc(r.country)}</a>` : ''}`, sort: 'dst_ip' },
+          { t: 'Server', f: r => `${FS.ipTag(r.dst_ip, r.dst_name)}:${r.dst_port}${r.anycast ? ` <a class="pill" href="#flows?anycast=1${p.ip ? '&ip=' + p.ip : ''}" title="Anycast: this range answers from many sites at once. The country is where it is registered, not where it answered from.">anycast</a>` : ''}${r.country && r.country !== '-' ? ` <a class="pill ${home && !r.anycast && r.country.toUpperCase() !== home ? 'warn' : ''}" href="#flows?country=${esc(r.country)}${p.ip ? '&ip=' + p.ip : ''}" title="Sessions to ${esc(r.country)}">${esc(r.country)}</a>` : ''}`, sort: 'dst_ip' },
           { t: 'App', f: r => `<a href="#flows?app=${encodeURIComponent(r.app || '')}">${esc(r.app || '')}</a> <span class="muted small">${esc(r.category || '')}</span>`, sort: 'app' },
           { t: 'Site', f: r => domainLink(r.domain), sort: 'domain' },
           { t: 'Proto', f: r => `${esc(r.proto || '')}${r.tls_version ? ' <span class="muted small">' + esc(r.tls_version) + '</span>' : ''}`, sort: 'proto' },

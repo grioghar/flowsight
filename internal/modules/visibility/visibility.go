@@ -423,11 +423,12 @@ func (m *Module) poll() error {
 		return err
 	}
 	look, _ := m.ctx.Service("enrich").(core.CountryLookup)
+	anyc, _ := m.ctx.Service("anycast").(core.AnycastLookup)
 	var isLocal func(string) bool
 	if m.identity != nil {
 		isLocal = m.identity.IsLocal
 	}
-	core.FillCountries(flows, look, isLocal)
+	core.FillCountries(flows, look, anyc, isLocal)
 	if err := m.ctx.Store.AddFlows(flows); err != nil {
 		return err
 	}
@@ -586,7 +587,7 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 		return nil, err
 	}
 	q := `SELECT id,ts,end_ts,src_ip,src_port,dst_ip,dst_port,proto,app,category,domain,bytes_in,bytes_out,
-		duration,verdict,policy,source,iface,tls_version,tls_sni,country FROM flows WHERE COALESCE(end_ts,ts)>=?`
+		duration,verdict,policy,source,iface,tls_version,tls_sni,country,anycast FROM flows WHERE COALESCE(end_ts,ts)>=?`
 	args := []any{time.Now().Unix() - int64(minutes)*60}
 	if ip != "" {
 		q += ` AND (src_ip=? OR dst_ip=?)`
@@ -606,9 +607,14 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 		args = append(args, strings.ToUpper(cc))
 	}
 	home := m.homeCountry()
+	// "abroad" leaves anycast far ends out: their country is a registration,
+	// not a place. "anycast=1" shows exactly those.
 	if r.Q("abroad", "") != "" && home != "" {
-		q += ` AND country<>'' AND country<>'-' AND upper(country)<>?`
+		q += ` AND country<>'' AND country<>'-' AND upper(country)<>? AND COALESCE(anycast,0)=0`
 		args = append(args, home)
+	}
+	if r.Q("anycast", "") != "" {
+		q += ` AND anycast=1`
 	}
 	q += ` ORDER BY COALESCE(end_ts,ts) DESC LIMIT ?`
 	args = append(args, limit)
@@ -642,7 +648,7 @@ func (m *Module) apiAbroad(r *core.Req) (any, error) {
 		return nil, err
 	}
 	home := m.homeCountry()
-	q := `SELECT src_ip, upper(country) AS cc, dst_ip, MAX(domain) AS domain, COUNT(*) AS sessions,
+	q := `SELECT src_ip, upper(country) AS cc, dst_ip, MAX(domain) AS domain, COUNT(*) AS sessions, MAX(COALESCE(anycast,0)) AS anycast,
 		SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out, MAX(COALESCE(end_ts,ts)) AS last_seen
 		FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-'`
 	args := []any{since}
@@ -675,13 +681,18 @@ func (m *Module) apiAbroad(r *core.Req) (any, error) {
 		Dests    []*dest `json:"destinations"`
 	}
 	type device struct {
-		IP        string              `json:"ip"`
-		IPs       []string            `json:"other_ips,omitempty"`
-		Name      string              `json:"name,omitempty"`
-		MAC       string              `json:"mac,omitempty"`
-		Sessions  int64               `json:"sessions"`
-		Countries []*country          `json:"countries"`
-		byCC      map[string]*country `json:"-"`
+		IP       string   `json:"ip"`
+		IPs      []string `json:"other_ips,omitempty"`
+		Name     string   `json:"name,omitempty"`
+		MAC      string   `json:"mac,omitempty"`
+		Sessions int64    `json:"sessions"`
+		// Anycast far ends are counted apart: they are reached at a nearby
+		// site, so their registered country says nothing about where the
+		// traffic went.
+		AnycastSessions int64               `json:"anycast_sessions"`
+		AnycastDests    []*dest             `json:"anycast_destinations,omitempty"`
+		Countries       []*country          `json:"countries"`
+		byCC            map[string]*country `json:"-"`
 	}
 	devs := map[string]*device{}
 	var order []string
@@ -708,13 +719,22 @@ func (m *Module) apiAbroad(r *core.Req) (any, error) {
 		} else if d.IP != src && !containsStr(d.IPs, src) {
 			d.IPs = append(d.IPs, src)
 		}
+		n := toI(row["sessions"])
+		if toI(row["anycast"]) != 0 {
+			d.AnycastSessions += n
+			if len(d.AnycastDests) < 5 {
+				dip, _ := row["dst_ip"].(string)
+				dom, _ := row["domain"].(string)
+				d.AnycastDests = append(d.AnycastDests, &dest{IP: dip, Name: m.name(dip), Domain: dom, Sessions: n, Bytes: toI(row["bytes_in"]) + toI(row["bytes_out"])})
+			}
+			continue
+		}
 		c := d.byCC[cc]
 		if c == nil {
 			c = &country{Country: cc}
 			d.byCC[cc] = c
 			d.Countries = append(d.Countries, c)
 		}
-		n := toI(row["sessions"])
 		c.Sessions += n
 		d.Sessions += n
 		c.BytesIn += toI(row["bytes_in"])
@@ -731,6 +751,9 @@ func (m *Module) apiAbroad(r *core.Req) (any, error) {
 	out := make([]*device, 0, len(order))
 	for _, k := range order {
 		d := devs[k]
+		if len(d.Countries) == 0 {
+			continue // only anycast far ends: nothing we can say left the country
+		}
 		sort.Slice(d.Countries, func(i, j int) bool { return d.Countries[i].Sessions > d.Countries[j].Sessions })
 		out = append(out, d)
 	}
@@ -1266,43 +1289,100 @@ func (m *Module) addressesOf(ip string) []string {
 	return nil
 }
 
-// backfillCountries stamps countries on recent flows that lack one.
+// backfillCountries stamps countries, and the anycast flag, on recent flows
+// that lack one. A second pass, run once per database, walks the last seven
+// days of flows that already had a country to set the anycast flag, which
+// arrived later than the country column.
 func (m *Module) backfillCountries() error {
 	look, _ := m.ctx.Service("enrich").(core.CountryLookup)
-	if look == nil {
+	anyc, _ := m.ctx.Service("anycast").(core.AnycastLookup)
+	if look == nil && anyc == nil {
 		return nil
 	}
 	since := time.Now().Add(-7 * 24 * time.Hour).Unix()
-	rows, err := m.ctx.Store.Rows(`SELECT id, src_ip, dst_ip FROM flows WHERE ts >= ? AND (country IS NULL OR country='') ORDER BY id DESC LIMIT 500`, since)
-	if err != nil || len(rows) == 0 {
-		return err
+	type ans struct {
+		cc      string
+		anycast bool
 	}
-	memo := map[string]string{}
-	cc := func(ip string) string {
+	memo := map[string]ans{}
+	far := func(ip string) ans {
 		if ip == "" || (m.identity != nil && m.identity.IsLocal(ip)) {
-			return ""
+			return ans{}
 		}
 		if v, ok := memo[ip]; ok {
 			return v
 		}
-		v := look.CountryOf(ip)
+		var v ans
+		if look != nil {
+			v.cc = look.CountryOf(ip)
+		}
+		if anyc != nil {
+			v.anycast, _ = anyc.Anycast(ip)
+		}
 		memo[ip] = v
 		return v
 	}
+	rows, err := m.ctx.Store.Rows(`SELECT id, src_ip, dst_ip FROM flows WHERE ts >= ? AND (country IS NULL OR country='') ORDER BY id DESC LIMIT 500`, since)
+	if err != nil {
+		return err
+	}
 	for _, r := range rows {
-		id := toI(r["id"])
 		dst, _ := r["dst_ip"].(string)
 		src, _ := r["src_ip"].(string)
-		c := cc(dst)
-		if c == "" {
-			c = cc(src)
+		v := far(dst)
+		if v.cc == "" && !v.anycast {
+			v = far(src)
 		}
-		if c == "" {
-			c = "-" // looked at, nothing to say: do not look again
+		cc := v.cc
+		if cc == "" {
+			cc = "-" // looked at, nothing to say: do not look again
 		}
-		_ = m.ctx.Store.Exec(`UPDATE flows SET country=? WHERE id=?`, c, id)
+		_ = m.ctx.Store.Exec(`UPDATE flows SET country=?, anycast=? WHERE id=?`, cc, boolInt(v.anycast), toI(r["id"]))
 	}
-	return nil
+	if anyc == nil {
+		return nil
+	}
+	// One-time anycast pass, resumable, newest first, 2000 rows a minute.
+	var after int64 = -1
+	if mrow, err := m.ctx.Store.Rows(`SELECT value FROM meta WHERE key='anycast_backfill_before'`); err == nil && len(mrow) > 0 {
+		after = toI(mrow[0]["value"])
+	}
+	if after == 0 {
+		return nil // finished
+	}
+	q := `SELECT id, src_ip, dst_ip FROM flows WHERE ts >= ? AND country<>'' AND country<>'-'`
+	args := []any{since}
+	if after > 0 {
+		q += ` AND id < ?`
+		args = append(args, after)
+	}
+	q += ` ORDER BY id DESC LIMIT 2000`
+	rows, err = m.ctx.Store.Rows(q, args...)
+	if err != nil {
+		return err
+	}
+	last := int64(0)
+	for _, r := range rows {
+		dst, _ := r["dst_ip"].(string)
+		src, _ := r["src_ip"].(string)
+		id := toI(r["id"])
+		last = id
+		a := far(dst).anycast || far(src).anycast
+		if a {
+			_ = m.ctx.Store.Exec(`UPDATE flows SET anycast=1 WHERE id=?`, id)
+		}
+	}
+	if len(rows) < 2000 {
+		last = 0 // done
+	}
+	return m.ctx.Store.Exec(`INSERT OR REPLACE INTO meta VALUES('anycast_backfill_before', ?)`, fmt.Sprint(last))
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func containsStr(list []string, s string) bool {

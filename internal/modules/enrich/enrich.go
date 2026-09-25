@@ -87,6 +87,18 @@ type Module struct {
 	geoTag       string // the database's build epoch, for the status page
 	geoEpoch     int64  // build epoch as unix timestamp
 	geoCountries []core.CountryInfo
+
+	// The country-level database used for building firewall tables and the
+	// country list. It is the main database when the detail level is
+	// "country"; with a city database in use a separate, far smaller country
+	// file is fetched, because walking every city-level network on a small
+	// gateway takes minutes.
+	tbl        *maxminddb.Reader
+	tblAt      time.Time
+	tblEpoch   int64
+	counts     map[string]int // prefixes per country, from a background walk
+	countsFor  int64          // the epoch counts were made for
+	countsBusy bool
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -411,8 +423,9 @@ func modTime(p string) time.Time {
 	return st.ModTime()
 }
 
-func (m *Module) download(dest string) error {
-	tmpl := m.geoURL()
+func (m *Module) download(dest string) error { return m.downloadFrom(m.geoURL(), dest) }
+
+func (m *Module) downloadFrom(tmpl, dest string) error {
 	now := time.Now().UTC()
 	var last error
 	for _, month := range []time.Time{now, now.AddDate(0, -1, 0)} {
@@ -507,88 +520,143 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 
 var errNoGeo = fmt.Errorf("country lookup not available: Settings › enrich › Country lookup")
 
-// walk visits every network in the database once. The reader is taken
-// under the lock and stays valid for the walk because refreshGeo closes a
-// replaced reader only minutes later.
-func (m *Module) walk(visit func(cc string, rec *geoRecord, prefix string)) error {
+// walkRecord is the least a walk has to decode per network. Decoding city
+// names and coordinates for millions of networks is what made the first
+// version take minutes on the gateway.
+type walkRecord struct {
+	Country struct {
+		ISOCode string            `maxminddb:"iso_code"`
+		Names   map[string]string `maxminddb:"names"`
+	} `maxminddb:"country"`
+	Traits struct {
+		IsAnycast bool `maxminddb:"is_anycast"` // MaxMind databases carry this; DB-IP does not
+	} `maxminddb:"traits"`
+}
+
+// tableDB returns the country-level reader, fetching the country file when
+// the main database is a city one. Called with m.mu held or not held; it
+// takes the lock itself.
+func (m *Module) tableDB() (*maxminddb.Reader, int64, error) {
+	_, geo := m.Enabled()
+	if !geo {
+		return nil, 0, errNoGeo
+	}
+	if m.detail() == "country" {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.geo == nil {
+			return nil, 0, errNoGeo
+		}
+		return m.geo, m.geoEpoch, nil
+	}
+	path := filepath.Join(m.ctx.Platform.DataDir, "geoip-country.mmdb")
+	st, err := os.Stat(path)
+	if err != nil || time.Since(st.ModTime()) > 25*24*time.Hour {
+		if derr := m.downloadFrom(defaultGeoURL, path); derr != nil && err != nil {
+			return nil, 0, fmt.Errorf("country-level database: %w", derr)
+		}
+	}
 	m.mu.Lock()
-	r := m.geo
-	m.mu.Unlock()
-	if r == nil {
-		return errNoGeo
+	defer m.mu.Unlock()
+	if m.tbl != nil && m.tblAt.Equal(modTime(path)) {
+		return m.tbl, m.tblEpoch, nil
+	}
+	r, err := maxminddb.Open(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	if old := m.tbl; old != nil {
+		time.AfterFunc(10*time.Minute, func() { old.Close() })
+	}
+	m.tbl, m.tblAt, m.tblEpoch = r, modTime(path), int64(r.Metadata.BuildEpoch)
+	m.geoCountries = nil
+	return m.tbl, m.tblEpoch, nil
+}
+
+// walk visits every network in the country-level database once.
+func (m *Module) walk(visit func(cc string, rec *walkRecord, prefix string)) (int64, error) {
+	r, epoch, err := m.tableDB()
+	if err != nil {
+		return 0, err
 	}
 	it := r.Networks(maxminddb.SkipAliasedNetworks)
 	for it.Next() {
-		var rec geoRecord
+		var rec walkRecord
 		prefix, err := it.Network(&rec)
 		if err != nil || rec.Country.ISOCode == "" {
 			continue
 		}
 		visit(rec.Country.ISOCode, &rec, prefix.String())
 	}
-	return it.Err()
+	return epoch, it.Err()
 }
 
 // NetworksFor returns the prefixes registered to the given countries, or
-// with invert to every other country, in a single pass over the database.
-func (m *Module) NetworksFor(ccs []string, invert bool) ([]string, error) {
+// with invert to every other country, in a single pass. Ranges the database
+// marks anycast, and any the caller's skip function recognises as anycast,
+// are left out: they answer from a nearby site whatever their registration
+// says, and a country rule over them would block the wrong thing.
+func (m *Module) NetworksFor(ccs []string, invert bool, skip func(prefix string) bool) ([]string, int, error) {
 	want := map[string]bool{}
 	for _, cc := range ccs {
 		want[strings.ToUpper(strings.TrimSpace(cc))] = true
 	}
 	var out []string
-	err := m.walk(func(cc string, _ *geoRecord, prefix string) {
-		if want[cc] != invert {
-			out = append(out, prefix)
+	skipped := 0
+	_, err := m.walk(func(cc string, rec *walkRecord, prefix string) {
+		if want[cc] == invert {
+			return
 		}
+		if rec.Traits.IsAnycast || (skip != nil && skip(prefix)) {
+			skipped++
+			return
+		}
+		out = append(out, prefix)
 	})
-	return out, err
+	return out, skipped, err
 }
 
-// Countries lists the countries in the loaded database with their English
-// names and prefix counts; built once per database.
+// Countries lists the countries a policy can name: the ISO 3166-1 table
+// with English names, answered at once, plus prefix counts from a background
+// walk of the database once it has run.
 func (m *Module) Countries() ([]core.CountryInfo, error) {
-	m.mu.Lock()
-	if m.geo == nil {
-		m.mu.Unlock()
-		return nil, errNoGeo
-	}
-	if cached := m.geoCountries; cached != nil {
-		m.mu.Unlock()
-		return append([]core.CountryInfo(nil), cached...), nil
-	}
-	m.mu.Unlock()
-	counts := map[string]int{}
-	names := map[string]string{}
-	err := m.walk(func(cc string, rec *geoRecord, _ string) {
-		counts[cc]++
-		if names[cc] == "" {
-			names[cc] = rec.Country.Names["en"]
-		}
-	})
+	_, epoch, err := m.tableDB()
 	if err != nil {
 		return nil, err
 	}
-	out := make([]core.CountryInfo, 0, len(counts))
-	for cc, n := range counts {
-		name := names[cc]
-		if name == "" {
-			name = cc
-		}
-		out = append(out, core.CountryInfo{Code: cc, Name: name, Prefixes: n})
+	m.mu.Lock()
+	counts := m.counts
+	if m.countsFor != epoch && !m.countsBusy {
+		m.countsBusy = true
+		go m.countPrefixes(epoch)
+	}
+	m.mu.Unlock()
+	out := make([]core.CountryInfo, 0, len(isoNames))
+	for cc, name := range isoNames {
+		out = append(out, core.CountryInfo{Code: cc, Name: name, Prefixes: counts[cc]})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	m.mu.Lock()
-	m.geoCountries = out
-	m.mu.Unlock()
-	return append([]core.CountryInfo(nil), out...), nil
+	return out, nil
 }
 
-// DatabaseEpoch returns the build epoch of the loaded database, or 0.
-func (m *Module) DatabaseEpoch() int64 {
+func (m *Module) countPrefixes(epoch int64) {
+	counts := map[string]int{}
+	_, err := m.walk(func(cc string, _ *walkRecord, _ string) { counts[cc]++ })
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.geoEpoch
+	m.countsBusy = false
+	if err == nil {
+		m.counts, m.countsFor = counts, epoch
+	}
+	m.mu.Unlock()
+}
+
+// DatabaseEpoch returns the build epoch of the country-level database, or 0.
+func (m *Module) DatabaseEpoch() int64 {
+	_, epoch, err := m.tableDB()
+	if err != nil {
+		return 0
+	}
+	return epoch
 }
 
 func (m *Module) apiCountries(r *core.Req) (any, error) {
@@ -596,5 +664,16 @@ func (m *Module) apiCountries(r *core.Req) (any, error) {
 	if err != nil {
 		return map[string]any{"error": err.Error(), "countries": []core.CountryInfo{}}, nil
 	}
-	return map[string]any{"countries": countries, "epoch": m.DatabaseEpoch()}, nil
+	m.mu.Lock()
+	counted := m.countsFor != 0 && m.countsFor == m.tblEpochOrGeo()
+	m.mu.Unlock()
+	return map[string]any{"countries": countries, "epoch": m.DatabaseEpoch(), "counted": counted}, nil
+}
+
+// tblEpochOrGeo is the epoch of whichever reader tables are built from; m.mu held.
+func (m *Module) tblEpochOrGeo() int64 {
+	if m.detail() == "country" {
+		return m.geoEpoch
+	}
+	return m.tblEpoch
 }

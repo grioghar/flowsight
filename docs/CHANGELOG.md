@@ -12,6 +12,32 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252100
+
+**Anycast is understood everywhere a country is shown or enforced.** Every
+session now carries an `anycast` flag beside its country, set at ingest from
+the paths module's anycast knowledge (the University of Twente / CAIDA
+census, the vendors' published lists, the public resolvers and root
+servers) and back-filled over the last seven days. Sessions shows an
+*anycast* pill and an `anycast=1` filter; "Outside the country" and the DLP
+*Leaving the country* card never count anycast far ends as abroad and list
+them in their own *Via anycast* column; country tables in the firewall leave
+anycast ranges out (and MaxMind's `is_anycast` trait when the database has
+it), reporting how many were skipped. The Map already placed anycast hops at
+the nearest census site; nothing changed there.
+
+**Country lists and tables no longer walk the city database.** The
+countries route answered in minutes on the gateway because it decoded city
+names for every network; it now answers at once from the ISO 3166 table,
+with prefix counts filled in by a background pass, and firewall tables are
+built from the small country-level database (fetched alongside the city one
+when needed) in the background after apply. `geo_filling` in the firewall
+status says when a fill is running.
+
+**DLP: *By destination* is clickable.** Each kind (cloud storage, webmail,
+tunnels, unnamed, …) opens the connections of that kind; the connections
+card says which kind it is showing and offers the way back.
+
 ## 0.9.8r202609252049
 
 **Block traffic by country.** Policies gain `deny.countries` (deny the

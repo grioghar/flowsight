@@ -556,12 +556,14 @@ func (m *Module) pollLog() error {
 		ups = append(ups, core.HostUpdate{IP: ip, Blocked: c, Source: "web"})
 	}
 	_ = m.ctx.Store.UpsertHosts(ups)
-	if look, ok := m.ctx.Service("enrich").(core.CountryLookup); ok {
+	{
+		look, _ := m.ctx.Service("enrich").(core.CountryLookup)
+		anyc, _ := m.ctx.Service("anycast").(core.AnycastLookup)
 		var isLocal func(string) bool
 		if m.identity != nil {
 			isLocal = m.identity.IsLocal
 		}
-		core.FillCountries(flows, look, isLocal)
+		core.FillCountries(flows, look, anyc, isLocal)
 	}
 	if err := m.ctx.Store.AddFlows(flows); err != nil {
 		return err

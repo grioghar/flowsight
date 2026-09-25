@@ -102,9 +102,17 @@ restarted daemon refills them once. `GET /api/firewall/status` lists them
 under `geo_tables` with their countries, prefix count, database epoch and
 fill time; *Protect › Firewall Analysis Engine (FAE)* shows the same.
 
-**Limits.** Registration is not location: CDNs and anycast services answer
-from nearby data centres under a foreign registration and the reverse, so
-expect some surprises and start in monitor mode. Addresses the database does
+**Anycast.** Ranges announced from many sites at once (Cloudflare, the
+public resolvers, the root servers, and the forty-odd thousand prefixes the
+anycast census lists) are left out of every country table, whichever
+country they are registered in: a device reaching one of them is talking to
+a nearby site, and a country rule over it would block the wrong thing.
+`geo_tables` in the firewall status reports how many ranges were skipped
+per table.
+
+**Limits.** Registration is not location: a CDN's unicast range registered
+abroad may answer from next door and the reverse, so expect some surprises
+and start in monitor mode. Addresses the database does
 not know are in no table and are never blocked by a country rule. Tables hold
 tens of thousands of prefixes for a large country and a few hundred thousand
 for an except-table; pf keeps them in a radix tree, so lookup cost does not

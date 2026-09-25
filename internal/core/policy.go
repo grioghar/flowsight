@@ -522,7 +522,9 @@ type GeoService interface {
 	// NetworksFor returns the IPv4 and IPv6 prefixes registered to the given
 	// countries in one pass over the database, or, with invert, to every
 	// country except them. It errors when no database is loaded.
-	NetworksFor(ccs []string, invert bool) ([]string, error)
+	// skip, when not nil, names further prefixes to leave out (anycast ranges
+	// known to the paths module); the second result counts what was skipped.
+	NetworksFor(ccs []string, invert bool, skip func(prefix string) bool) ([]string, int, error)
 	// Countries returns the list of countries available in the database
 	// with their ISO codes, names, and prefix counts.
 	Countries() ([]CountryInfo, error)

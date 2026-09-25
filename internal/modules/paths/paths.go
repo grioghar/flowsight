@@ -225,6 +225,7 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.fixes.load(ctx.Store)
 	m.providers = &providerIndex{v4: map[byte][]providerRange{}, v6: map[uint16][]providerRange{}}
 	addKnownAnycast(m.providers)
+	ctx.Publish("anycast", m)
 	// Whatever is already on disk -- provider ranges, geofeeds, the anycast
 	// census -- is loaded at start rather than at the first scheduled run
 	// half an hour later; off the main path, since the census is large.
@@ -520,4 +521,17 @@ func sortedKeys[T any](m map[string]T) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// Anycast says whether an address is in a range announced from many sites at
+// once, and who operates it. It draws on the anycast census, the vendors'
+// own published lists and the curated resolver and root-server ranges. Other
+// modules use it so a registered country is never read as a location: an
+// anycast far end is reached at a nearby site whatever its registration says.
+func (m *Module) Anycast(ip string) (bool, string) {
+	pr := m.providerPlace(ip)
+	if pr == nil || !pr.Anycast {
+		return false, ""
+	}
+	return true, pr.Provider
 }

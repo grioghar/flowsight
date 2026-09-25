@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS flows (
     bytes_in INTEGER DEFAULT 0, bytes_out INTEGER DEFAULT 0, packets INTEGER DEFAULT 0,
     duration REAL DEFAULT 0,
     verdict TEXT DEFAULT 'observed', policy TEXT,
+    anycast INTEGER DEFAULT 0,
     source TEXT, iface TEXT,
     tls_version TEXT, tls_sni TEXT, tls_ja3 TEXT, tls_cert TEXT,
     country TEXT, asn TEXT, attrs TEXT
@@ -212,7 +213,33 @@ func (s *Store) migrate() error {
 	var have int
 	_ = s.db.QueryRow(`SELECT CAST(value AS INTEGER) FROM meta WHERE key='schema_version'`).Scan(&have)
 	// Additive migrations only. A downgrade must never lose data.
+	if err := s.ensureColumn("flows", "anycast", "INTEGER DEFAULT 0"); err != nil {
+		return err
+	}
 	_, err := s.db.Exec(`INSERT OR REPLACE INTO meta VALUES('schema_version', ?)`, fmt.Sprint(schemaVersion))
+	return err
+}
+
+// ensureColumn adds a column to a table that predates it.
+func (s *Store) ensureColumn(table, col, decl string) error {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == col {
+			return nil
+		}
+	}
+	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col + ` ` + decl)
 	return err
 }
 
@@ -354,7 +381,10 @@ type Flow struct {
 	Source, Iface              string
 	TLSVersion, TLSSNI, TLSJA3 string
 	TLSCert, Country, ASN      string
-	Attrs                      map[string]any
+	// Anycast: the far end is in a range announced from many sites at once,
+	// so Country is where the range is registered, not where it answered.
+	Anycast bool
+	Attrs   map[string]any
 }
 
 func jsonOrNil(m map[string]any) any {
@@ -363,6 +393,13 @@ func jsonOrNil(m map[string]any) any {
 	}
 	b, _ := json.Marshal(m)
 	return string(b)
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func nz(s string) any {
@@ -410,8 +447,8 @@ func (s *Store) AddFlows(flows []Flow) error {
 		defer upd.Close()
 		ins, err := tx.Prepare(`INSERT INTO flows(ts,end_ts,key,src_ip,src_port,dst_ip,dst_port,proto,
 			app,category,domain,bytes_in,bytes_out,packets,duration,verdict,policy,source,iface,
-			tls_version,tls_sni,tls_ja3,tls_cert,country,asn,attrs)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+			tls_version,tls_sni,tls_ja3,tls_cert,country,asn,attrs,anycast)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 		if err != nil {
 			return err
 		}
@@ -463,7 +500,7 @@ func (s *Store) AddFlows(flows []Flow) error {
 				f.DstPort, nz(f.Proto), nz(f.App), nz(f.Category), nz(f.Domain), f.BytesIn, f.BytesOut,
 				f.Packets, f.Duration, f.Verdict, nz(f.Policy), nz(f.Source), nz(f.Iface),
 				nz(f.TLSVersion), nz(f.TLSSNI), nz(f.TLSJA3), nz(f.TLSCert), nz(f.Country), nz(f.ASN),
-				jsonOrNil(f.Attrs)); err != nil {
+				jsonOrNil(f.Attrs), b2i(f.Anycast)); err != nil {
 				return err
 			}
 		}
@@ -1013,34 +1050,58 @@ func (s *Store) Stats() map[string]any {
 // country of a public address from the local database.
 type CountryLookup interface{ CountryOf(ip string) string }
 
-// FillCountries stamps the far end's country on flows that arrived without
-// one (the flow probe does not know countries; the proxy log never does).
-// The local end is the source for outbound flows and the destination for
-// inbound ones, so whichever side is not local is looked up.
-func FillCountries(flows []Flow, look CountryLookup, isLocal func(string) bool) {
-	if look == nil {
+// AnycastLookup is what the paths module publishes as "anycast": whether an
+// address sits in a range announced from many sites at once, and by whom.
+type AnycastLookup interface {
+	Anycast(ip string) (bool, string)
+}
+
+// FillCountries stamps the far end's country, and whether it is anycast, on
+// flows that arrived without one (the flow probe does not know countries;
+// the proxy log never does). The local end is the source for outbound flows
+// and the destination for inbound ones, so whichever side is not local is
+// looked up. Either lookup may be nil.
+func FillCountries(flows []Flow, look CountryLookup, anyc AnycastLookup, isLocal func(string) bool) {
+	if look == nil && anyc == nil {
 		return
 	}
-	memo := map[string]string{}
-	cc := func(ip string) string {
+	type ans struct {
+		cc      string
+		anycast bool
+	}
+	memo := map[string]ans{}
+	far := func(ip string) (ans, bool) {
 		if ip == "" || (isLocal != nil && isLocal(ip)) {
-			return ""
+			return ans{}, false
 		}
 		if v, ok := memo[ip]; ok {
-			return v
+			return v, true
 		}
-		v := look.CountryOf(ip)
+		var v ans
+		if look != nil {
+			v.cc = look.CountryOf(ip)
+		}
+		if anyc != nil {
+			v.anycast, _ = anyc.Anycast(ip)
+		}
 		memo[ip] = v
-		return v
+		return v, true
 	}
 	for i := range flows {
-		if flows[i].Country != "" {
+		if flows[i].Country != "" && flows[i].Anycast {
 			continue
 		}
-		if c := cc(flows[i].DstIP); c != "" {
-			flows[i].Country = c
-			continue
+		v, ok := far(flows[i].DstIP)
+		if !ok || (v.cc == "" && !v.anycast) {
+			if v2, ok2 := far(flows[i].SrcIP); ok2 && (v2.cc != "" || v2.anycast) {
+				v = v2
+			}
 		}
-		flows[i].Country = cc(flows[i].SrcIP)
+		if flows[i].Country == "" {
+			flows[i].Country = v.cc
+		}
+		if v.anycast {
+			flows[i].Anycast = true
+		}
 	}
 }

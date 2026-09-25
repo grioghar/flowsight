@@ -562,7 +562,7 @@
     title: 'DLP', refresh: 5,
     async render(el, ctx) {
       const [live, sum, ev, abroad] = await Promise.all([
-        get('/api/egress/live?min_kb=' + (ctx.params.all ? 0 : 64)),
+        get('/api/egress/live?min_kb=' + (ctx.params.all ? 0 : 64) + (ctx.params.group ? '&group=' + encodeURIComponent(ctx.params.group) : '')),
         get('/api/egress/summary'),
         get('/api/egress/events?limit=200'),
         get(`/api/visibility/abroad?${FS.since()}`)]);
@@ -584,7 +584,7 @@
         ${kpi('Flagged', num(open), 'transfers that crossed a threshold', open ? 'bad' : '')}</div>
 
       <div class="grid cols-2" style="margin-top:14px">
-        ${card('By destination', bars((sum.groups || []).map(g => ({ label: g.title || g.key, value: g.out })), bytes))}
+        ${card('By destination', bars((sum.groups || []).map(g => ({ label: g.title || g.key, value: g.out, href: '#egress?group=' + encodeURIComponent(g.key) + (ctx.params.all ? '&all=1' : ''), title: 'Show the connections of this kind' })), bytes))}
         ${card('By device', bars((sum.devices || []).map(d => ({ label: d.name || d.key, sub: d.name ? d.key : '', value: d.out, href: '#host/' + d.key })), bytes))}
       </div>
 
@@ -602,7 +602,8 @@
         { t: 'Flags', f: r => (r.flags || []).map(f => pill(f, 'warn')).join(' ') },
         { t: '', f: r => `<button class="btn small danger" data-stop="${esc(r.local)}" data-peer="${esc(r.peer)}">Stop</button>` }],
         { rowAttr: r => (r.flags || []).length ? 'class="flagged"' : '' }),
-        ctx.params.all ? '<a href="#egress">hide small connections</a>' : '<a href="#egress?all=1">show every connection</a>')}</div>
+        (ctx.params.group ? `showing <b>${esc(((sum.groups || []).find(g => g.key === ctx.params.group) || {}).title || ctx.params.group)}</b> · <a href="#egress${ctx.params.all ? '?all=1' : ''}">every kind</a> · ` : '') +
+        (ctx.params.all ? `<a href="#egress${ctx.params.group ? '?group=' + encodeURIComponent(ctx.params.group) : ''}">hide small connections</a>` : `<a href="#egress?all=1${ctx.params.group ? '&group=' + encodeURIComponent(ctx.params.group) : ''}">show every connection</a>`))}</div>
 
       <div style="margin-top:14px">${card('Flagged transfers', table(events, [
         { t: 'When', f: r => when(r.ts), sort: 'ts' },
@@ -621,10 +622,11 @@
       el.innerHTML += `<div style="margin-top:14px">${card(`Leaving the country${homeCC ? ` (outside ${esc(homeCC)})` : ''}`, adev.length ? table(adev, [
         { t: 'Device', f: x => FS.hostLink(x.ip, x.name) + (x.mac ? `<div class="muted small mono">${esc(x.mac)}</div>` : ''), sort: 'name' },
         { t: 'Sessions abroad', f: x => `<a href="#flows?ip=${encodeURIComponent(x.ip)}&abroad=1">${num(x.sessions)}</a>`, num: true, sort: 'sessions' },
+        { t: 'Via anycast', f: x => x.anycast_sessions ? `<a href="#flows?ip=${encodeURIComponent(x.ip)}&anycast=1" title="Reached at a nearby site of a globally announced service (${esc((x.anycast_destinations || []).map(d => d.domain || d.name || d.ip).slice(0, 3).join(', '))}); not counted as abroad">${num(x.anycast_sessions)}</a>` : '<span class="muted">0</span>', num: true, sort: 'anycast_sessions' },
         { t: 'Countries', f: x => (x.countries || []).map(c => `<span class="pill warn" title="${num(c.sessions)} sessions, ${bytes(c.bytes_in + c.bytes_out)}">${esc(c.country)} ${num(c.sessions)}</span>`).join(' ') },
         { t: 'Talking to', f: x => (x.countries || []).slice(0, 3).map(c => `<div class="small"><b>${esc(c.country)}</b>: ${(c.destinations || []).slice(0, 3).map(d => `<a href="#flows?ip=${encodeURIComponent(x.ip)}&country=${esc(c.country)}" title="${esc(d.ip)}">${esc(d.domain || d.name || d.ip)}</a>`).join(', ')}</div>`).join('') },
         { t: '', f: x => `<button class="btn small" data-block-abroad="${esc(x.mac ? 'mac:' + x.mac : x.ip)}" data-cc="${esc((x.countries || []).map(c => c.country).join(','))}" title="Open a policy denying these countries for this device">Block…</button>` }]) : `<div class="empty">${homeCC ? 'No device reached another country in this window.' : 'The country of this gateway is not known yet: turn on Country lookup under Settings › enrich so sessions carry a country and "home" can be told.'}</div>`,
-        `<span class="muted small">${num(adev.length)} devices · window ${FS.state.hours}h · <a href="#flows?abroad=1">all sessions outside the country</a></span>`)}</div>`;
+        `<span class="muted small">${num(adev.length)} devices · window ${FS.state.hours}h · <a href="#flows?abroad=1">all sessions outside the country</a> · <a href="#flows?anycast=1">anycast sessions</a>. Anycast far ends (Cloudflare, public resolvers, root servers and the like) answer from a nearby site whatever country their range is registered in, so they are shown apart and never count as abroad.</span>`)}</div>`;
       FS.$$('[data-block-abroad]', el).forEach(b => b.onclick = () => FS.quickPolicy({ countries: b.dataset.cc.split(',').filter(Boolean), members: [b.dataset.blockAbroad] }));
 
       FS.$$('[data-stop]', el).forEach(b => b.onclick = async () => {

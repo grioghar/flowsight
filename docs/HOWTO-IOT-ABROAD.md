@@ -82,11 +82,18 @@ each row.
 
 - A device that cannot reach its cloud may retry hard or stop working. Start
   in monitor mode, watch **Blocked only** for a day, then enforce.
-- Countries are decided by the address's registration, not by physics. CDNs
-  and anycast services (Cloudflare, Google, Akamai) can answer from a nearby
-  data centre under a foreign registration, and the reverse. The *Map* page's
-  placement engine is the better source for where a specific server really
-  is; the country rule is the practical instrument for policy.
+- Countries are decided by the address's registration, not by physics.
+  FlowSight knows which ranges are **anycast**, announced from many sites at
+  once (the anycast census from the University of Twente and CAIDA, the
+  vendors' own lists, and the public resolvers and root servers): those
+  sessions carry an *anycast* pill, are shown in their own column on the DLP
+  card, never count as "outside the country", and are left out of every
+  country table, because they answer from a nearby site whatever country the
+  range is registered in. What remains can still surprise you: a CDN's
+  unicast range registered abroad may serve from next door. The *Map* page's
+  placement engine (latency floors, cable routes, the census sites) is the
+  better source for where a specific server really is; the country rule is
+  the practical instrument for policy.
 - IPv6 is covered the same way; both families go into each country's table.
 - The country database refreshes monthly; the tables follow it. Between
   refreshes newly assigned ranges may be missed, which is why monitor mode

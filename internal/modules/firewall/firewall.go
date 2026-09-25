@@ -36,6 +36,8 @@ type Module struct {
 	identity           core.Identity
 	loaded             map[string]string     // anchor -> hash of rules loaded
 	geoTables          map[string]*TableInfo // geo table info
+	geoFilling         bool                  // a background fill is running
+	geoPending         bool                  // another fill was asked for meanwhile
 }
 
 // TableInfo holds information about a pf table.
@@ -44,8 +46,10 @@ type TableInfo struct {
 	Countries []string `json:"countries"`
 	Invert    bool     `json:"invert,omitempty"` // holds every country except Countries
 	Prefixes  int      `json:"prefixes"`
-	Epoch     int64    `json:"epoch"` // database build epoch when last filled
-	Updated   int64    `json:"updated"`
+	// SkippedAnycast counts ranges left out because they are anycast.
+	SkippedAnycast int   `json:"skipped_anycast"`
+	Epoch          int64 `json:"epoch"` // database build epoch when last filled
+	Updated        int64 `json:"updated"`
 }
 
 func (m *Module) Info() core.ModuleInfo {
@@ -362,5 +366,5 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 	m.mu.Unlock()
 	main, _ := m.pfctl("-sr")
 	return map[string]any{"available": true, "anchors": list, "counters": counters,
-		"referenced": strings.Contains(main, "flowsight"), "geo_tables": geoTables}, nil
+		"referenced": strings.Contains(main, "flowsight"), "geo_tables": geoTables, "geo_filling": m.geoFilling}, nil
 }

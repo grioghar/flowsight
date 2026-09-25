@@ -215,9 +215,10 @@ func (p *provider) Apply(a core.Artifact) (string, error) {
 	}
 
 	if specs := geoSpecs(rules); len(specs) > 0 {
-		if err := p.m.populateGeoTables(specs, true); err != nil {
-			p.m.ctx.Event("firewall", "country tables not filled", map[string]any{"error": err.Error()})
-		}
+		// Filling can take a while on a small gateway (one pass over the
+		// country database per table), so it runs off the request; the
+		// status route says when it is done.
+		p.m.fillGeoTablesAsync(specs, true)
 	}
 
 	n := 0
@@ -246,6 +247,16 @@ func (m *Module) populateGeoTables(specs []geoSpec, force bool) error {
 	if h, ok := m.ctx.Service("home").(core.HomeService); ok {
 		home = h.HomeCountry()
 	}
+	// Anycast ranges are left out of every country table: they are served
+	// from a nearby site whatever country they are registered in.
+	var skip func(prefix string) bool
+	if anyc, ok := m.ctx.Service("anycast").(core.AnycastLookup); ok {
+		skip = func(prefix string) bool {
+			ip, _, _ := strings.Cut(prefix, "/")
+			a, _ := anyc.Anycast(ip)
+			return a
+		}
+	}
 	var firstErr error
 	for _, g := range specs {
 		m.mu.Lock()
@@ -258,7 +269,7 @@ func (m *Module) populateGeoTables(specs []geoSpec, force bool) error {
 		if g.Invert && home != "" {
 			ccs = append(append([]string(nil), ccs...), home)
 		}
-		prefixes, err := geo.NetworksFor(ccs, g.Invert)
+		prefixes, skipped, err := geo.NetworksFor(ccs, g.Invert, skip)
 		if err == nil {
 			err = m.ReplaceTable("policy", g.Table, prefixes)
 		}
@@ -269,7 +280,7 @@ func (m *Module) populateGeoTables(specs []geoSpec, force bool) error {
 			continue
 		}
 		m.mu.Lock()
-		m.geoTables[g.Table] = &TableInfo{Name: g.Table, Countries: ccs, Invert: g.Invert, Prefixes: len(prefixes), Epoch: epoch, Updated: time.Now().Unix()}
+		m.geoTables[g.Table] = &TableInfo{Name: g.Table, Countries: ccs, Invert: g.Invert, Prefixes: len(prefixes), SkippedAnycast: skipped, Epoch: epoch, Updated: time.Now().Unix()}
 		m.mu.Unlock()
 	}
 	return firstErr
@@ -287,4 +298,31 @@ func (m *Module) refreshGeoTables() error {
 		return nil
 	}
 	return m.populateGeoTables(specs, false)
+}
+
+// fillGeoTablesAsync runs populateGeoTables in the background, one at a time.
+func (m *Module) fillGeoTablesAsync(specs []geoSpec, force bool) {
+	m.mu.Lock()
+	if m.geoFilling {
+		m.geoPending = true
+		m.mu.Unlock()
+		return
+	}
+	m.geoFilling = true
+	m.mu.Unlock()
+	go func() {
+		defer func() {
+			m.mu.Lock()
+			m.geoFilling = false
+			again := m.geoPending
+			m.geoPending = false
+			m.mu.Unlock()
+			if again {
+				_ = m.refreshGeoTables()
+			}
+		}()
+		if err := m.populateGeoTables(specs, force); err != nil {
+			m.ctx.Event("firewall", "country tables not filled", map[string]any{"error": err.Error()})
+		}
+	}()
 }
