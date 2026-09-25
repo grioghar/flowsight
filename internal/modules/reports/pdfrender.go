@@ -6,6 +6,8 @@ package reports
 // be readable, not typeset.
 
 import (
+	"bytes"
+	"sort"
 	"strings"
 	"time"
 )
@@ -17,20 +19,100 @@ import (
 // (TrafficByDevice/App/Category/Site → bar chart; ExecutiveSummary → line chart;
 // DNSSummary → blocked vs allowed bars).
 func (e *Engine) RenderPDF(def *Definition, run *Run) ([]byte, error) {
-	md, err := e.RenderMarkdown(def, run)
-	if err != nil {
-		return nil, err
+	pdf := NewSimplePDF()
+	pdf.AddHeading(def.Name)
+	pdf.AddText("Generated " + time.Now().Format("2006-01-02 15:04 MST"))
+	for _, key := range def.Sections {
+		sec, ok := e.sections[key]
+		if !ok {
+			continue
+		}
+		data := run.SectionData[key]
+		pdf.AddHeading(sec.Title())
+		if n := sec.Notes(); n != "" {
+			pdf.AddText(n)
+		}
+		// A picture first where the section has a natural one, then the
+		// same table the HTML and Markdown carry.
+		for _, ch := range sectionCharts(key, data) {
+			pdf.AddBarChart(ch)
+		}
+		var buf bytes.Buffer
+		e.renderSectionMarkdown(&buf, key, data)
+		appendMarkdown(pdf, buf.String(), "")
 	}
-	return markdownToPDF(def.Name, md), nil
+	return pdf.Bytes(), nil
 }
 
-// markdownToPDF understands the subset RenderMarkdown emits: #/##/###
-// headings, pipe tables with a separator row, bullet lines, emphasis
-// markers, blank lines between paragraphs.
+// sectionCharts picks the chart(s) a section's data supports: the top ten
+// by bytes for the traffic breakdowns, blocked against allowed for DNS.
+func sectionCharts(key string, data any) []BarChart {
+	type item = struct {
+		Label string
+		Value float64
+	}
+	top := func(title string, items []item) []BarChart {
+		if len(items) == 0 {
+			return nil
+		}
+		sort.SliceStable(items, func(i, j int) bool { return items[i].Value > items[j].Value })
+		if len(items) > 10 {
+			items = items[:10]
+		}
+		return []BarChart{{Title: title, Items: items}}
+	}
+	switch v := data.(type) {
+	case TrafficByDevice:
+		var it []item
+		for _, r := range v.Rows {
+			l := r.DeviceName
+			if l == "" {
+				l = r.DeviceMAC
+			}
+			it = append(it, item{l, float64(r.BytesIn + r.BytesOut)})
+		}
+		return top("Traffic by device (bytes)", it)
+	case TrafficByApp:
+		var it []item
+		for _, r := range v.Rows {
+			it = append(it, item{r.App, float64(r.Bytes)})
+		}
+		return top("Traffic by application (bytes)", it)
+	case TrafficByCategory:
+		var it []item
+		for _, r := range v.Rows {
+			it = append(it, item{r.Category, float64(r.Bytes)})
+		}
+		return top("Traffic by category (bytes)", it)
+	case TrafficBySite:
+		var it []item
+		for _, r := range v.Rows {
+			it = append(it, item{r.Domain, float64(r.Bytes)})
+		}
+		return top("Traffic by site (bytes)", it)
+	case DNSSummary:
+		if v.TotalQueries == 0 {
+			return nil
+		}
+		return []BarChart{{Title: "DNS queries", Items: []item{{"allowed", float64(v.TotalQueries - v.TotalBlocked)}, {"blocked", float64(v.TotalBlocked)}}}}
+	}
+	return nil
+}
+
+// markdownToPDF renders a whole Markdown document; kept for callers and
+// tests that have only the text.
 func markdownToPDF(title, md string) []byte {
 	pdf := NewSimplePDF()
 	pdf.AddHeading(title)
 	pdf.AddText("Generated " + time.Now().Format("2006-01-02 15:04 MST"))
+	appendMarkdown(pdf, md, title)
+	return pdf.Bytes()
+}
+
+// appendMarkdown understands the subset RenderMarkdown emits: #/##/###
+// headings, pipe tables with a separator row, bullet lines, emphasis
+// markers, blank lines between paragraphs.
+func appendMarkdown(pdf *SimplePDF, md string, title string) {
 	lines := strings.Split(md, "\n")
 	var para []string
 	var table [][]string
@@ -97,7 +179,6 @@ func markdownToPDF(title, md string) []byte {
 	}
 	flushPara()
 	flushTable()
-	return pdf.Bytes()
 }
 
 // plainMD strips the emphasis and link syntax the Markdown uses.

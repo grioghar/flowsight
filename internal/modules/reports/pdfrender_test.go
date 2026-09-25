@@ -45,3 +45,24 @@ func TestPDFManyPagesIsWellFormed(t *testing.T) {
 		t.Fatalf("xref entries %d, want %d", strings.Count(pdf, " 00000 n \n"), size-1)
 	}
 }
+
+func TestRenderPDFDrawsChartsForTrafficSections(t *testing.T) {
+	charts := sectionCharts("traffic_by_device", TrafficByDevice{Rows: []TrafficByDeviceRow{
+		{DeviceName: "MacBookPro", BytesIn: 5000, BytesOut: 1000}, {DeviceName: "roku", BytesIn: 100, BytesOut: 50}}})
+	if len(charts) != 1 || len(charts[0].Items) != 2 || charts[0].Items[0].Label != "MacBookPro" {
+		t.Fatalf("device chart: %+v", charts)
+	}
+	pdf := NewSimplePDF()
+	pdf.AddHeading("Test")
+	pdf.AddBarChart(charts[0])
+	out := string(pdf.Bytes())
+	if !strings.Contains(out, " re\n") || !strings.Contains(out, "MacBookPro") {
+		t.Fatalf("bar chart operators or labels missing")
+	}
+	if len(sectionCharts("dns_summary", DNSSummary{TotalQueries: 100, TotalBlocked: 20})) != 1 {
+		t.Fatal("dns chart")
+	}
+	if sectionCharts("alerts", nil) != nil {
+		t.Fatal("no chart for sections without one")
+	}
+}
