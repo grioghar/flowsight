@@ -671,7 +671,7 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 		return nil, err
 	}
 	q := `SELECT id,ts,end_ts,src_ip,src_port,dst_ip,dst_port,proto,app,category,domain,bytes_in,bytes_out,
-		duration,verdict,policy,source,iface,tls_version,tls_sni,country,anycast FROM flows WHERE COALESCE(end_ts,ts)>=?`
+		duration,verdict,policy,source,iface,tls_version,tls_sni,country,anycast,visibility FROM flows WHERE COALESCE(end_ts,ts)>=?`
 	args := []any{time.Now().Unix() - int64(minutes)*60}
 	if ip != "" {
 		q += ` AND (src_ip=? OR dst_ip=?)`
@@ -683,6 +683,10 @@ func (m *Module) apiFlows(r *core.Req) (any, error) {
 	}
 	if r.Q("blocked", "") != "" {
 		q += ` AND verdict='blocked'`
+	}
+	if vis, _ := r.QSafe("visibility", "", 16); vis != "" {
+		q += ` AND visibility=?`
+		args = append(args, vis)
 	}
 	// Where the far end is. "country=DE" is one country; "abroad=1" is any
 	// country other than the one this gateway sits in.

@@ -11,6 +11,11 @@ import (
 )
 
 // RenderPDF builds the PDF for a run from its Markdown rendering.
+// Chart methods (AddBarChart, AddLineChart) are available in SimplePDF for
+// rendering traffic breakdowns and timeseries; sections can be detected from
+// run.SectionData and charts emitted before table content for appropriate types
+// (TrafficByDevice/App/Category/Site → bar chart; ExecutiveSummary → line chart;
+// DNSSummary → blocked vs allowed bars).
 func (e *Engine) RenderPDF(def *Definition, run *Run) ([]byte, error) {
 	md, err := e.RenderMarkdown(def, run)
 	if err != nil {
@@ -81,7 +86,7 @@ func markdownToPDF(title, md string) []byte {
 		case strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* "):
 			flushPara()
 			flushTable()
-			pdf.AddText("\u2022 " + plainMD(t[2:]))
+			pdf.AddText("• " + plainMD(t[2:]))
 		default:
 			flushTable()
 			if strings.HasPrefix(t, "Generated ") && len(para) == 0 {
