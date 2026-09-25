@@ -55,24 +55,25 @@ type Node struct {
 }
 
 type Guest struct {
-	VMID           int      `json:"vmid"`
-	Type           string   `json:"type"` // "qemu" or "lxc"
-	Node           string   `json:"node"`
-	Name           string   `json:"name"`
-	Status         string   `json:"status"` // "running", "stopped"
-	Tags           []string `json:"tags"`
-	MACs           []string `json:"macs"`
-	IPs            []string `json:"ips"`
-	OS             string   `json:"os"`
-	OSType         string   `json:"ostype,omitempty"`
-	Hostname       string   `json:"hostname"`
-	Cores          int      `json:"cores"`
-	Memory         int64    `json:"memory"`
-	Uptime         int64    `json:"uptime,omitempty"`
-	AgentState     string   `json:"agent_state"`
-	Description    string   `json:"description"`
-	NotesSyncedAt  int64    `json:"notes_synced_at"`
-	DescriptionSet bool     `json:"description_set"`
+	VMID           int                    `json:"vmid"`
+	Type           string                 `json:"type"` // "qemu" or "lxc"
+	Node           string                 `json:"node"`
+	Name           string                 `json:"name"`
+	Status         string                 `json:"status"` // "running", "stopped"
+	Tags           []string               `json:"tags"`
+	MACs           []string               `json:"macs"`
+	IPs            []string               `json:"ips"`
+	OS             string                 `json:"os"`
+	OSType         string                 `json:"ostype,omitempty"`
+	Hostname       string                 `json:"hostname"`
+	Cores          int                    `json:"cores"`
+	Memory         int64                  `json:"memory"`
+	Uptime         int64                  `json:"uptime,omitempty"`
+	AgentState     string                 `json:"agent_state"`
+	Description    string                 `json:"description"`
+	NotesSyncedAt  int64                  `json:"notes_synced_at"`
+	DescriptionSet bool                   `json:"description_set"`
+	RawConfig      map[string]interface{} `json:"-"` // unpublished; used to parse declared requirements
 }
 
 type GuestInventoryService interface {

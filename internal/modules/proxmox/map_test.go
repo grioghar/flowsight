@@ -114,3 +114,64 @@ func TestMapResponseStructure(t *testing.T) {
 		t.Error("expected 1 external dep in response")
 	}
 }
+
+func TestParseStartupOrder(t *testing.T) {
+	tests := []struct {
+		input       string
+		expectOrder int
+		expectUp    int
+		expectDown  int
+	}{
+		{"order=1,up=10,down=5", 1, 10, 5},
+		{"order=2", 2, 0, 0},
+		{"up=20,order=3,down=10", 3, 20, 10},
+		{"", 0, 0, 0},
+	}
+
+	for _, tt := range tests {
+		order, up, down := parseStartupOrder(tt.input)
+		if order != tt.expectOrder || up != tt.expectUp || down != tt.expectDown {
+			t.Errorf("parseStartupOrder(%q) = (%d,%d,%d), expected (%d,%d,%d)",
+				tt.input, order, up, down, tt.expectOrder, tt.expectUp, tt.expectDown)
+		}
+	}
+}
+
+func TestExtractStorageFromConfig(t *testing.T) {
+	config := map[string]interface{}{
+		"scsi0":  "local-lvm:vm-102-disk-1,discard=on,iothread=1,size=32G",
+		"rootfs": "local-lvm:subvol-root,size=100G",
+		"memory": 8192,
+	}
+
+	storage := extractStorageFromConfig(config)
+
+	if len(storage) != 2 {
+		t.Errorf("expected 2 storage mounts, got %d", len(storage))
+	}
+	if storage["scsi0"] != "local-lvm:vm-102-disk-1" {
+		t.Errorf("expected scsi0 to map to local-lvm:vm-102-disk-1, got %q", storage["scsi0"])
+	}
+	if storage["rootfs"] != "local-lvm:subvol-root" {
+		t.Errorf("expected rootfs to map to local-lvm:subvol-root, got %q", storage["rootfs"])
+	}
+}
+
+func TestExtractBridgesFromConfig(t *testing.T) {
+	config := map[string]interface{}{
+		"net0": "virtio=BC:24:11:94:97:32,bridge=vmbr0,queues=4",
+		"net1": "virtio=BC:24:11:23:0D:37,bridge=vmbr1,tag=100,queues=4",
+	}
+
+	bridges, vlans := extractBridgesFromConfig(config)
+
+	if len(bridges) != 2 {
+		t.Errorf("expected 2 bridges, got %d: %v", len(bridges), bridges)
+	}
+	if len(vlans) != 1 {
+		t.Errorf("expected 1 VLAN, got %d: %v", len(vlans), vlans)
+	}
+	if vlans[0] != 100 {
+		t.Errorf("expected VLAN 100, got %v", vlans)
+	}
+}

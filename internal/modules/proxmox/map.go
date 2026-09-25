@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -352,4 +353,100 @@ func intFromQ(s string, def int) int {
 		return def
 	}
 	return i
+}
+
+// parseStartupOrder extracts order, up, down from startup config string
+func parseStartupOrder(startup string) (order int, up int, down int) {
+	// Format: order=N,up=S,down=S
+	parts := strings.Split(startup, ",")
+	for _, part := range parts {
+		kv := strings.Split(part, "=")
+		if len(kv) != 2 {
+			continue
+		}
+		key, val := strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1])
+		switch key {
+		case "order":
+			fmt.Sscanf(val, "%d", &order)
+		case "up":
+			fmt.Sscanf(val, "%d", &up)
+		case "down":
+			fmt.Sscanf(val, "%d", &down)
+		}
+	}
+	return
+}
+
+// extractStorageFromConfig finds all storage mounts and their storage backend
+func extractStorageFromConfig(config map[string]interface{}) map[string]string {
+	storage := make(map[string]string)
+	storageRe := regexp.MustCompile(`^(scsi|virtio|sata|ide|rootfs|mp)(\d*)$`)
+
+	for key, val := range config {
+		if matches := storageRe.FindStringSubmatch(key); matches != nil {
+			if s, ok := val.(string); ok {
+				// Extract storage backend from value: storage:volume,... or local-lvm:volume,...
+				parts := strings.Split(s, ",")
+				if len(parts) > 0 {
+					// First part is the storage identifier
+					storage[key] = parts[0]
+				}
+			}
+		}
+	}
+	return storage
+}
+
+// extractBridgesFromConfig finds all bridges and VLAN tags
+func extractBridgesFromConfig(config map[string]interface{}) ([]string, []int) {
+	var bridges []string
+	var vlans []int
+	netRe := regexp.MustCompile(`^net\d+$`)
+
+	for key, val := range config {
+		if netRe.MatchString(key) {
+			if s, ok := val.(string); ok {
+				parts := strings.Split(s, ",")
+				for _, part := range parts {
+					if strings.HasPrefix(part, "bridge=") {
+						bridge := strings.TrimPrefix(part, "bridge=")
+						bridges = append(bridges, bridge)
+					}
+					if strings.HasPrefix(part, "tag=") {
+						var vlan int
+						fmt.Sscanf(strings.TrimPrefix(part, "tag="), "%d", &vlan)
+						if vlan > 0 {
+							vlans = append(vlans, vlan)
+						}
+					}
+				}
+			}
+		}
+	}
+	return dedupeStrings(bridges), dedupeInts(vlans)
+}
+
+func dedupeStrings(s []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, v := range s {
+		if !seen[v] {
+			result = append(result, v)
+			seen[v] = true
+		}
+	}
+	return result
+}
+
+func dedupeInts(s []int) []int {
+	seen := make(map[int]bool)
+	var result []int
+	for _, v := range s {
+		if !seen[v] {
+			result = append(result, v)
+			seen[v] = true
+		}
+	}
+	sort.Ints(result)
+	return result
 }
