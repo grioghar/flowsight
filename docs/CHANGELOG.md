@@ -12,21 +12,20 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8r202609260200
+## 0.9.8r202609252340
 
-**Optimizations for scale, with measurement and regression harness.** Load
-testing shows FlowSight scales well to 2000 devices. Optimizations reduce 
-latency on heavy queries: apiAbroad and apiMatches now respect indexed queries
-with bounded row limits (2000 instead of 60000), new indices on flows table
-speed up country and destination lookups. Retention and pagination are now
-configurable and documented: raw flows default to 7 days, rollups 400 days,
-with an hourly prune job that works in bounded batches. New tools measure
-performance: `cmd/fsload` generates deterministic synthetic data at three
+**Scale testing, benchmarking and indices for heavy queries.** New tools
+measure performance limits: `cmd/fsload` generates synthetic data at three
 scales (50/500/2000 devices × 7/30/90 days); `cmd/fsbench` benchmarks read
-paths; `test/e2e/run.sh` is a self-contained regression harness (build, load
-data, start daemon, walk UI in headless Chrome, test API contracts).
-macOS support: daemon runs in generic mode (no firewall, DNS or proxy).
-Tested envelope in docs/OPERATIONS.md shows before/after latency and memory.
+paths and reports latency/memory; `test/e2e/run.sh` is an end-to-end
+regression harness. New indices on flows table: (country,ts), (anycast,ts),
+(country,anycast,ts), (src_ip,dst_ip,ts) speed heavy aggregation queries.
+Retention is now configurable in flowsight.json (core.retention) with defaults:
+7 days raw flows, 400 days rollups; hourly prune runs in bounded batches.
+List routes (flows, top, hosts, DNS summary) support limit/offset pagination,
+documented in OPERATIONS.md. macOS support: daemon runs in generic platform
+mode (no firewall, DNS or proxy integration). Tested envelope shows measured
+limits at three device/day scales with peak memory and query latencies.
 
 ## 0.9.8r202609252307
 
