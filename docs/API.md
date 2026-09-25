@@ -285,6 +285,28 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/web/status` | Proxy process state and configuration |  |
 | GET | `/api/web/summary` | Web activity: top sites, categories, blocked requests | hours (window) |
 
+### inspect
+
+Packet inspection: stateful inspection (SPI) from the firewall state table and deep packet inspection (DPI) via tcpdump capture.
+
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/inspect/states` | Firewall states with filtering | host, proto, state, limit |
+| GET | `/api/inspect/states/summary` | State counts and anomaly summary |  |
+| GET | `/api/inspect/rules` | Rule counters from pf |  |
+| POST | `/api/inspect/capture/start` | Start a packet capture | iface, filter, seconds, snaplen, payload |
+| POST | `/api/inspect/capture/stop` | Stop the running capture |  |
+| GET | `/api/inspect/captures` | List all captures |  |
+| GET | `/api/inspect/capture/{id}` | Capture analysis summary |  |
+| GET | `/api/inspect/capture/{id}/conversations` | Per-conversation table |  |
+| GET | `/api/inspect/capture/{id}/dns` | Extracted DNS records |  |
+| GET | `/api/inspect/capture/{id}/tls` | Extracted TLS handshakes |  |
+| GET | `/api/inspect/capture/{id}/http` | Extracted HTTP requests |  |
+| GET | `/api/inspect/capture/{id}/expert` | Expert analysis notes |  |
+| GET | `/api/inspect/capture/{id}/download` | Download capture as pcap |  |
+| DELETE | `/api/inspect/capture/{id}` | Delete a capture |  |
+| GET | `/api/inspect/live` | Stream live packet summaries | iface, filter, seconds |
+
 ## Examples
 
 ```sh

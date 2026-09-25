@@ -12,6 +12,45 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252000
+
+**Packet Inspection module.** The new **Packet Inspection** page (Protect group)
+provides two packet analysis views:
+
+- **Stateful Packet Inspection (SPI):** Real-time view of the firewall's pf
+  state table: every active TCP, UDP and ICMP flow, state, age, packet/byte
+  counts and rule attribution. Polled every 30 seconds (configurable). Anomaly
+  detection flags SYN floods and port scans as findings. No capture overhead:
+  reads state counters the kernel already keeps.
+
+- **Deep Packet Inspection (DPI):** Managed `tcpdump` capture with post-capture
+  analysis. Record traffic on any interface with optional BPF filtering
+  (presets: DNS, HTTPS, HTTP, ARP, no local-to-local); hard caps on duration
+  (10 min), file count (5) and total size (100 MB). Analysis extracts:
+  per-conversation 5-tuples with TCP flags, retransmissions, RTT estimate;
+  protocol counts; DNS queries/answers; TLS ClientHello SNI + JA3 fingerprint +
+  server certificates; HTTP request lines/Host/User-Agent (plaintext); DHCP
+  options; ARP pairs; ICMP types; expert notes (retransmission, zero window,
+  reset, port reuse, ARP conflict, DNS no-query); top talkers; protocol
+  hierarchy chart. Download pcap for Wireshark. Default 96-byte snaplen
+  (headers only, privacy-safe); 65535 bytes available if payload capture is
+  allowed in settings (contains sensitive data).
+
+- **Live mode (experimental):** Stream raw packet summaries for 30 seconds, one-line
+  format, no stored pcap.
+
+Settings: state aggregation cap (20k, default), poll interval, SYN flood and port
+scan thresholds, snaplen, max capture duration, file rotation, payload permission,
+state age threshold. All capture files are root-only. BPF filters are validated
+before capture (length, character set, compilation).
+
+Route options: `/api/inspect/states`, `/api/inspect/states/summary`, `/api/inspect/rules`,
+`/api/inspect/capture/start`, `{/stop, /captures, /{id}, /{id}/conversations,
+/{id}/dns, /{id}/tls, /{id}/http, /{id}/expert, /{id}/download}`, `/api/inspect/live`.
+Tab *States* on the page with state filters and half-open counter. Tab *Capture*
+with form and analysis view (protocol chart, conversations, DNS, TLS, HTTP, expert
+notes, top talkers). Tab *Live* with streaming pane.
+
 ## 0.9.8r202609251946
 
 **Four pages renamed.** *Data out* is now **DLP**; *Deep inspection* is now

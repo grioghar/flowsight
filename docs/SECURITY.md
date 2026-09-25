@@ -314,6 +314,91 @@ installed on the gateway, FlowSight uses it to enhance service version
 detection and OS accuracy. nmap is never installed by FlowSight; if present,
 it must be installed and updated separately (e.g. `pkg install nmap` on
 OPNsense).
+
+## Packet Inspection: Stateful and Deep Inspection
+
+The inspect module provides two packet analysis views without packet-level capture by default.
+
+### Stateful Packet Inspection (SPI)
+
+Reads the firewall's own state table with `pfctl -ss -vv` on an interval (configurable, default 30 seconds):
+
+- **No capture**: reads state counters the pf kernel already keeps, not raw packets
+- **Memory capped**: keeps the newest 20,000 states; older states discarded as new flows arrive
+- **Anomaly detection**: flags SYN floods and port scans (configurable thresholds) as findings
+- **No side effects**: read-only, does not modify pf or touch any traffic
+- **What is not kept**: full packet payloads; only state metadata (addresses, ports, state, packet/byte counts)
+
+### Deep Packet Inspection (DPI) via Capture
+
+`tcpdump` capture with optional analysis. Root-only; captures stored under `<data>/captures/`.
+
+**Capture controls:**
+
+- **Off by default**: capturing must be explicitly started from the UI
+- **Hard limits**: max 10 minutes per capture, 5 rotating files at 20 MB each (cap 100 MB total)
+- **Snaplen**: default 96 bytes (headers only, payload-safe). Users may select 65535 bytes (full payload)
+  if settings allow; **full payloads are sensitive** and the UI warns plainly.
+- **BPF validation**: filters are validated for length (max 1000 chars), character set, and compiled with
+  `tcpdump -d <filter>` before any capture starts, preventing command injection.
+- **Free space check**: a capture cannot start if less than 1 GB is free under the data directory.
+- **File permissions**: capture files are root-only (600); non-root users cannot read them directly.
+
+**Capture analysis** (one-pass streaming pcap parse with gopacket):
+
+- Per-conversation 5-tuple table: packets/bytes each way, TCP flags, retransmissions, RTT estimate,
+  zero-window and reset counts
+- Protocol counts: Ethernet, IP, TCP, UDP, ICMP, ARP, DNS, TLS, HTTP, QUIC, mDNS, SSDP, DHCP, NTP
+- Extracted artefacts: DNS queries/answers, TLS ClientHello SNI + JA3-like fingerprint + server certs,
+  HTTP request lines/Host/User-Agent (plaintext only; HTTPS payloads not parsed), DHCP options,
+  ARP who-has/is-at pairs, ICMP types, gratuitous ARP
+- Expert notes: retransmission, duplicate ACK, zero window, reset, port reuse, ARP conflict,
+  DNS response without query
+- Top talkers by bytes and packets; protocol hierarchy
+- Download as pcap for Wireshark
+
+**What is NOT kept:**
+
+- Payload data beyond what the decoders extract (DNS names, TLS certs, HTTP headers)
+- HTTPS payloads: TLS inspection is not done here; only the handshake is visible
+- Any plaintext HTTP/FTP/SMTP body content; only headers
+- Packet timestamps inside the pcap are preserved for analysis but aggregated data is retained
+
+**Retention:**
+
+- Up to 10 captures, each with metadata and analysis
+- Total storage capped at 100 MB; oldest captures deleted when exceeded
+- Deletion is automatic on size breach and manual on the UI
+
+**Live mode (experimental):**
+
+- Streams raw packet summaries for 30 seconds with `tcpdump -l -n -tttt` into one-line text format
+- No stored pcap, no post-capture analysis; view only
+- Same BPF filter validation as capture mode
+
+### Privilege and Root Execution
+
+The inspect module runs these commands at root:
+- `pfctl -ss -vv` (read state table)
+- `pfctl -sr -vv` (read rules)
+- `ifconfig -l` (list interfaces)
+- `tcpdump -i <iface> -w <file> ...` with fixed, validated arguments
+- `tcpdump -d <filter>` (BPF compilation validation)
+
+Commands are built with fixed shapes from validated inputs; `tcpdump -d` is the only place a
+user-supplied BPF filter is executed, and it is validated before capture to catch syntax errors early.
+
+### Attack Surface
+
+- **BPF injection**: impossible. Filters are validated for length and character set (no shell
+  metacharacters) and compiled with `tcpdump -d` before starting a capture, rejecting syntax errors upfront.
+- **Capture file abuse**: pcap files are stored in the data directory with strict permissions (root:600).
+  Non-root users cannot read them. The file rotation and retention are automatic; operators cannot
+  configure custom paths.
+- **DoS via huge captures**: hard caps on duration (10 min), file count (5), total bytes (100 MB) and
+  free space (1 GB required), preventing capture from exhausting storage.
+- **State table overflow**: newest 20,000 states kept; older discarded to bound memory.
+
 ## Space module: scan uploads and physical placement
 
 The space module stores uploaded scan files and layout blueprints.
