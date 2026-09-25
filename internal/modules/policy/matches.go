@@ -224,6 +224,7 @@ func (m *Module) apiMatches(r *core.Req) (any, error) {
 	hdevs := map[string]*hitDevice{}
 	var horder []string
 	var total int64
+	look, _ := m.ctx.Service("enrich").(core.CountryLookup)
 	if err == nil {
 		for _, row := range hrows {
 			src, _ := row["src_ip"].(string)
@@ -244,6 +245,11 @@ func (m *Module) apiMatches(r *core.Req) (any, error) {
 				if fr, err := m.ctx.Store.Rows(`SELECT domain, upper(country) AS cc FROM flows WHERE dst_ip=? AND COALESCE(end_ts,ts)>=? ORDER BY id DESC LIMIT 1`, dst, since); err == nil && len(fr) > 0 {
 					x.Domain, _ = fr[0]["domain"].(string)
 					x.Country, _ = fr[0]["cc"].(string)
+				}
+				// A packet the session table never saw (a lone NTP query,
+				// say) still has a registered country in the database.
+				if x.Country == "" && look != nil {
+					x.Country = look.CountryOf(dst)
 				}
 				h.byDest[k] = x
 				h.Dests = append(h.Dests, x)

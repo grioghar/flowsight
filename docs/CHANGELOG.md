@@ -12,6 +12,12 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252212
+
+**Logged matches always carry a country.** A destination the session table
+never recorded (a lone NTP query, for instance) showed no country on the
+Policy matches page; the country database now answers for it.
+
 ## 0.9.8r202609252211
 
 **The filter-log reader found nothing.** OPNsense's filterlog names the leaf
