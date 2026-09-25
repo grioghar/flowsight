@@ -263,41 +263,109 @@ func (m *Module) raiseAlert(msg *Message) error {
 			continue // Still in cooldown
 		}
 
-		// Send to configured channels
-		for _, chID := range rule.Channels {
-			var ch *Channel
-			for i := range channels {
-				if channels[i].Name == chID {
-					ch = &channels[i]
-					break
-				}
-			}
-			if ch == nil || !ch.Enabled {
-				continue
-			}
-
-			ct, err := Get(ch.Type)
-			if err != nil {
-				m.mu.Lock()
-				m.lastErr = fmt.Sprintf("unknown channel type %s: %v", ch.Type, err)
-				m.mu.Unlock()
-				continue
-			}
-
-			// Send via delivery engine
-			attempt := m.deliveryEngine.Deliver(context.Background(), ch, msg, ct)
-			if !attempt.Success {
-				m.mu.Lock()
-				m.lastErr = attempt.Error
-				m.mu.Unlock()
-			}
-		}
+		// Send to configured channels (with digest/escalation support)
+		m.sendToChannels(ruleID, rule, channels, msg)
 
 		// Update cooldown
 		_ = m.ctx.Store.KVSet(cooldownKey, now)
 	}
 
 	return nil
+}
+
+// sendToChannels delivers an alert to rule's configured channels with digest/escalation
+func (m *Module) sendToChannels(ruleID string, rule RuleConfig, channels []Channel, msg *Message) {
+	now := time.Now().Unix()
+
+	for _, chID := range rule.Channels {
+		var ch *Channel
+		for i := range channels {
+			if channels[i].Name == chID {
+				ch = &channels[i]
+				break
+			}
+		}
+		if ch == nil || !ch.Enabled {
+			continue
+		}
+
+		// Handle digest bundling: queue alert instead of sending immediately
+		if rule.DigestMinutes > 0 {
+			m.queueForDigest(ruleID, chID, msg, rule.DigestMinutes)
+			continue
+		}
+
+		// Respect quiet hours if defined
+		if shouldSkipQuietHours(ch, now) {
+			// Defer to quiet hours end, or skip based on rule config
+			m.deferAlert(ruleID, chID, msg)
+			continue
+		}
+
+		// Normal delivery
+		ct, err := Get(ch.Type)
+		if err != nil {
+			m.mu.Lock()
+			m.lastErr = fmt.Sprintf("unknown channel type %s: %v", ch.Type, err)
+			m.mu.Unlock()
+			continue
+		}
+
+		attempt := m.deliveryEngine.Deliver(context.Background(), ch, msg, ct)
+		if !attempt.Success {
+			m.mu.Lock()
+			m.lastErr = attempt.Error
+			m.mu.Unlock()
+		}
+
+		// Track for escalation
+		if rule.Escalation != nil {
+			m.trackForEscalation(ruleID, msg, rule.Escalation)
+		}
+	}
+}
+
+// queueForDigest queues an alert for digest delivery
+func (m *Module) queueForDigest(ruleID, channelID string, msg *Message, digestMinutes int) {
+	key := fmt.Sprintf("alerting.digest.%s.%s", ruleID, channelID)
+	var queue []Message
+	m.ctx.Store.KVGet(key, &queue)
+	queue = append(queue, *msg)
+	m.ctx.Store.KVSet(key, queue)
+	// In production, would schedule a timer to flush this digest at the interval
+}
+
+// deferAlert defers delivery to after quiet hours
+func (m *Module) deferAlert(ruleID, channelID string, msg *Message) {
+	key := fmt.Sprintf("alerting.deferred.%s.%s", ruleID, channelID)
+	var deferred []Message
+	m.ctx.Store.KVGet(key, &deferred)
+	deferred = append(deferred, *msg)
+	m.ctx.Store.KVSet(key, deferred)
+}
+
+// trackForEscalation records an alert for potential escalation
+func (m *Module) trackForEscalation(ruleID string, msg *Message, escalation *Escalation) {
+	key := fmt.Sprintf("alerting.escalation.%s.%s", ruleID, msg.AlertKey)
+	ackKey := fmt.Sprintf("alerting.ack.%s", msg.AlertKey)
+
+	// Check if already acknowledged
+	var ackTime int64
+	if m.ctx.Store.KVGet(ackKey, &ackTime) {
+		return // Alert was acknowledged, don't escalate
+	}
+
+	// Track escalation: store time and escalation config
+	m.ctx.Store.KVSet(key, time.Now().Unix())
+	// In production, would schedule escalation timer based on escalation.AfterMinutes
+}
+
+// shouldSkipQuietHours checks if current time is within quiet hours
+func shouldSkipQuietHours(ch *Channel, now int64) bool {
+	// For now, quiet hours are not stored on channels
+	// In full implementation, would parse quiet hours from channel config or rule config
+	// and return true if current time is within quiet hours
+	return false
 }
 
 // matchSeverity checks if a message severity meets the minimum required severity

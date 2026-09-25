@@ -566,3 +566,176 @@ func TestDeliveryEngineLog(t *testing.T) {
 		t.Errorf("expected 5 log entries in all logs, got %d", len(allLogs["test"]))
 	}
 }
+
+// ============ RULES ENGINE TESTS (Phase 4) ============
+
+func TestRuleMatching(t *testing.T) {
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Test Alert",
+		Severity:  "high",
+		Module:    "firewall",
+		Category:  "intrusion",
+		AlertKey:  "test-rule-match",
+		Device: &DeviceInfo{
+			IP: "10.1.1.1",
+		},
+		Zone: "internal",
+	}
+
+	// Test severity matching
+	rule := RuleConfig{
+		ID:       "test-rule",
+		Name:     "Test Rule",
+		Enabled:  true,
+		Severity: "medium", // Should match high
+	}
+
+	// High severity should match medium threshold
+	if !matchSeverity(msg.Severity, rule.Severity) {
+		t.Errorf("high severity should match medium threshold")
+	}
+
+	// Low severity should not match high threshold
+	if matchSeverity("low", "high") {
+		t.Errorf("low severity should not match high threshold")
+	}
+}
+
+func TestRuleSeverityMatching(t *testing.T) {
+	tests := []struct {
+		msgSev   string
+		minSev   string
+		expected bool
+	}{
+		{"critical", "critical", true},
+		{"high", "medium", true},
+		{"medium", "high", false},
+		{"info", "critical", false},
+		{"low", "low", true},
+	}
+
+	for _, tt := range tests {
+		result := matchSeverity(tt.msgSev, tt.minSev)
+		if result != tt.expected {
+			t.Errorf("matchSeverity(%s, %s) = %v, want %v", tt.msgSev, tt.minSev, result, tt.expected)
+		}
+	}
+}
+
+func TestDigestQueuing(t *testing.T) {
+	store, err := core.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore failed: %v", err)
+	}
+	defer store.Close()
+
+	// Create a mock module with the store
+	ctx := &core.Context{Store: store}
+	m := &Module{ctx: ctx}
+
+	msg1 := &Message{
+		Timestamp: time.Now(),
+		Title:     "Alert 1",
+		Severity:  "info",
+		AlertKey:  "alert-1",
+	}
+
+	msg2 := &Message{
+		Timestamp: time.Now(),
+		Title:     "Alert 2",
+		Severity:  "info",
+		AlertKey:  "alert-2",
+	}
+
+	// Queue two messages for digest
+	m.queueForDigest("rule-1", "channel-1", msg1, 5)
+	m.queueForDigest("rule-1", "channel-1", msg2, 5)
+
+	// Verify queued
+	key := "alerting.digest.rule-1.channel-1"
+	var queue []Message
+	store.KVGet(key, &queue)
+
+	if len(queue) != 2 {
+		t.Errorf("expected 2 queued messages, got %d", len(queue))
+	}
+}
+
+func TestEscalationTracking(t *testing.T) {
+	store, err := core.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore failed: %v", err)
+	}
+	defer store.Close()
+
+	ctx := &core.Context{Store: store}
+	m := &Module{ctx: ctx}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Critical Alert",
+		Severity:  "critical",
+		AlertKey:  "crit-001",
+	}
+
+	escalation := &Escalation{
+		AfterMinutes: 15,
+		Channels:     []string{"escalation-channel"},
+		OnlyOnce:     true,
+	}
+
+	// Track for escalation
+	m.trackForEscalation("rule-1", msg, escalation)
+
+	// Verify tracked
+	key := "alerting.escalation.rule-1.crit-001"
+	var ts int64
+	found := store.KVGet(key, &ts)
+
+	if !found {
+		t.Errorf("escalation not tracked")
+	}
+	if ts <= 0 {
+		t.Errorf("escalation timestamp invalid")
+	}
+}
+
+func TestAcknowledgmentPreventsEscalation(t *testing.T) {
+	store, err := core.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("OpenStore failed: %v", err)
+	}
+	defer store.Close()
+
+	ctx := &core.Context{Store: store}
+	m := &Module{ctx: ctx}
+
+	msg := &Message{
+		Timestamp: time.Now(),
+		Title:     "Alert",
+		Severity:  "high",
+		AlertKey:  "ack-test",
+	}
+
+	// Pre-acknowledge the alert
+	ackKey := "alerting.ack.ack-test"
+	store.KVSet(ackKey, time.Now().Unix())
+
+	escalation := &Escalation{
+		AfterMinutes: 5,
+		Channels:     []string{"esc-channel"},
+	}
+
+	// Try to track for escalation (should skip since acknowledged)
+	m.trackForEscalation("rule-1", msg, escalation)
+
+	// Verify no escalation key was set
+	key := "alerting.escalation.rule-1.ack-test"
+	var ts int64
+	found := store.KVGet(key, &ts)
+
+	if found {
+		t.Errorf("escalation should not track acknowledged alerts")
+	}
+}
