@@ -427,8 +427,8 @@ func (m *Module) apiStatus(r *core.Req) (any, error) {
 
 	return map[string]any{
 		"collecting": core.Bool(m.ctx.Settings(), "collect", false),
-		"exporters": exporters,
-		"ok":        m.lastErr == "",
-		"error":     m.lastErr,
+		"exporters":  exporters,
+		"ok":         m.lastErr == "",
+		"error":      m.lastErr,
 	}, nil
 }

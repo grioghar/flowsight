@@ -26,7 +26,7 @@ type PolicyDoc struct {
 }
 
 // Group members are addresses, CIDRs, "mac:aa:bb:cc:dd:ee:ff", "zone:<id>",
-// "device:<name>" or "all".
+// "device:<name>", "user:<name>", "usergroup:<groupname>" or "all".
 type Group struct {
 	Description string   `json:"description,omitempty"`
 	Members     []string `json:"members"`
@@ -175,7 +175,7 @@ func NormalizeDomain(s string) (string, error) {
 	return strings.TrimPrefix(s, "*."), nil
 }
 
-// ValidateMember accepts an IP, CIDR, mac:, zone:, device: or "all".
+// ValidateMember accepts an IP, CIDR, mac:, zone:, device:, user:, usergroup: or "all".
 func ValidateMember(m string) (string, error) {
 	m = strings.TrimSpace(m)
 	switch {
@@ -186,8 +186,9 @@ func ValidateMember(m string) (string, error) {
 			return "", fmt.Errorf("%q is not a MAC address", m)
 		}
 		return "mac:" + strings.ToLower(m[4:]), nil
-	case strings.HasPrefix(m, "zone:"), strings.HasPrefix(m, "device:"):
-		if len(m) < 6 || len(m) > 80 {
+	case strings.HasPrefix(m, "zone:"), strings.HasPrefix(m, "device:"),
+		strings.HasPrefix(m, "user:"), strings.HasPrefix(m, "usergroup:"):
+		if len(m) < 6 || len(m) > 100 {
 			return "", fmt.Errorf("%q is not a valid reference", m)
 		}
 		return m, nil
@@ -201,7 +202,7 @@ func ValidateMember(m string) (string, error) {
 	if _, n, err := net.ParseCIDR(m); err == nil {
 		return n.String(), nil
 	}
-	return "", fmt.Errorf("%q is not an address, network, mac:, zone: or device:", m)
+	return "", fmt.Errorf("%q is not an address, network, mac:, zone:, device:, user: or usergroup:", m)
 }
 
 // Validate checks the whole document and normalises members and domains in

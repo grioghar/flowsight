@@ -53,6 +53,8 @@ options:
 | `mac:aa:bb:cc:dd:ee:ff` | the device with that MAC, whatever address it holds |
 | `device:<name>` | a device by the name FlowSight knows it under |
 | `zone:<id>` | an enrolment zone's subnet |
+| `user:<name>` | a person: every address from their active sessions (requires RADIUS or manual login tracking) |
+| `usergroup:<group>` | everyone in an LDAP/AD group (requires LDAP configured) |
 | `all` (or `match.all: true`) | every local network |
 
 ## What each denial compiles to

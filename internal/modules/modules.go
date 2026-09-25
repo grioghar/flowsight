@@ -32,6 +32,7 @@ import (
 	_ "github.com/grioghar/flowsight/internal/modules/tls"
 	_ "github.com/grioghar/flowsight/internal/modules/ui"
 	_ "github.com/grioghar/flowsight/internal/modules/updater"
+	_ "github.com/grioghar/flowsight/internal/modules/users"
 	_ "github.com/grioghar/flowsight/internal/modules/visibility"
 	_ "github.com/grioghar/flowsight/internal/modules/web"
 )

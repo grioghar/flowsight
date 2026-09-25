@@ -12,6 +12,22 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252359
+
+**Target policies to people, not machines.** A new Users module tracks user
+sessions from RADIUS accounting (FreeRADIUS, OPNsense captive portals,
+compatible systems) and optional LDAP/AD group membership. Policies now
+accept `user:<name>` and `usergroup:<group>` member types, so all of a
+person's devices (laptop, phone, tablet) share one set of rules without
+having to list every device. Session details are visible in a new Users panel
+under Inventory, with source (RADIUS, manual, LDAP), addresses, and group
+membership when LDAP is enabled. Manual API endpoint and captive portal
+scripts can post logins via `POST /api/users/session`. LDAP/AD support is
+built-in: minimal BER encoder/decoder for BindRequest/SearchRequest over
+net.Dial with optional TLS and StartTLS; group membership from memberOf or
+group search; local groups setting (name → list of users) for `usergroup:`
+without a directory. RADIUS listener and LDAP client have no external
+dependencies (net, crypto/md5, crypto/tls, encoding/binary).
 ## 0.9.8r202609252339
 
 **Flow sources module was never loaded.** Its collector switch was named
