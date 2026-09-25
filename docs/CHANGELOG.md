@@ -12,6 +12,23 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252300
+
+**A route's trail stops where the story ends.** Once the destination itself
+answered, nothing after it is shown; when it never answered, the trail ends
+at the last hop that replied and one line says how far the probe went
+without a reply, instead of fifteen silent rows. `GET /api/paths/path` adds
+`reached`, `probed_to` and `last_answer`.
+
+**Breadcrumbs follow the app inside OPNsense.** The app runs in a frame in
+the OPNsense page, whose breadcrumb, title and address only knew the page it
+was opened on. The app now reports every route change to the page around
+it, which updates the breadcrumb (group and page), the tab title and the
+address (`flowsight.php?page=<route>`), so a reload lands on the same page
+with the same route or filter. The plugin page also names pages by their
+menu titles before the app loads. The plugin page file must be updated on
+the gateway for this part.
+
 ## 0.9.8r202609252254
 
 **Report runs no longer panic on a long PDF.** The built-in PDF writer kept

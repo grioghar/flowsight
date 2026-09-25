@@ -1189,6 +1189,7 @@
         return `<div class="trailbox">
           <div class="trailhead">Route to ${esc(dest.name || picked)}</div>
           <ol class="trail">${items.join('')}</ol>
+          ${route.reached === false && route.probed_to ? `<div class="small muted" style="margin-top:6px">The destination did not answer the probe. The last reply came from hop ${num(route.last_answer)}; the probe went on to hop ${num(route.probed_to)} without a reply, and those steps are not shown. The traffic itself still got there: many servers answer connections and ignore probes.</div>` : ''}
           ${talkersHTML(route.talkers, false)}
           <div class="help" style="margin-top:8px">Left to right, from the machine on this network that made the connection to the address it reached. Hover a step to pick it out on the map. A step with no answer still carried the traffic; its position is kept so the numbering stays honest.${route.inside ? '' : ' No flow records name the device that used this route, so the trail begins at the first router.'}</div>
           <div class="actions" style="margin-top:8px"><button class="btn small" id="r-clear">Show every route</button></div>

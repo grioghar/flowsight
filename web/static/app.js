@@ -7,6 +7,19 @@
   let timer = null;
 
   FS.setTitle = (t) => { $('#title').textContent = t; document.title = t + ' · FlowSight'; };
+  // Inside the OPNsense page the app is an iframe, and the page's own
+  // breadcrumb, title and address only know the page it was opened on. Every
+  // route change is reported to the page around us so those follow along.
+  FS.tellHost = () => {
+    try {
+      if (window.parent === window || !FS.state.page) return;
+      const page = FS.state.page;
+      const menuPage = page === 'host' ? 'hosts' : page === 'policy-matches' ? 'policy' : page;
+      const def = FS.pages[page] || {};
+      const g = (FS.panelGroups || {})[menuPage] || {};
+      window.parent.postMessage({ fsNav: { page, hash: location.hash.slice(1), title: def.title || page, group: g.group || '' } }, location.origin);
+    } catch (e) { /* not embedded, or a stricter parent */ }
+  };
 
   // Theme: the installation's preference (auto | light | dark). In auto,
   // follow the host GUI's theme when embedded in OPNsense, else the OS.
@@ -61,7 +74,9 @@
     panels.push({ id: 'findings', title: 'Findings', group: 'Administration', order: 200 }, { id: 'events', title: 'Events', group: 'Administration', order: 210 },
       { id: 'system', title: 'Status', group: 'Administration', order: 220 }, { id: 'modules', title: 'Settings', group: 'Administration', order: 230 });
     const groups = {};
-    panels.forEach(x => { (groups[x.group || 'Other'] = groups[x.group || 'Other'] || []).push(x); });
+    FS.panelGroups = {};
+    panels.forEach(x => { (groups[x.group || 'Other'] = groups[x.group || 'Other'] || []).push(x); FS.panelGroups[x.id] = { group: x.group || 'Other', title: x.title }; });
+    FS.tellHost();
     const html = Object.keys(groups).sort((a, b) => (ORDER[a] || 9) - (ORDER[b] || 9)).map(g => `<div class="group">${esc(g)}</div>` + groups[g].sort((a, b) => a.order - b.order).map(x => `<a href="#${esc(x.id)}" data-page="${esc(x.id)}" ${x.locked ? 'title="Requires the ' + esc(x.required) + ' tier"' : ''}><span class="ico">${ICONS[x.icon || x.id] || '•'}</span>${esc(x.title)}${x.locked ? '<span class="lock">🔒</span>' : ''}</a>`).join('')).join('');
     $('#menu').innerHTML = html;
     $('#site').textContent = info.site || '';
@@ -104,6 +119,7 @@
     FS.state.page = page; FS.state.params = params;
     $$('#menu a').forEach(a => a.classList.toggle('active', a.dataset.page === page || (page === 'host' && a.dataset.page === 'hosts') || (page === 'modules' && a.dataset.page === 'modules')));
     FS.setTitle(def.title);
+    FS.tellHost();
     $('#nav').classList.remove('open');
     const view = $('#view');
     const same = view.dataset.page === page + '/' + arg;

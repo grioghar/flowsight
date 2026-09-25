@@ -240,6 +240,13 @@ each other, is not seen by any of this; only routed traffic is.
 
 ### Map (Pro)
 
+A route's trail ends at the destination when it answered the probe. When
+it did not, the trail ends at the last hop that answered and a line says how
+far the probe went without a reply; the silent steps are not listed.
+
+Inside OPNsense, the page's breadcrumb, tab title and address follow the app
+as you move between its pages, so a reload lands where you were.
+
 Clicking a hop sets the **Device** filter to the devices whose traffic ran
 through it (one device selects itself; several appear as *N devices through
 the clicked hop*), so the map narrows to their routes. *Every device* clears

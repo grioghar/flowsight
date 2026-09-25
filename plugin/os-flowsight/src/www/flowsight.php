@@ -185,7 +185,14 @@ if (isset($_GET["app"])) {
 }
 
 /* ---------------------------------------------------------------- page */
-$pageName = isset($_GET['page']) ? ucfirst(preg_replace('/[^A-Za-z0-9 ]/', ' ', $_GET['page'])) : gettext("Overview");
+/* The page's title before the app reports its own: the menu's name for the
+ * id when we know it, else the id tidied up. The app corrects it on load. */
+$fsTitles = ["overview" => "Overview", "flows" => "Sessions", "apps" => "Applications", "web" => "Web", "dns" => "DNS", "paths" => "Map",
+    "hosts" => "IP Addresses", "devices" => "Devices", "zones" => "Zones", "policy" => "Policies", "qos" => "Priority", "groups" => "Groups & Schedules",
+    "egress" => "DLP", "tls" => "Stateful Packet Inspection", "inspect" => "Packet Inspection", "firewall" => "Firewall Analysis Engine (FAE)",
+    "alerts" => "Alerting", "reports" => "Reports", "api" => "API", "setup" => "Setup", "modules" => "Settings", "system" => "Status", "events" => "Events", "findings" => "Findings"];
+$pageId = isset($_GET['page']) ? strtolower(preg_replace('/[?#].*$/', '', $_GET['page'])) : 'overview';
+$pageName = $fsTitles[$pageId] ?? ucfirst(preg_replace('/[^A-Za-z0-9 ]/', ' ', $pageId));
 $pgtitle = [gettext("FlowSight"), $pageName];
 include("head.inc");
 ?>
@@ -199,7 +206,7 @@ include("head.inc");
   <div class="container-fluid">
     <div class="row">
       <section class="col-xs-12">
-        <iframe id="fs-frame" data-src="flowsight.php?app=1" data-page="<?= isset($_GET['page']) ? htmlspecialchars(preg_replace('/[^A-Za-z0-9_\/?=&.-]/', '', $_GET['page'])) : '' ?>"
+        <iframe id="fs-frame" data-src="flowsight.php?app=1" data-page="<?= isset($_GET['page']) ? htmlspecialchars(preg_replace('/[^A-Za-z0-9_\/?=&.:,%-]/', '', $_GET['page'])) : '' ?>"
                 title="FlowSight" referrerpolicy="same-origin" scrolling="no"></iframe>
         <script>
         (function () {
@@ -215,9 +222,38 @@ include("head.inc");
           f.src = f.dataset.src + '&theme=' + t + (f.dataset.page ? '#' + f.dataset.page : '');
           // The app reports its height; the frame follows so the OPNsense page scrolls, not the frame.
           window.addEventListener('message', function (e) {
-            if (e.source !== f.contentWindow || !e.data || !e.data.fsHeight) return;
-            f.style.height = Math.max(480, Math.ceil(e.data.fsHeight) + 4) + 'px';
+            if (e.source !== f.contentWindow || !e.data) return;
+            if (e.data.fsHeight) f.style.height = Math.max(480, Math.ceil(e.data.fsHeight) + 4) + 'px';
+            if (e.data.fsNav) follow(e.data.fsNav);
           });
+          // The app moved to another of its pages: the breadcrumb, the tab
+          // title and the address bar follow, so what the page around it
+          // says matches what is on screen and a reload lands on the same
+          // page (with the same route, device or filter).
+          function follow(nav) {
+            var title = String(nav.title || ''), group = String(nav.group || '');
+            if (!title) return;
+            var crumbs = document.querySelectorAll('ul.breadcrumb li, .breadcrumb li');
+            if (crumbs.length) {
+              var last = crumbs[crumbs.length - 1];
+              var a = last.querySelector('a');
+              (a || last).textContent = title;
+              if (crumbs.length >= 3 && group) {
+                var mid = crumbs[crumbs.length - 2];
+                var ma = mid.querySelector('a');
+                (ma || mid).textContent = group;
+              }
+            }
+            var h1 = document.querySelector('.page-content-head h1, header h1');
+            if (h1 && /FlowSight/.test(h1.textContent)) h1.textContent = 'FlowSight: ' + title;
+            document.title = title + ' | FlowSight | ' + (document.title.split(' | ').pop() || '');
+            try {
+              var hash = String(nav.hash || nav.page || '');
+              if (hash && window.history && history.replaceState) {
+                history.replaceState(null, '', 'flowsight.php?page=' + encodeURIComponent(hash));
+              }
+            } catch (err) { /* address bar is optional */ }
+          }
           // Report the visible slice of the frame so the app can page long
           // tables against the page's own scrollbar (there is only one).
           function reportScroll() {

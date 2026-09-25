@@ -123,7 +123,8 @@ func (m *Module) apiPath(r *core.Req) (any, error) {
 	m.checkPlausible(g.Nodes, h)
 	setAsideImpossible(&g)
 	sort.Slice(g.Nodes, func(i, j int) bool { return g.Nodes[i].Index < g.Nodes[j].Index })
-	out := map[string]any{"destination": dst, "hops": g.Nodes, "home": h,
+	nodes, reached, probed, last := trimTrail(g.Nodes, dst)
+	out := map[string]any{"destination": dst, "hops": nodes, "home": h, "reached": reached, "probed_to": probed, "last_answer": last,
 		"note": "A hop with several addresses answered from more than one router, which is how a carrier balances across parallel links. A silent hop did not answer; the traffic still passed through it."}
 	// A route starts inside the network, not at the first router that
 	// answered. Without this the trail begins mid-journey and a reader has to
@@ -1008,4 +1009,36 @@ func (m *Module) apiWho(r *core.Req) (any, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].BytesIn+out[i].BytesOut > out[j].BytesIn+out[j].BytesOut })
 	return map[string]any{"devices": out, "hours": hours, "destinations": len(dsts)}, nil
+}
+
+// trimTrail cuts a route where the story ends. Once the destination itself
+// answered there is nothing after it worth a row; when it never answered,
+// the run of silent hops the probe went on through says only "no reply",
+// which one sentence says better than fifteen rows. Returns the hops to
+// show, whether the destination answered, how far the probe went, and the
+// index of the last hop that answered.
+func trimTrail(nodes []Node, dst string) (out []Node, reached bool, probedTo, lastAnswer int) {
+	for _, n := range nodes {
+		if n.Index > probedTo {
+			probedTo = n.Index
+		}
+	}
+	for i, n := range nodes {
+		for _, ip := range n.IPs {
+			if ip == dst {
+				return nodes[:i+1], true, probedTo, n.Index
+			}
+		}
+		if n.Endpoint && len(n.IPs) > 0 {
+			return nodes[:i+1], true, probedTo, n.Index
+		}
+	}
+	end := len(nodes)
+	for end > 0 && nodes[end-1].Silent {
+		end--
+	}
+	if end > 0 {
+		lastAnswer = nodes[end-1].Index
+	}
+	return nodes[:end], false, probedTo, lastAnswer
 }
