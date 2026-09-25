@@ -15,15 +15,31 @@
   FS.registerPage('overview', {
     title: 'Overview', refresh: 15,
     async render(el) {
-      const [sum, top, ts, health, findings, dns] = await Promise.all([
+      const [sum, top, ts, health, findings, dns, setupState] = await Promise.all([
         get('/api/visibility/summary'), get(`/api/visibility/top?${FS.since()}&limit=8`),
         get(`/api/visibility/timeseries?${FS.since()}`), get('/api/system/health'),
-        get('/api/system/findings'), get(`/api/dns/summary?${FS.since()}&limit=8`)]);
+        get('/api/system/findings'), get(`/api/dns/summary?${FS.since()}&limit=8`),
+        get('/api/setup/state')]);
       if (sum.error && !sum.throughput_bps) { el.innerHTML = FS.err('Visibility unavailable: ' + sum.error); return; }
       const traffic = ts.traffic || [];
       const openF = (findings.findings || []).filter(f => !f.acked);
       const sev = { critical: 0, high: 0, medium: 0, low: 0 }; openF.forEach(f => sev[f.severity] = (sev[f.severity] || 0) + 1);
-      el.innerHTML = `
+
+      // Banner for incomplete setup wizard
+      let banner = '';
+      if (setupState && !setupState.error && !setupState.completed) {
+        banner = `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:center">
+          <span style="font-size:20px">⚙</span>
+          <div style="flex:1">
+            <div style="font-weight:500">Setup wizard not completed</div>
+            <div style="font-size:12px;color:#666;margin-top:4px">Run the setup wizard to configure traffic sources, DNS, security and more.</div>
+          </div>
+          <a href="#setup" class="btn small">Open setup</a>
+          <button id="dismiss-banner" class="iconbtn small" style="font-size:16px;cursor:pointer;padding:4px 8px">×</button>
+        </div>`;
+      }
+
+      el.innerHTML = banner + `
       <div class="grid cols-6">
         ${kpi('Throughput', bps(sum.throughput_bps), (sum.throughput_download_bps || sum.throughput_upload_bps) ? `↓ ${bps(sum.throughput_download_bps)} · ↑ ${bps(sum.throughput_upload_bps)} · ${num(sum.throughput_pps)} pps` : num(sum.throughput_pps) + ' pps')}
         ${kpi('Active flows', num(sum.active_flows), num(sum.flows_last_hour) + ' in the last hour')}
@@ -56,6 +72,16 @@
         ${card('Modules', Object.entries(health.modules || {}).map(([n, m]) => `<div class="barrow" style="grid-template-columns:auto 1fr auto"><span><i class="dot ${m.ok ? 'ok' : 'bad'}"></i><b>${esc(n)}</b></span><span class="muted small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.detail || '')}</span><span class="small muted">${(m.capabilities || []).join(', ')}</span></div>`).join(''), `<a href="#system">details</a>`)}
         ${card('Open findings', openF.length ? table(openF.slice(0, 8), [{ t: 'Severity', f: r => FS.sevPill(r.severity), sort: 'severity' }, { t: 'Finding', f: r => `<b>${esc(r.title)}</b><div class="muted small">${esc(r.detail || '').slice(0, 140)}</div>` }, { t: 'Module', k: 'module' }, { t: 'Since', f: r => ago(r.ts), sort: 'ts' }]) : FS.empty('No open findings'), `<a href="#findings">all</a>`)}
       </div>`;
+
+      // Handle dismiss button for setup banner
+      const dismissBtn = FS.$('#dismiss-banner', el);
+      if (dismissBtn) {
+        dismissBtn.onclick = (e) => {
+          e.preventDefault();
+          try { localStorage.setItem('fs.setupBannerDismissed', Date.now().toString()); } catch (e) {}
+          FS.$('[id="dismiss-banner"]', el).closest('div').remove();
+        };
+      }
     }
   });
 
