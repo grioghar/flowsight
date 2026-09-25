@@ -335,3 +335,66 @@ The space module stores uploaded scan files and layout blueprints.
 - **Device placement is read-only integration** with the enroll module's
   device registry; placements can be associated with MAC addresses but cannot
   modify the device inventory itself.
+
+## Proxmox Module Security
+
+### API Token Scope
+
+The module uses a least-privilege token with these permissions:
+- `VM.Audit`: query guest list, config, status, and guest agent data
+- `VM.Config.Options`: write to guest descriptions (notes write-back only)
+- `Sys.Audit`: read node status and version
+
+The token cannot start, stop, delete, or modify guests—only observe and add notes.
+
+### TLS Certificate Pinning
+
+Proxmox uses self-signed certificates by default. The module supports two verification modes:
+
+**Fingerprint Pinning (default, `verify_tls` off):**
+- Captures the SHA-256 fingerprint of the leaf certificate
+- Pins it in settings (case-insensitive, colon-separated hex)
+- Rejects any other certificate, even if signed by a trusted CA
+- Read the fingerprint with `pvenode cert info | grep Fingerprint` on the Proxmox host
+- Works when your infrastructure changes or you move the Proxmox node
+
+**System CA Roots (`verify_tls` on):**
+- Verifies the certificate chain against system trusted roots
+- Use when Proxmox has a certificate from a real CA (Let's Encrypt, internal PKI, etc.)
+- When `verify_tls` is on, fingerprint is ignored
+- Supports the same pinning as fallback if set
+
+### Notes Write-Back Security
+
+Notes write-back is **opt-in** and disabled by default (`write_notes: false`):
+- Only enabled when explicitly turned on in settings
+- Uses marker-based blocks: `<!-- flowsight:begin -->` and `<!-- flowsight:end -->`
+- Preserves all existing description text outside the markers
+- Reads the current config (including digest) before updating to prevent clobbering concurrent edits
+- Retries once if a digest mismatch occurs (concurrent edit detected)
+- Never modifies the description unless notes content changed
+
+### Guest Agent Exec (Optional)
+
+The optional `probe_sockets` setting (default false) enables querying the guest agent for established connections:
+- Runs a **fixed, read-only command only**: `ss -Htn state established` (fallback: `netstat -tn`)
+- Requires `VM.Monitor` privilege on each guest (not included in the default token role)
+- If you enable this, add `VM.Monitor` to the FlowSight role: `pveum role modify FlowSight -privs "...VM.Monitor"`
+- Guest agent must be installed and running in the guest
+- Fallback to `netstat -tn` for compatibility (e.g., OPNsense)
+- No arbitrary shell commands are executed; this is safe
+
+### Private Hosts by Design
+
+Proxmox nodes and guests live on private networks:
+- `hosts` URLs are infrastructure-local (192.168.x.x, 10.x.x.x, your own domain)
+- Guests are private IP addresses on internal bridges
+- FlowSight does not expose these to untrusted networks
+- The API token is stored in settings (plaintext in the SQLite database), treat the FlowSight database as sensitive
+
+### What the Module Does NOT See
+
+- Guests on the same bridge and subnet do not route through the gateway, so FlowSight's flow probe cannot see guest-to-guest traffic on a single subnet
+- Traffic analysis only covers routed inter-subnet traffic (source: "observed")
+- Agent socket queries (source: "sockets") provide visibility into guest-local connections
+- Declared dependencies (source: "declared") capture startup order, storage, and network config relationships

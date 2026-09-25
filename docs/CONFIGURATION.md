@@ -355,3 +355,50 @@ Active network scanning for local devices: ICMP, TCP/UDP probes, service detecti
 | `sweep_every_hours` | Sweep interval | int | `0` | 0: disabled. >0: scan all devices seen in the last 7 days every N hours. |
 | `sweep_window` | Sweep time window | string | `""` | Optional UTC time window, e.g. `"02:00-05:00"`. Sweeps only run inside it. |
 | `rate_limit_pps` | Rate limit (packets/sec) | int | `200` | ICMP and UDP probe rate; TCP respects connection limits. |
+
+### Proxmox
+
+The Proxmox module maps Proxmox VE cluster inventory into FlowSight: nodes, QEMU VMs, and LXC containers with their network addresses, OS information, and optional guest agent data. It enriches FlowSight's host database and optionally writes notes to guest descriptions.
+
+**Settings**
+
+| Key | Type | Default | Purpose |
+|-----|------|---------|---------|
+| `hosts` | list | empty | One or more Proxmox node URLs, e.g. `https://pve.local:8006`. Leave empty to disable. |
+| `token_id` | string | empty | API token ID: `user@realm!tokenname`, e.g. `flowsight@pve!flowsight`. |
+| `token_secret` | secret | empty | The API token secret. |
+| `fingerprint` | string | empty | TLS certificate SHA-256 fingerprint pin (colon-separated hex), e.g. `4C:9E:F6:8A:...` |
+| `verify_tls` | bool | false | When on, verify TLS with system CA roots. When off, use fingerprint pinning. |
+| `poll_minutes` | int | 5 | Poll interval in minutes. |
+| `write_notes` | bool | false | Write FlowSight notes blocks to guest descriptions (opt-in). |
+| `notes_targets` | string | guests | Scope: `guests` or `guests+nodes`. |
+| `exclude_vmids` | list | empty | VMID list to skip during polling. |
+| `name_guests` | bool | true | Use guest names when no DHCP lease hostname. |
+
+**Least-Privilege Token Setup**
+
+Create a token with minimal privileges:
+
+```bash
+pveum role add FlowSight -privs "VM.Audit VM.Config.Options Sys.Audit"
+pveum user add flowsight@pve
+pveum user token add flowsight@pve flowsight --privsep 0
+pveum acl modify / --users flowsight@pve --roles FlowSight
+```
+
+Privileges:
+- `VM.Audit`: query guests, config, status, agent info
+- `VM.Config.Options`: write guest descriptions (notes only)
+- `Sys.Audit`: read node status and version
+
+**TLS Fingerprint**
+
+Read from your Proxmox node:
+
+```bash
+pvenode cert info | grep Fingerprint
+# or remotely
+openssl s_client -connect pve.local:8006 -showcerts </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256
+```
+
+Enter with colons (case-insensitive). Verification is automatic when `verify_tls` is off.

@@ -12,6 +12,10 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252000
+
+**Proxmox inventory, enrichment, notes, and dependency mapping.** FlowSight can now query Proxmox VE clusters for node, VM, and container inventory: capturing network addresses, OS info, and optional guest agent data (network interfaces, hostname, OS version). Enrich the host table with guest identities; optionally write notes blocks to guest descriptions with FlowSight insights (IPs, OS, agent state, top external traffic). View the dependency map with edges from traffic analysis (observed routed traffic between guests), declared sources (startup order, storage, bridges, VLAN tags), and optional guest agent socket probes. Notes write-back is opt-in and marker-preserving: edit outside the block, FlowSight manages only between the markers. Requires a least-privilege API token with `VM.Audit`, `VM.Config.Options` (for notes), and `Sys.Audit`.
+
 ## 0.9.8r202609251615
 
 **A session's path, one click away.** Every row on the Sessions page with
