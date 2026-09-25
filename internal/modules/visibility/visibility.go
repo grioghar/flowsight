@@ -126,24 +126,95 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("poll", every, m.poll)
 	ctx.Every("catalog", time.Hour, m.loadCatalog)
 
-	ctx.Route("GET", "/api/visibility/summary", m.apiSummary, core.Doc("Throughput, active flows and hosts right now"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/visibility/summary", m.apiSummary,
+		core.Doc("Get current network statistics including throughput, active flow count, and connected hosts"),
+		core.Returns("Network summary statistics", map[string]any{
+			"throughput_bps": 1000000,
+			"active_flows": 250,
+			"active_hosts": 50,
+			"timestamp": 1790376243,
+		}))
 	// Flows recorded before country lookup was on, or before this release,
 	// have no country; fill them in behind the scenes, a few hundred a minute,
 	// so the "abroad" views cover the whole retention window.
 	ctx.Every("country_backfill", time.Minute, m.backfillCountries, core.Delayed())
-	ctx.Route("GET", "/api/visibility/abroad", m.apiAbroad, core.Doc("Per local device, the foreign countries it reached, sessions and bytes per country, and the destinations behind them"),
-		core.Params("hours", "window, default 24", "ip", "one device only"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/visibility/flows", m.apiFlows, core.Doc("Recent flows"),
-		core.Params("minutes", "window", "ip", "filter by either end", "app", "filter", "limit", "rows", "country", "far end in this country (ISO code)", "abroad", "1 = far end outside this gateway's country", "blocked", "1 = blocked only"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/visibility/apps", m.apiApps, core.Doc("Application breakdown over a window"),
-		core.Params("hours", "window", "ip", "one host"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/visibility/top", m.apiTop, core.Doc("Top hosts, applications, categories, destinations"),
-		core.Params("hours", "window", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/visibility/timeseries", m.apiTimeseries, core.Doc("Metric series for charts"),
-		core.Params("hours", "window", "metric", "name", "step", "seconds"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/visibility/host", m.apiHost, core.Doc("Everything about one host"),
-		core.Params("ip", "address", "hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/visibility/catalog", m.apiCatalog, core.Doc("Known applications and categories"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/visibility/abroad", m.apiAbroad,
+		core.Query("hours", "integer", "Time window in hours (default 24)", false, 24),
+		core.Query("ip", "string", "Filter by single device IP address", false, "192.168.1.10"),
+		core.Doc("Show per-device traffic to foreign countries with session and byte counts by country"),
+		core.Returns("Destination countries by device", map[string]any{
+			"devices": []map[string]any{
+				{"ip": "192.168.1.10", "countries": map[string]any{
+					"US": map[string]any{"sessions": 100, "bytes": 500000},
+				}},
+			},
+		}))
+	ctx.Route("GET", "/api/visibility/flows", m.apiFlows,
+		core.Query("minutes", "integer", "Time window in minutes (default varies)", false, 60),
+		core.Query("ip", "string", "Filter by device IP or remote address", false, "192.168.1.10"),
+		core.Query("app", "string", "Filter by application or category name", false, "youtube"),
+		core.Query("limit", "integer", "Maximum flows to return (default 500)", false, 500),
+		core.Query("country", "string", "Filter by far-end country code (ISO 3166-1)", false, "US"),
+		core.Query("abroad", "boolean", "Only flows to destinations outside home country", false, false),
+		core.Query("blocked", "boolean", "Only blocked flows (default shows all)", false, false),
+		core.Query("anycast", "boolean", "Include anycast destination addresses", false, false),
+		core.Doc("List recent network flows with detailed source, destination and application information"),
+		core.Returns("Network flows list", map[string]any{
+			"flows": []map[string]any{
+				{"src": "192.168.1.10", "dst": "142.250.1.1", "app": "youtube", "duration_sec": 30, "bytes": 10000},
+			},
+		}))
+	ctx.Route("GET", "/api/visibility/apps", m.apiApps,
+		core.Query("hours", "integer", "Time window in hours (default 24)", false, 24),
+		core.Query("ip", "string", "Analyze single device by IP address", false, "192.168.1.10"),
+		core.Doc("Breakdown of network traffic by application type with byte counts and session metrics"),
+		core.Returns("Application traffic breakdown", map[string]any{
+			"applications": []map[string]any{
+				{"name": "youtube", "bytes": 5000000, "sessions": 50},
+			},
+			"total_bytes": 10000000,
+		}))
+	ctx.Route("GET", "/api/visibility/top", m.apiTop,
+		core.Query("hours", "integer", "Time window in hours (default 24)", false, 24),
+		core.Query("limit", "integer", "Number of top results to return (default 20)", false, 20),
+		core.Doc("Top hosts, applications, categories and destinations ranked by traffic volume"),
+		core.Returns("Top network elements", map[string]any{
+			"top_hosts": []map[string]any{
+				{"ip": "142.250.1.1", "bytes": 5000000},
+			},
+			"top_apps": []map[string]any{
+				{"name": "youtube", "bytes": 3000000},
+			},
+		}))
+	ctx.Route("GET", "/api/visibility/timeseries", m.apiTimeseries,
+		core.Query("hours", "integer", "Time window in hours (default 24)", false, 24),
+		core.Query("metric", "string", "Metric name to retrieve (throughput, flows, hosts, etc.)", true, "throughput"),
+		core.Query("step", "integer", "Data point interval in seconds (default 60)", false, 60),
+		core.Doc("Fetch metric time series data for building charts and analyzing traffic trends"),
+		core.Returns("Time series metric data", map[string]any{
+			"metric": "throughput",
+			"points": []map[string]any{
+				{"time": 1790376243, "value": 1000000},
+			},
+		}))
+	ctx.Route("GET", "/api/visibility/host", m.apiHost,
+		core.Query("ip", "string", "Device or host IP address to analyze", true, "192.168.1.10"),
+		core.Query("hours", "integer", "Time window in hours (default 24)", false, 24),
+		core.Doc("Comprehensive analysis of a single host including connections, applications and countries"),
+		core.Returns("Host analysis data", map[string]any{
+			"ip": "192.168.1.10",
+			"name": "MacBook",
+			"applications": []string{"youtube", "facebook"},
+			"countries": map[string]any{"US": 5000000},
+		}))
+	ctx.Route("GET", "/api/visibility/catalog", m.apiCatalog,
+		core.Doc("List all known applications and content categories available for filtering and classification"),
+		core.Returns("Application and category catalog", map[string]any{
+			"applications": []map[string]any{
+				{"name": "youtube", "category": "video"},
+			},
+			"categories": []string{"video", "social", "gaming"},
+		}))
 	ctx.Panel(core.Panel{ID: "overview", Title: "Overview", Group: "Monitor", Order: 1, Icon: "overview"})
 	ctx.Panel(core.Panel{ID: "flows", Title: "Sessions", Group: "Monitor", Order: 30, Icon: "flows"})
 	ctx.Panel(core.Panel{ID: "apps", Title: "Applications", Group: "Monitor", Order: 40, Icon: "apps"})
