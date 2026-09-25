@@ -472,10 +472,14 @@ func (m *Module) detectCountries(mac, name, ip string, state *deviceState, keep 
 				keep[fp] = true
 				days := (now.Unix() - state.FirstSeen) / 86400
 				baselineCountries := m.getCountriesString(state.Countries)
+				deviceName := m.identity.Name(ip)
+				if deviceName == "" || deviceName == ip {
+					deviceName = name
+				}
 				m.addAnomaly(mac, name, "new_country", "high",
 					fmt.Sprintf("First time in %s", country),
-					fmt.Sprintf("First time %s talked to %s; %d days of history had %s",
-						mac, country, days, baselineCountries))
+					fmt.Sprintf("First time %s (%s) talked to %s; %d days of history had %s",
+						deviceName, mac, country, days, baselineCountries))
 			}
 		}
 	}
@@ -505,10 +509,14 @@ func (m *Module) detectPorts(mac, name, ip string, state *deviceState, keep map[
 				keep[fp] = true
 				days := (now.Unix() - state.FirstSeen) / 86400
 				baselinePorts := m.getPortsString(state.Ports)
+				deviceName := m.identity.Name(ip)
+				if deviceName == "" || deviceName == ip {
+					deviceName = name
+				}
 				m.addAnomaly(mac, name, "new_port", "medium",
 					fmt.Sprintf("First connection to %s/%d", proto, port),
-					fmt.Sprintf("First time %s talked to %s/%d; %d days of history had %s",
-						mac, proto, port, days, baselinePorts))
+					fmt.Sprintf("First time %s (%s) talked to %s/%d; %d days of history had %s",
+						deviceName, mac, proto, port, days, baselinePorts))
 			}
 		}
 	}
@@ -541,10 +549,14 @@ func (m *Module) detectDestinations(mac, name, ip string, state *deviceState, ke
 				keep[fp] = true
 				days := (now.Unix() - state.FirstSeen) / 86400
 				baselineDestinations := m.getDestinationsString(state.Destinations)
+				deviceName := m.identity.Name(ip)
+				if deviceName == "" || deviceName == ip {
+					deviceName = name
+				}
 				m.addAnomaly(mac, name, "new_destination", "medium",
 					fmt.Sprintf("First connection to %s", dst),
-					fmt.Sprintf("First time %s talked to %s; %d days of history had %s",
-						mac, dst, days, baselineDestinations))
+					fmt.Sprintf("First time %s (%s) talked to %s; %d days of history had %s",
+						deviceName, mac, dst, days, baselineDestinations))
 			}
 		}
 	}
@@ -596,10 +608,14 @@ func (m *Module) detectBeaconing(mac, name, ip string, state *deviceState, keep 
 				avgBytesVal = avgBytes.Float64
 			}
 			days := (now.Unix() - state.FirstSeen) / 86400
+			deviceName := m.identity.Name(ip)
+			if deviceName == "" || deviceName == ip {
+				deviceName = name
+			}
 			m.addAnomaly(mac, name, "beaconing", "high",
 				fmt.Sprintf("Beacon to %s (~%.0fs period)", dst, period.Seconds()),
-				fmt.Sprintf("Regular beacon from %s to %s: ~%.0fs interval, %.0f bytes per packet; %d days of history showed no such pattern",
-					mac, dst, period.Seconds(), avgBytesVal, days))
+				fmt.Sprintf("Regular beacon from %s (%s) to %s: ~%.0fs interval, %.0f bytes per packet; %d days of history showed no such pattern",
+					deviceName, mac, dst, period.Seconds(), avgBytesVal, days))
 		}
 	}
 }
@@ -637,10 +653,14 @@ func (m *Module) detectDNSTunneling(mac, name, ip string, state *deviceState, ke
 				fp := fmt.Sprintf("baseline:%s:dns_tunnel:%s", mac, domain)
 				keep[fp] = true
 				days := (now.Unix() - state.FirstSeen) / 86400
+				deviceName := m.identity.Name(ip)
+				if deviceName == "" || deviceName == ip {
+					deviceName = name
+				}
 				m.addAnomaly(mac, name, "dns_tunneling", "high",
 					fmt.Sprintf("Possible DNS tunneling to %s", domain),
-					fmt.Sprintf("DNS tunneling indicators from %s to %s: %d%% NXDOMAIN (far above baseline), entropy %.1f, label length %.0f; %d days of history showed normal patterns",
-						mac, domain, int(nxRate*100), entropy, meanLabelLen, days))
+					fmt.Sprintf("DNS tunneling indicators from %s (%s) to %s: %d%% NXDOMAIN (far above baseline), entropy %.1f, label length %.0f; %d days of history showed normal patterns",
+						deviceName, mac, domain, int(nxRate*100), entropy, meanLabelLen, days))
 			}
 		}
 	}
@@ -732,10 +752,14 @@ func (m *Module) getCountriesString(countries map[string]*countryRecord) string 
 		countryStrs = append(countryStrs, c)
 	}
 	sort.Strings(countryStrs)
-	if len(countryStrs) > 5 {
-		return strings.Join(countryStrs[:5], ", ") + fmt.Sprintf(" (+%d more)", len(countryStrs)-5)
+	const maxItems = 8
+	result := ""
+	if len(countryStrs) > maxItems {
+		result = strings.Join(countryStrs[:maxItems], ", ") + fmt.Sprintf(" (+%d more)", len(countryStrs)-maxItems)
+	} else {
+		result = strings.Join(countryStrs, ", ") + " only"
 	}
-	return strings.Join(countryStrs, ", ")
+	return result
 }
 
 func (m *Module) getPortsString(ports map[string]*portRecord) string {
@@ -747,10 +771,14 @@ func (m *Module) getPortsString(ports map[string]*portRecord) string {
 		portStrs = append(portStrs, p)
 	}
 	sort.Strings(portStrs)
-	if len(portStrs) > 5 {
-		return strings.Join(portStrs[:5], ", ") + fmt.Sprintf(" (+%d more)", len(portStrs)-5)
+	const maxItems = 8
+	result := ""
+	if len(portStrs) > maxItems {
+		result = strings.Join(portStrs[:maxItems], ", ") + fmt.Sprintf(" (+%d more)", len(portStrs)-maxItems)
+	} else {
+		result = strings.Join(portStrs, ", ") + " only"
 	}
-	return strings.Join(portStrs, ", ")
+	return result
 }
 
 func (m *Module) getDestinationsString(dests map[string]*dstRecord) string {
@@ -762,10 +790,14 @@ func (m *Module) getDestinationsString(dests map[string]*dstRecord) string {
 		destStrs = append(destStrs, d)
 	}
 	sort.Strings(destStrs)
-	if len(destStrs) > 5 {
-		return strings.Join(destStrs[:5], ", ") + fmt.Sprintf(" (+%d more)", len(destStrs)-5)
+	const maxItems = 8
+	result := ""
+	if len(destStrs) > maxItems {
+		result = strings.Join(destStrs[:maxItems], ", ") + fmt.Sprintf(" (+%d more)", len(destStrs)-maxItems)
+	} else {
+		result = strings.Join(destStrs, ", ") + " only"
 	}
-	return strings.Join(destStrs, ", ")
+	return result
 }
 
 func (m *Module) calcStats(values []float64) (mean, stddev float64) {

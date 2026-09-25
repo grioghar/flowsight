@@ -74,7 +74,7 @@ func TestStatsCalculation(t *testing.T) {
 
 func TestFindingTextFormat(t *testing.T) {
 	// Verify finding text includes baseline context
-	// Expected format: "First time MAC talked to X; N days of history had Y"
+	// Expected format: "First time devicename (MAC) talked to X; N days of history had Y [only]"
 
 	testCases := []struct {
 		name          string
@@ -83,28 +83,28 @@ func TestFindingTextFormat(t *testing.T) {
 	}{
 		{
 			name:          "new_country format",
-			text:          "First time 34:d2:70:98:9a:43 talked to IE; 21 days of history had US, CA",
-			shouldContain: []string{"34:d2:70:98:9a:43", "IE", "21 days", "history", "US, CA"},
+			text:          "First time echo-234f8d (34:d2:70:98:9a:43) talked to IE; 21 days of history had US, CA only",
+			shouldContain: []string{"echo-234f8d", "34:d2:70:98:9a:43", "IE", "21 days", "history", "US, CA only"},
 		},
 		{
 			name:          "new_port format",
-			text:          "First time aa:bb:cc:dd:ee:ff talked to tcp/8443; 7 days of history had tcp/443, udp/53",
-			shouldContain: []string{"aa:bb:cc:dd:ee:ff", "tcp/8443", "7 days", "history", "tcp/443"},
+			text:          "First time printer (aa:bb:cc:dd:ee:ff) talked to tcp/8443; 7 days of history had tcp/443, udp/53 only",
+			shouldContain: []string{"printer", "aa:bb:cc:dd:ee:ff", "tcp/8443", "7 days", "history", "tcp/443", "only"},
 		},
 		{
 			name:          "new_destination format",
-			text:          "First time 11:22:33:44:55:66 talked to 192.0.2.1; 14 days of history had 192.0.2.10, 192.0.2.20",
-			shouldContain: []string{"11:22:33:44:55:66", "192.0.2.1", "14 days", "history"},
+			text:          "First time iot-device (11:22:33:44:55:66) talked to 192.0.2.1; 14 days of history had 192.0.2.10, 192.0.2.20 only",
+			shouldContain: []string{"iot-device", "11:22:33:44:55:66", "192.0.2.1", "14 days", "history", "only"},
 		},
 		{
 			name:          "beaconing format",
-			text:          "Regular beacon from 11:22:33:44:55:66 to 192.0.2.1: ~60s interval, 256 bytes per packet; 30 days of history showed no such pattern",
-			shouldContain: []string{"Regular beacon", "11:22:33:44:55:66", "192.0.2.1", "60s", "30 days", "history"},
+			text:          "Regular beacon from camera (11:22:33:44:55:66) to 192.0.2.1: ~60s interval, 256 bytes per packet; 30 days of history showed no such pattern",
+			shouldContain: []string{"Regular beacon", "camera", "11:22:33:44:55:66", "192.0.2.1", "60s", "30 days", "history"},
 		},
 		{
 			name:          "dns_tunneling format",
-			text:          "DNS tunneling indicators from 11:22:33:44:55:66 to example.com: 45% NXDOMAIN (far above baseline), entropy 5.5, label length 22; 21 days of history showed normal patterns",
-			shouldContain: []string{"11:22:33:44:55:66", "example.com", "NXDOMAIN", "baseline", "21 days", "history"},
+			text:          "DNS tunneling indicators from unknown (11:22:33:44:55:66) to example.com: 45% NXDOMAIN (far above baseline), entropy 5.5, label length 22; 21 days of history showed normal patterns",
+			shouldContain: []string{"unknown", "11:22:33:44:55:66", "example.com", "NXDOMAIN", "baseline", "21 days", "history"},
 		},
 	}
 
