@@ -134,120 +134,407 @@ FS.registerPage('space', {
 
 function initPlanPane(el, canvas, layout) {
   const ctx = canvas.getContext('2d');
-  const scale = 20; // pixels per metre
-  let mode = 'view'; // 'view', 'draw', 'scale'
-  let currentFloor = '0';
-  let drawPath = [];
-  let undoStack = [];
+  const GRID_SIZE = 1; // metres
+  const SNAP_DIST = 0.1; // metres
+
+  let viewState = {
+    scale: 20, // pixels per metre
+    panX: 0,
+    panY: 0,
+    zoom: 1
+  };
+
+  let editorState = {
+    mode: 'view', // 'view', 'draw', 'scale', 'level'
+    currentFloor: layout.floors?.[0]?.id || '0',
+    drawPath: [],
+    scalePoints: [],
+    levelPoints: [],
+    draggingVertex: null,
+    undoStack: [],
+    redoStack: []
+  };
+
+  let currentLayout = { ...layout };
 
   // Resize canvas to fit parent
   function resizeCanvas() {
     const rect = canvas.parentElement.getBoundingClientRect();
     canvas.width = rect.width;
     canvas.height = rect.height;
-    drawPlan();
+    draw();
+  }
+
+  // Screen to world coordinates
+  function screenToWorld(sx, sy) {
+    const x = (sx - viewState.panX) / (viewState.scale * viewState.zoom);
+    const y = (sy - viewState.panY) / (viewState.scale * viewState.zoom);
+    return [x, y];
+  }
+
+  // World to screen coordinates
+  function worldToScreen(wx, wy) {
+    const sx = wx * viewState.scale * viewState.zoom + viewState.panX;
+    const sy = wy * viewState.scale * viewState.zoom + viewState.panY;
+    return [sx, sy];
+  }
+
+  // Snap to grid
+  function snap(v) {
+    return Math.round(v / SNAP_DIST) * SNAP_DIST;
   }
 
   // Draw the plan
-  function drawPlan() {
+  function draw() {
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim();
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.lineWidth = 1;
+
+    // Draw grid
+    ctx.lineWidth = 0.5;
     ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
+    const gridPixels = GRID_SIZE * viewState.scale * viewState.zoom;
 
-    // Grid
-    for (let x = 0; x < canvas.width; x += scale) {
-      ctx.strokeLine(x, 0, x, canvas.height);
-    }
-    for (let y = 0; y < canvas.height; y += scale) {
-      ctx.strokeLine(0, y, canvas.width, y);
+    for (let x = viewState.panX % gridPixels; x < canvas.width; x += gridPixels) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
     }
 
-    // Rooms for current floor
-    const floorRooms = layout.rooms?.filter(r => r.floor === currentFloor) || [];
+    for (let y = viewState.panY % gridPixels; y < canvas.height; y += gridPixels) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+
+    // Draw rooms for current floor
+    const floorRooms = currentLayout.rooms?.filter(r => r.floor === editorState.currentFloor) || [];
     floorRooms.forEach(room => {
+      if (!room.polygon || room.polygon.length < 2) return;
+
       ctx.fillStyle = 'rgba(200, 200, 200, 0.1)';
       ctx.strokeStyle = 'rgba(100, 100, 100, 0.5)';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 / viewState.zoom;
+
       ctx.beginPath();
-      if (room.polygon && room.polygon.length > 0) {
-        const pt = room.polygon[0];
-        ctx.moveTo(pt[0] * scale, pt[1] * scale);
-        for (let i = 1; i < room.polygon.length; i++) {
-          ctx.lineTo(room.polygon[i][0] * scale, room.polygon[i][1] * scale);
-        }
-        ctx.closePath();
+      const [sx0, sy0] = worldToScreen(room.polygon[0][0], room.polygon[0][1]);
+      ctx.moveTo(sx0, sy0);
+
+      for (let i = 1; i < room.polygon.length; i++) {
+        const [sx, sy] = worldToScreen(room.polygon[i][0], room.polygon[i][1]);
+        ctx.lineTo(sx, sy);
       }
+
+      ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
+      // Room vertices
+      room.polygon.forEach((pt, i) => {
+        const [sx, sy] = worldToScreen(pt[0], pt[1]);
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.7)';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
       // Room label
-      if (room.polygon && room.polygon.length > 0) {
-        const pt = room.polygon[0];
+      if (room.polygon.length > 0) {
+        const [sx, sy] = worldToScreen(room.polygon[0][0], room.polygon[0][1]);
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-base').trim();
         ctx.font = '12px sans-serif';
-        ctx.fillText(room.name, pt[0] * scale + 8, pt[1] * scale + 16);
+        ctx.fillText(room.name, sx + 8, sy + 16);
       }
     });
 
     // Draw in-progress path
-    if (drawPath.length > 0) {
+    if (editorState.drawPath.length > 0) {
       ctx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 / viewState.zoom;
       ctx.beginPath();
-      ctx.moveTo(drawPath[0][0], drawPath[0][1]);
-      for (let i = 1; i < drawPath.length; i++) {
-        ctx.lineTo(drawPath[i][0], drawPath[i][1]);
+      const [sx0, sy0] = worldToScreen(editorState.drawPath[0][0], editorState.drawPath[0][1]);
+      ctx.moveTo(sx0, sy0);
+
+      for (let i = 1; i < editorState.drawPath.length; i++) {
+        const [sx, sy] = worldToScreen(editorState.drawPath[i][0], editorState.drawPath[i][1]);
+        ctx.lineTo(sx, sy);
       }
+
       ctx.stroke();
 
-      // Snap preview
-      drawPath.forEach((pt, i) => {
-        ctx.fillStyle = i === drawPath.length - 1 ? 'rgba(255, 100, 100, 1)' : 'rgba(100, 200, 100, 1)';
+      // Draw points
+      editorState.drawPath.forEach((pt, i) => {
+        const [sx, sy] = worldToScreen(pt[0], pt[1]);
+        ctx.fillStyle = i === editorState.drawPath.length - 1 ? 'rgba(255, 100, 100, 1)' : 'rgba(100, 200, 100, 1)';
         ctx.beginPath();
-        ctx.arc(pt[0], pt[1], 4, 0, Math.PI * 2);
+        ctx.arc(sx, sy, 4, 0, Math.PI * 2);
         ctx.fill();
       });
+
+      // Show distance label for scale mode
+      if (editorState.mode === 'scale' && editorState.scalePoints.length > 0) {
+        const p1 = editorState.scalePoints[0];
+        const [sx, sy] = worldToScreen(p1[0], p1[1]);
+        ctx.fillStyle = 'rgba(0, 150, 255, 1)';
+        ctx.font = '12px sans-serif';
+        ctx.fillText('Click second point', sx + 8, sy - 8);
+      }
     }
   }
 
-  // Canvas events
+  // Canvas mouse/touch events
   canvas.addEventListener('click', (e) => {
-    if (mode !== 'draw') return;
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
-    const snapped = [Math.round(x * 10) / 10, Math.round(y * 10) / 10];
-    drawPath.push([e.clientX - rect.left, e.clientY - rect.top]);
-    drawPlan();
+    if (editorState.mode === 'draw') {
+      const rect = canvas.getBoundingClientRect();
+      const [x, y] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const snapped = [snap(x), snap(y)];
+
+      // Check if clicking first point to close
+      if (editorState.drawPath.length >= 3) {
+        const first = editorState.drawPath[0];
+        if (Math.abs(first[0] - snapped[0]) < 0.2 && Math.abs(first[1] - snapped[1]) < 0.2) {
+          finalizeRoom();
+          return;
+        }
+      }
+
+      editorState.drawPath.push(snapped);
+      draw();
+    } else if (editorState.mode === 'scale') {
+      const rect = canvas.getBoundingClientRect();
+      const [x, y] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const snapped = [snap(x), snap(y)];
+
+      editorState.scalePoints.push(snapped);
+      if (editorState.scalePoints.length === 2) {
+        showScaleDialog();
+      }
+      draw();
+    }
   });
 
   canvas.addEventListener('dblclick', () => {
-    if (mode !== 'draw' || drawPath.length < 3) return;
-    // Finalize room (in a real impl, show a dialog to name it)
-    mode = 'view';
-    drawPath = [];
-    drawPlan();
+    if (editorState.mode === 'draw' && editorState.drawPath.length >= 3) {
+      finalizeRoom();
+    }
+  });
+
+  // Pan/zoom with mouse
+  let panStart = null;
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 2 || (e.button === 0 && e.shiftKey)) {
+      panStart = { x: e.clientX, y: e.clientY };
+    }
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (panStart) {
+      viewState.panX += e.clientX - panStart.x;
+      viewState.panY += e.clientY - panStart.y;
+      panStart = { x: e.clientX, y: e.clientY };
+      draw();
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    panStart = null;
+  });
+
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = 1 - e.deltaY * 0.001;
+    viewState.zoom *= factor;
+    viewState.zoom = Math.max(0.1, Math.min(5, viewState.zoom));
+    draw();
   });
 
   // Toolbar events
   el.querySelector('#btn-plan-draw').addEventListener('click', () => {
-    mode = mode === 'draw' ? 'view' : 'draw';
-    drawPath = [];
-    drawPlan();
+    editorState.mode = editorState.mode === 'draw' ? 'view' : 'draw';
+    editorState.drawPath = [];
+    el.querySelector('#btn-plan-draw').style.background = editorState.mode === 'draw' ? 'var(--bg-alt)' : '';
+    draw();
   });
 
   el.querySelector('#btn-plan-undo').addEventListener('click', () => {
-    if (drawPath.length > 0) {
-      drawPath.pop();
-      drawPlan();
+    if (editorState.drawPath.length > 0) {
+      editorState.drawPath.pop();
+      draw();
     }
   });
 
-  el.querySelector('#space-floor-select').addEventListener('change', (e) => {
-    currentFloor = e.target.value;
-    drawPlan();
+  el.querySelector('#btn-plan-import-osm').addEventListener('click', async () => {
+    try {
+      const resp = await FS.get('/api/space/records');
+      if (resp.building_footprints?.length > 0) {
+        const fp = resp.building_footprints[0];
+        if (fp.polygon) {
+          // Create a new room from the footprint
+          currentLayout = FS.space.reduce(currentLayout, {
+            type: 'ADD_ROOM',
+            name: fp.name || 'Building',
+            floor: editorState.currentFloor,
+            polygon: fp.polygon
+          });
+          saveLayout();
+          draw();
+        }
+      }
+    } catch (e) {
+      console.error('Failed to import OSM:', e);
+    }
   });
+
+  el.querySelector('#btn-plan-set-scale').addEventListener('click', () => {
+    editorState.mode = editorState.mode === 'scale' ? 'view' : 'scale';
+    editorState.scalePoints = [];
+    draw();
+  });
+
+  el.querySelector('#space-floor-select').addEventListener('change', (e) => {
+    editorState.currentFloor = e.target.value;
+    editorState.drawPath = [];
+    editorState.mode = 'view';
+    draw();
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'z') {
+        e.preventDefault();
+        if (editorState.undoStack.length > 0) {
+          const prev = editorState.undoStack.pop();
+          editorState.redoStack.push(currentLayout);
+          currentLayout = prev;
+          saveLayout();
+          draw();
+        }
+      } else if (e.key === 'y') {
+        e.preventDefault();
+        if (editorState.redoStack.length > 0) {
+          const next = editorState.redoStack.pop();
+          editorState.undoStack.push(currentLayout);
+          currentLayout = next;
+          saveLayout();
+          draw();
+        }
+      }
+    }
+  });
+
+  // Save layout with debounce
+  let saveTimeout;
+  function saveLayout() {
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(async () => {
+      try {
+        await fetch('/api/space/layout', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentLayout)
+        });
+      } catch (e) {
+        console.error('Failed to save layout:', e);
+      }
+    }, 800);
+  }
+
+  function finalizeRoom() {
+    const polygon = editorState.drawPath.map(pt => [snap(pt[0]), snap(pt[1])]);
+    editorState.mode = 'view';
+    editorState.drawPath = [];
+
+    FS.modal(`
+      <h2>New Room</h2>
+      <input type="text" id="room-name" placeholder="Room name" style="display:block;width:100%;margin:8px 0;padding:6px">
+      <label>Ceiling height (m): <input type="number" id="ceiling-m" value="2.6" style="width:60px"></label>
+      <div class="actions">
+        <button class="btn primary" id="ok-btn">Create</button>
+        <button class="btn" id="cancel-btn">Cancel</button>
+      </div>
+    `, (body) => {
+      const nameInput = body.querySelector('#room-name');
+      const ceilingInput = body.querySelector('#ceiling-m');
+      const okBtn = body.querySelector('#ok-btn');
+      const cancelBtn = body.querySelector('#cancel-btn');
+
+      nameInput.focus();
+
+      okBtn.addEventListener('click', () => {
+        const name = nameInput.value || 'Room';
+        const ceiling = parseFloat(ceilingInput.value) || 2.6;
+
+        currentLayout = FS.space.reduce(currentLayout, {
+          type: 'ADD_ROOM',
+          name,
+          floor: editorState.currentFloor,
+          polygon,
+          ceiling_m: ceiling
+        });
+
+        editorState.undoStack.push(currentLayout);
+        saveLayout();
+        FS.closeModal();
+        draw();
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        FS.closeModal();
+        draw();
+      });
+    });
+  }
+
+  function showScaleDialog() {
+    const p1 = editorState.scalePoints[0];
+    const p2 = editorState.scalePoints[1];
+    const pixelDist = Math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2);
+
+    FS.modal(`
+      <h2>Set Scale</h2>
+      <p>Pixel distance: ${pixelDist.toFixed(2)} m</p>
+      <label>Real distance (m): <input type="number" id="real-dist" placeholder="e.g. 5" style="width:100px"></label>
+      <div class="actions">
+        <button class="btn primary" id="scale-ok">Apply</button>
+        <button class="btn" id="scale-cancel">Cancel</button>
+      </div>
+    `, (body) => {
+      const input = body.querySelector('#real-dist');
+      const okBtn = body.querySelector('#scale-ok');
+      const cancelBtn = body.querySelector('#scale-cancel');
+
+      input.focus();
+
+      okBtn.addEventListener('click', () => {
+        const realDist = parseFloat(input.value);
+        if (realDist > 0) {
+          const factor = realDist / pixelDist;
+          currentLayout = FS.space.reduce(currentLayout, {
+            type: 'SCALE_COORDINATES',
+            factor
+          });
+          saveLayout();
+        }
+
+        editorState.mode = 'view';
+        editorState.scalePoints = [];
+        FS.closeModal();
+        draw();
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        editorState.mode = 'view';
+        editorState.scalePoints = [];
+        FS.closeModal();
+        draw();
+      });
+    });
+  }
 
   // Initial draw
   window.addEventListener('resize', resizeCanvas);
@@ -719,10 +1006,94 @@ function pointInRoom(x, y, layout) {
   return 'unknown';
 }
 
+// === State Reducer ===
+
+// Pure reducer function for layout state transitions
+function spaceReduce(layout, action) {
+  if (!layout) layout = { floors: [], rooms: [], placements: [], scale: 1, origin: [0, 0], updated_at: 0 };
+
+  switch (action.type) {
+    case 'ADD_ROOM': {
+      const newRoom = {
+        id: action.roomId || 'room-' + Date.now(),
+        name: action.name || 'New Room',
+        floor: action.floor || '0',
+        polygon: action.polygon || [],
+        ceiling_m: action.ceiling_m || 2.6
+      };
+      return { ...layout, rooms: [...layout.rooms, newRoom], updated_at: Date.now() / 1000 };
+    }
+
+    case 'UPDATE_ROOM': {
+      return {
+        ...layout,
+        rooms: layout.rooms.map(r => r.id === action.roomId ? { ...r, ...action.data } : r),
+        updated_at: Date.now() / 1000
+      };
+    }
+
+    case 'DELETE_ROOM': {
+      return { ...layout, rooms: layout.rooms.filter(r => r.id !== action.roomId), updated_at: Date.now() / 1000 };
+    }
+
+    case 'ADD_FLOOR': {
+      const newFloor = {
+        id: action.floorId || 'floor-' + Date.now(),
+        name: action.name || 'New Floor',
+        elevation_m: action.elevation_m || 0
+      };
+      return { ...layout, floors: [...layout.floors, newFloor], updated_at: Date.now() / 1000 };
+    }
+
+    case 'UPDATE_FLOOR': {
+      return {
+        ...layout,
+        floors: layout.floors.map(f => f.id === action.floorId ? { ...f, ...action.data } : f),
+        updated_at: Date.now() / 1000
+      };
+    }
+
+    case 'DELETE_FLOOR': {
+      return {
+        ...layout,
+        floors: layout.floors.filter(f => f.id !== action.floorId),
+        rooms: layout.rooms.filter(r => r.floor !== action.floorId),
+        updated_at: Date.now() / 1000
+      };
+    }
+
+    case 'UPDATE_TRANSFORM': {
+      return {
+        ...layout,
+        scan: { ...layout.scan, transform: { ...layout.scan?.transform, ...action.data } },
+        updated_at: Date.now() / 1000
+      };
+    }
+
+    case 'SCALE_COORDINATES': {
+      const factor = action.factor || 1;
+      return {
+        ...layout,
+        rooms: layout.rooms.map(r => ({
+          ...r,
+          polygon: r.polygon.map(pt => [pt[0] * factor, pt[1] * factor])
+        })),
+        updated_at: Date.now() / 1000
+      };
+    }
+
+    default:
+      return layout;
+  }
+}
+
 // Export FS.space and add format parsers
 if (!FS.space) {
   FS.space = {};
 }
+
+// Export the reducer
+FS.space.reduce = spaceReduce;
 
 // GLB parser: handles glTF 2.0 binary format
 FS.space.parseGLB = function(arrayBuffer) {
