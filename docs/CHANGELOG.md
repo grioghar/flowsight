@@ -12,6 +12,19 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251903
+
+**Proxmox status no longer hangs after the first poll.** The optional
+socket probe was called while the inventory lock was held and took the
+lock again, so the first poll deadlocked the module and its status and
+inventory calls never answered. The probe now runs before the lock; a test
+guards the swap.
+
+**Identify on the zone screens.** The Zones page lists the devices without
+a zone under *Unidentified* with an *Identify* button each, and the
+per-zone device table has the button too, so a bare hardware address can be
+probed and named where you meet it.
+
 ## 0.9.8r202609251853
 
 **Token read from the right place.** The OPNsense page looked for the API

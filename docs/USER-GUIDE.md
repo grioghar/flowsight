@@ -912,6 +912,11 @@ class, hostname pattern, OUI to a class and a zone). *Plan placement* shows
 what enforce mode would write, *Apply placement* writes it. A captive page
 on the LAN explains to an unplaced device what happens next.
 
+Devices without a zone are listed under **Unidentified** with an *Identify*
+button each (the same probe as on the Devices page), and the per-zone table
+has the button too, so a bare hardware address can be probed and named
+where you meet it before you choose its zone.
+
 ### Scan
 
 **Identify** on a Devices row or a host page runs the fast profile and then
