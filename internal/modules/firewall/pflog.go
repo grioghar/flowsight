@@ -204,6 +204,7 @@ func (m *Module) readLog() error {
 	if m.logSize > st.Size() || off > st.Size() {
 		off = 0 // rotated: from the start
 	}
+	fromStart := off == 0
 	m.logErr = ""
 	m.mu.Unlock()
 	if _, err := fh.Seek(off, io.SeekStart); err != nil {
@@ -245,6 +246,11 @@ func (m *Module) readLog() error {
 	if len(hits) > 0 {
 		if err := m.storeHits(hits); err != nil {
 			return err
+		}
+		if fromStart {
+			// A read from the start of the file (no saved position, or a
+			// rotation that kept old lines) may repeat rows already stored.
+			_ = m.dedupeHits()
 		}
 	}
 	m.mu.Lock()

@@ -12,6 +12,12 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609252214
+
+**Duplicates removed after a from-the-start read too**, not only at start:
+the first read of a build with no saved position happens after the start-up
+sweep and had re-inserted the copies it was meant to remove.
+
 ## 0.9.8r202609252213
 
 **The filter-log reader keeps its place across restarts.** It re-read the
