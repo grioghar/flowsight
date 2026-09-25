@@ -47,3 +47,4 @@ shown at the bottom of the left-hand menu and under FlowSight › Updates.
 ## How-tos
 
 - [See what your IoT devices send abroad, and block it](HOWTO-IOT-ABROAD.md)
+- [Add a switch or another router as a flow source](howto/flow-sources.md)
