@@ -75,7 +75,7 @@ func init() {
 	Register(&SMTPChannel{})
 	Register(&SendGridChannel{})
 	Register(&MailgunChannel{})
-	Register(&AMAZONSESChannel{})
+	Register(&AmazonSESChannel{})
 	Register(&PostmarkChannel{})
 
 	// Incident/On-call channels
