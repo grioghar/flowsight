@@ -536,6 +536,16 @@ func (m *Module) extractMACs(config map[string]interface{}) []string {
 	return macs
 }
 
+// snapshotGuests copies the guest list out from under the lock.
+func (m *Module) snapshotGuests() []Guest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.inventory == nil {
+		return nil
+	}
+	return append([]Guest(nil), m.inventory.Guests...)
+}
+
 // setInventory swaps in a finished poll under the lock and nothing else:
 // no network, no calls that take the lock again.
 func (m *Module) setInventory(inventory *Inventory) {

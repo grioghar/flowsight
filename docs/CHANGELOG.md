@@ -12,6 +12,15 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
+## 0.9.8r202609251924
+
+**The Proxmox map no longer holds up the Devices page.** The map held the
+module's lock for the whole of its queries, and every Devices row and host
+page asks the module for its guest, so a slow map froze those pages. The
+map now works on a copy of the inventory and reports per-stage timings
+(`timings` in the response, and a warning in the log when a page takes
+over five seconds).
+
 ## 0.9.8r202609251918
 
 **Guest-agent answers read through the API's wrapper.** The live API wraps

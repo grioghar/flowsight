@@ -66,6 +66,7 @@ type MapResponse struct {
 	Edges        []Edge                  `json:"edges"`
 	External     []ExternalDep           `json:"external"`
 	Requirements map[string]Requirements `json:"requirements"`
+	Timings      map[string]int64        `json:"timings,omitempty"`
 }
 
 // apiMap returns the dependency map
@@ -78,10 +79,11 @@ func (m *Module) apiMap(r *core.Req) (any, error) {
 		hours = 168
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.inventory == nil || len(m.inventory.Guests) == 0 {
+	// Take a copy of the inventory and let go of the lock: the queries
+	// below take seconds, and every Devices row and host page asks this
+	// module for its guest while they run.
+	guests := m.snapshotGuests()
+	if len(guests) == 0 {
 		return &MapResponse{
 			Guests:       []Guest{},
 			Edges:        []Edge{},
@@ -89,20 +91,24 @@ func (m *Module) apiMap(r *core.Req) (any, error) {
 			Requirements: make(map[string]Requirements),
 		}, nil
 	}
+	started := time.Now()
+	timings := map[string]int64{}
+	mark := func(stage string, t0 time.Time) { timings[stage] = time.Since(t0).Milliseconds() }
 
 	resp := &MapResponse{
-		Guests:       m.inventory.Guests,
+		Guests:       guests,
 		Edges:        []Edge{},
 		External:     []ExternalDep{},
 		Requirements: make(map[string]Requirements),
+		Timings:      timings,
 	}
 
 	// Build guest VMID -> Guest map for lookups
 	guestByVMID := make(map[int]*Guest)
 	ipToGuest := make(map[string]int)  // IP -> VMID
 	macToGuest := make(map[string]int) // MAC -> VMID
-	for i := range m.inventory.Guests {
-		g := &m.inventory.Guests[i]
+	for i := range guests {
+		g := &guests[i]
 		guestByVMID[g.VMID] = g
 		for _, ip := range g.IPs {
 			ipToGuest[ip] = g.VMID
@@ -113,24 +119,36 @@ func (m *Module) apiMap(r *core.Req) (any, error) {
 	}
 
 	// Get observed traffic edges from rollups
+	t0 := time.Now()
 	resp.Edges = append(resp.Edges, m.getObservedEdges(hours, ipToGuest, guestByVMID)...)
+	mark("observed", t0)
 
 	// Get declared edges and requirements from config
+	t0 = time.Now()
 	declaredEdges := m.getDeclaredEdges(guestByVMID)
 	resp.Edges = append(resp.Edges, declaredEdges...)
+	mark("declared", t0)
 	// What VMs report from the inside, when the socket probe is on.
 	resp.Edges = append(resp.Edges, m.socketEdges(ipToGuest)...)
 
 	// Get external dependencies
+	t0 = time.Now()
 	resp.External = m.getExternalDeps(hours, ipToGuest, guestByVMID)
+	mark("external", t0)
+	t0 = time.Now()
 
 	// Build requirements for each guest
-	for _, guest := range m.inventory.Guests {
+	for _, guest := range guests {
 		req := m.buildRequirements(&guest, guestByVMID, resp.Edges, resp.External)
 		key := fmt.Sprintf("%d:%s", guest.VMID, guest.Node)
 		resp.Requirements[key] = req
 	}
 
+	mark("requirements", t0)
+	timings["total"] = time.Since(started).Milliseconds()
+	if timings["total"] > 5000 && m.ctx.Log != nil {
+		m.ctx.Log.Warn("proxmox map slow", "ms", timings)
+	}
 	return resp, nil
 }
 
@@ -139,8 +157,7 @@ func (m *Module) apiRequirements(r *core.Req) (any, error) {
 	vmidStr := r.Q("vmid", "")
 	node := r.Q("node", "")
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	guests := m.snapshotGuests()
 
 	guest, found := m.findGuest(vmidStr, node)
 	if !found {
@@ -149,8 +166,8 @@ func (m *Module) apiRequirements(r *core.Req) (any, error) {
 
 	// Build guest maps
 	guestByVMID := make(map[int]*Guest)
-	for i := range m.inventory.Guests {
-		g := &m.inventory.Guests[i]
+	for i := range guests {
+		g := &guests[i]
 		guestByVMID[g.VMID] = g
 	}
 
@@ -160,7 +177,7 @@ func (m *Module) apiRequirements(r *core.Req) (any, error) {
 		hours = 1
 	}
 	ipToGuest := make(map[string]int)
-	for _, g := range m.inventory.Guests {
+	for _, g := range guests {
 		for _, ip := range g.IPs {
 			ipToGuest[ip] = g.VMID
 		}
