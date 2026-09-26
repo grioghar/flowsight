@@ -12,7 +12,7 @@ name, and every release's assets carry that string in their file names.
 
 The newest entry is first.
 
-## 0.9.8rPENDING
+## 0.9.8r202609260000
 
 **Encrypted traffic: visibility shows what FlowSight can and cannot see.**
 Each flow now carries a `visibility` field showing why it is or is not readable:
