@@ -142,6 +142,20 @@ func (m *Module) Setup(ctx *core.Context) error {
 	// (see decodeFlow): the one label known to be wrong is cleared; rows with
 	// a client-stated name (SNI) are untouched.
 	_ = ctx.Store.Exec(`UPDATE flows SET domain=NULL WHERE domain='example.com' AND (tls_sni IS NULL OR tls_sni='')`)
+	// Sessions recorded before the readability value existed get one from
+	// what was stored (protocol, port, TLS version, name); bounded to a week.
+	since := time.Now().Add(-7 * 24 * time.Hour).Unix()
+	for _, q := range []string{
+		`UPDATE flows SET visibility='dns' WHERE visibility IS NULL AND ts>=? AND proto='udp' AND dst_port=53`,
+		`UPDATE flows SET visibility='quic' WHERE visibility IS NULL AND ts>=? AND proto='udp' AND dst_port=443`,
+		`UPDATE flows SET visibility='http' WHERE visibility IS NULL AND ts>=? AND dst_port=80`,
+		`UPDATE flows SET visibility='inspected' WHERE visibility IS NULL AND ts>=? AND source='squid'`,
+		`UPDATE flows SET visibility='sni' WHERE visibility IS NULL AND ts>=? AND (COALESCE(tls_version,'')<>'' OR dst_port=443) AND COALESCE(domain,'')<>''`,
+		`UPDATE flows SET visibility='opaque' WHERE visibility IS NULL AND ts>=? AND (COALESCE(tls_version,'')<>'' OR dst_port=443)`,
+		`UPDATE flows SET visibility='plain' WHERE visibility IS NULL AND ts>=?`,
+	} {
+		_ = ctx.Store.Exec(q, since)
+	}
 	ctx.Route("GET", "/api/visibility/abroad", m.apiAbroad,
 		core.Query("hours", "integer", "Time window in hours (default 24)", false, 24),
 		core.Query("ip", "string", "Filter by single device IP address", false, "192.168.1.10"),
@@ -696,12 +710,15 @@ func (m *Module) deriveVisibility(fl core.Flow, l7 string) string {
 		// Otherwise encrypted with no visible name
 		return "opaque"
 	}
-	// Plain unencrypted traffic
-	if !isLikelyEncrypted(l7, fl.DstPort) {
-		return "plain"
+	// Everything else: encrypted without a handshake we could read, or plain.
+	// Never empty: a session always says what could be seen of it.
+	if fl.DstPort == 443 || isLikelyEncrypted(l7, fl.DstPort) {
+		if fl.Domain != "" {
+			return "sni"
+		}
+		return "opaque"
 	}
-	// Default to opaque for unknown encrypted protocols
-	return "opaque"
+	return "plain"
 }
 
 // isLikelyEncrypted checks if a protocol or port suggests encrypted traffic

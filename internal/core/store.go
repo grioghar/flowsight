@@ -475,6 +475,7 @@ func (s *Store) AddFlows(flows []Flow) error {
 		upd, err := tx.Prepare(`UPDATE flows SET end_ts=?, bytes_in=?, bytes_out=?, packets=?,
 			duration=?, app=COALESCE(?,app), category=COALESCE(?,category), domain=COALESCE(?,domain),
 			domain_source=COALESCE(?,domain_source), country_source=COALESCE(?,country_source),
+			visibility=COALESCE(?,visibility),
 			verdict=?, policy=COALESCE(?,policy), tls_version=COALESCE(?,tls_version),
 			tls_sni=COALESCE(?,tls_sni), tls_ja3=COALESCE(?,tls_ja3), attrs=COALESCE(?,attrs)
 			WHERE id=(SELECT id FROM flows WHERE key=? ORDER BY id DESC LIMIT 1)`)
@@ -522,7 +523,7 @@ func (s *Store) AddFlows(flows []Flow) error {
 			}
 			if f.Key != "" {
 				res, err := upd.Exec(end, f.BytesIn, f.BytesOut, f.Packets, f.Duration,
-					nz(f.App), nz(f.Category), nz(f.Domain), nz(f.DomainSource), nz(f.CountrySource), f.Verdict, nz(f.Policy),
+					nz(f.App), nz(f.Category), nz(f.Domain), nz(f.DomainSource), nz(f.CountrySource), nz(f.Visibility), f.Verdict, nz(f.Policy),
 					nz(f.TLSVersion), nz(f.TLSSNI), nz(f.TLSJA3), jsonOrNil(f.Attrs), f.Key)
 				if err != nil {
 					return err
