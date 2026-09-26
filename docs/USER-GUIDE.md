@@ -987,13 +987,14 @@ classification.
 
 ### Zones
 
-The zones with their subnet, isolation policy, how many devices each holds
+The zones with their subnet (IPv4), IPv6 subnet, isolation policy, how many devices each holds
 and who they are (each name links back to the device, each count opens the
 Devices page filtered to that zone). Below it the two documents: **zones**
-(id, name, subnet, isolation) and **classification rules** (DHCP vendor
-class, hostname pattern, OUI to a class and a zone). *Plan placement* shows
-what enforce mode would write, *Apply placement* writes it. A captive page
-on the LAN explains to an unplaced device what happens next.
+(id, name, subnet, subnet6, isolation) and **classification rules** (DHCP vendor
+class, hostname pattern, OUI to a class and a zone). The IPv6 subnet (subnet6) is optional; 
+set it when the zone uses IPv6 addressing so policies using `zone:<id>` members can 
+match both address families. *Plan placement* shows what enforce mode would write, 
+*Apply placement* writes it. A captive page on the LAN explains to an unplaced device what happens next.
 
 Devices without a zone are listed under **Unidentified** with an *Identify*
 button each (the same probe as on the Devices page), and the per-zone table

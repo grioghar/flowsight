@@ -52,7 +52,7 @@ options:
 | `10.0.1.0/24` | a network |
 | `mac:aa:bb:cc:dd:ee:ff` | the device with that MAC, whatever address it holds |
 | `device:<name>` | a device by the name FlowSight knows it under |
-| `zone:<id>` | an enrolment zone's subnet |
+| `zone:<id>` | an enrolment zone: its IPv4 subnet, IPv6 subnet (if set), and every address every device in the zone holds (both families) |
 | `user:<name>` | a person: every address from their active sessions (requires RADIUS or manual login tracking) |
 | `usergroup:<group>` | everyone in an LDAP/AD group (requires LDAP configured) |
 | `all` (or `match.all: true`) | every local network |

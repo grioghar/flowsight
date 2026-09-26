@@ -2,6 +2,7 @@ package enroll
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -36,6 +37,17 @@ func (m *Module) apiUpdateZoneByID(r *core.Req) (any, error) {
 	if err := r.Decode(&in); err != nil {
 		return nil, err
 	}
+
+	// Validate and normalize Subnet6 if provided
+	if in.Zone.Subnet6 != "" {
+		_, ipnet, err := net.ParseCIDR(in.Zone.Subnet6)
+		if err != nil {
+			return nil, core.BadRequest("subnet6 must be a valid IPv6 CIDR: %v", err)
+		}
+		// Normalize to network form (e.g., fd00::1/64 becomes fd00::/64)
+		in.Zone.Subnet6 = ipnet.String()
+	}
+
 	m.mu.Lock()
 	idx := -1
 	for i, z := range m.zones.Zones {

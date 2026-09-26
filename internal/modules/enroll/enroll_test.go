@@ -724,3 +724,101 @@ func TestLoadRegistryDropsClientIDs(t *testing.T) {
 		t.Error("client ID came back from the store")
 	}
 }
+
+// testAddressBook is a mock AddressBook for testing.
+type testAddressBook struct {
+	addresses map[string][]string // IP -> all addresses that device holds
+}
+
+func (t *testAddressBook) Addresses(ip string) []string {
+	if addrs, ok := t.addresses[ip]; ok {
+		return addrs
+	}
+	return []string{ip}
+}
+
+// testMemberResolver is a mock MemberResolver for testing.
+type testMemberResolver struct {
+	results map[string][]string
+}
+
+func (t *testMemberResolver) Resolve(member string) []string {
+	return t.results[member]
+}
+
+// TestZoneResolverIPv6 tests that zoneResolver returns IPv4/IPv6 subnets and device addresses.
+func TestZoneResolverIPv6(t *testing.T) {
+	m := reconcileModule(t, "monitor")
+
+	// Set up a minimal Core for the context so Service() calls don't panic
+	m.ctx.Core = &core.Core{
+		Services: make(map[string]any),
+	}
+
+	// Set up a zone with both IPv4 and IPv6 subnets
+	m.zones = &ZonesDoc{
+		Zones: []*Zone{
+			{
+				ID:      "test-zone",
+				Name:    "Test Zone",
+				Subnet:  "192.168.1.0/24",
+				Subnet6: "fd00::/64",
+			},
+		},
+	}
+
+	// Add a device assigned to the zone
+	mac := "00:11:22:33:44:55"
+	m.devices[mac] = &Device{
+		MAC:  mac,
+		IP:   "192.168.1.100",
+		Zone: "test-zone",
+	}
+
+	// Create mock resolver that returns the device's IPv4 address
+	mockDelegate := &testMemberResolver{
+		results: map[string][]string{
+			"mac:00:11:22:33:44:55": {"192.168.1.100/32"},
+		},
+	}
+
+	// Create zone resolver with mock delegate
+	// Note: AddressBook is not in Core.Services, so resolver falls back to delegate results
+	resolver := &zoneResolver{
+		m:        m,
+		delegate: mockDelegate,
+	}
+
+	// Resolve the zone
+	result := resolver.Resolve("zone:test-zone")
+
+	// Expected when AddressBook is unavailable: IPv4 subnet, IPv6 subnet, device IPv4
+	expected := map[string]bool{
+		"192.168.1.0/24":   true,
+		"fd00::/64":        true,
+		"192.168.1.100/32": true,
+	}
+
+	if len(result) != len(expected) {
+		t.Errorf("expected %d members, got %d: %v", len(expected), len(result), result)
+		return
+	}
+
+	for _, r := range result {
+		if !expected[r] {
+			t.Errorf("unexpected member in result: %s", r)
+		}
+	}
+	for e := range expected {
+		found := false
+		for _, r := range result {
+			if r == e {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected member not in result: %s", e)
+		}
+	}
+}
