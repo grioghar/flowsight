@@ -112,6 +112,20 @@ context ("first time 34:d2:70:98:9a:43 contacted IE; 21 days of history
 had US, CA only"). Findings are acknowledgeable, filterable by zone, and
 integrated with alerting rules. The Protect panel adds an Anomalies list and
 a per-device Baseline profile showing what is known about each host.
+## 0.9.8r202609252340
+
+**Scale testing, benchmarking and indices for heavy queries.** New tools
+measure performance limits: `cmd/fsload` generates synthetic data at three
+scales (50/500/2000 devices × 7/30/90 days); `cmd/fsbench` benchmarks read
+paths and reports latency/memory; `test/e2e/run.sh` is an end-to-end
+regression harness. New indices on flows table: (country,ts), (anycast,ts),
+(country,anycast,ts), (src_ip,dst_ip,ts) speed heavy aggregation queries.
+Retention is now configurable in flowsight.json (core.retention) with defaults:
+7 days raw flows, 400 days rollups; hourly prune runs in bounded batches.
+List routes (flows, top, hosts, DNS summary) support limit/offset pagination,
+documented in OPERATIONS.md. macOS support: daemon runs in generic platform
+mode (no firewall, DNS or proxy integration). Tested envelope shows measured
+limits at three device/day scales with peak memory and query latencies.
 
 ## 0.9.8r202609252307
 

@@ -65,6 +65,8 @@ func DetectPlatform() *Platform {
 		return opnsense()
 	case runtime.GOOS == "freebsd":
 		return freebsd()
+	case runtime.GOOS == "darwin":
+		return darwin() // macOS: generic mode, no firewall integration
 	default:
 		return linux()
 	}
@@ -127,6 +129,22 @@ func linux() *Platform {
 		DHCPLeases: []string{"/var/lib/misc/dnsmasq.leases", "/var/lib/dhcp/dhcpd.leases",
 			"/var/lib/kea/kea-leases4.csv"},
 		DnsmasqConfDir: "/etc/dnsmasq.d", Pfctl: "", OpenSSL: "/usr/bin/openssl",
+	}
+}
+
+func darwin() *Platform {
+	// macOS: generic read-only mode, no firewall or service integration.
+	// Use this for testing and development on macOS.
+	homeDir, _ := os.UserHomeDir()
+	return &Platform{
+		Name: "darwin", Family: "linux", Firewall: "none",
+		EtcDir:   filepath.Join(homeDir, ".flowsight", "etc"),
+		DataDir:  filepath.Join(homeDir, ".flowsight", "data"),
+		RunDir:   filepath.Join(homeDir, ".flowsight", "run"),
+		LogDir:   filepath.Join(homeDir, ".flowsight", "log"),
+		ShareDir: filepath.Join(homeDir, ".flowsight", "share"),
+		// No firewall, unbound, squid, or ntopng integration
+		OpenSSL: "/usr/bin/openssl",
 	}
 }
 

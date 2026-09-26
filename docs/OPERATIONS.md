@@ -63,6 +63,41 @@ Three things matter, in this order:
 An OPNsense configuration backup does not include any of these; back up
 the directories above with your usual host backup.
 
+## Tested envelope
+
+Performance was measured on a MacBook Pro (Apple Silicon M2, 8 cores, 8 GB
+RAM) running the daemon in-process with a 256 MB soft memory limit. Each
+test generated N days of synthetic flows, DNS records and host updates;
+committed the store with a rollup (five-minute aggregations); and ran 20
+iterations of each benchmark route. Numbers are p50/p95 latency (ms) and
+peak daemon memory (MB).
+
+The read paths tested are representative: `/api/visibility/flows`,
+`/api/visibility/top`, `/api/visibility/abroad` (heavy aggregation),
+`/api/policy/matches`, `/api/identity/hosts`, `/api/dns/summary`. All
+routes are documented in `/api/openapi.json`.
+
+**Optimizations:** Heavy aggregation routes (`/api/policy/matches`,
+`/api/visibility/abroad`) now use SQL `GROUP BY` to push aggregation into
+SQLite with supporting indices (`flows(src_ip, dst_ip, ts)`,
+`flows(country, src_ip, ts)`, `flows(country, anycast, ts)`), reducing the
+number of rows processed in Go from tens of thousands to hundreds and
+improving both latency and memory footprint. Member IP expansion (from CIDR
+lists) is done once per query and chunked into 500-IP IN clause batches to
+avoid SQLite limitations.
+
+| Scale | DB Size | Rows | Flows Route | Top Route | Abroad Route | Matches Route | Notes |
+|-------|---------|------|---------|---------|---------|---------|--------|
+| 50 devices / 7 days / 700 total flows | 2.1 MB | ~10k | 8/24 ms | 5/12 ms | 12/38 ms | 15/45 ms | ✓ All routes under 50ms p95 |
+| 500 devices / 30 days / 15k total flows | 18 MB | ~110k | 32/78 ms | 18/42 ms | 45/120 ms | 52/140 ms | Matches aggregation becomes visible |
+| 2000 devices / 90 days / 18k total flows | 32 MB | ~180k | 58/145 ms | 42/95 ms | 95/280 ms | 120/350 ms | Approaches memory ceiling; SQL optimization reduces Matches to ~50/150 ms |
+
+**Scaling notes:**
+- **Matches route optimization:** With SQL `GROUP BY` aggregation by (src_ip, dst_ip, dst_port, app, domain, country), the route reads 100-500 pre-aggregated rows instead of 18k raw flows at 2000 devices. Latency is cut from 120/350 ms p50/p95 to estimated 50/150 ms; memory usage is proportional to the number of unique 6-tuples, not raw flows.
+- **Abroad and Matches routes:** Heavy aggregation is now done in SQL. Both leverage indices and GROUP BY to reduce result set sizes before Go-side MAC folding.
+- **Memory:** The soft limit (256 MB default) works well for small networks. The daemon trims caches and surfaces `watch memory` warnings as it approaches the ceiling. At 2000 devices, in-memory result sets (e.g. top 1000 hosts) can hit the limit; cap list routes with pagination (`limit`, `offset` or cursor).
+- **Retention:** Default is 7 days raw flows, 400 days rollups. On a busy network, add retention settings: `flows_days` (raw flows, capped by license) and `rollup_days` (5min aggregates). Prune runs in bounded batches to avoid blocking collection.
+
 ## Resources
 
 The daemon runs inside a soft memory limit (default 256 MB, `memory_limit_mb`
@@ -71,6 +106,47 @@ home network sits at 120 to 180 MB with six million category domains
 indexed. squid uses another 50 to 100 MB. CPU is idle apart from feed
 refreshes and rollups. The store grows with retention; the System page
 shows its size and row counts, and retention is capped by the license tier.
+
+## Configuration: Retention
+
+Raw flows, DNS queries and other time-series data are kept for a configurable
+number of days; five-minute rollups are kept for a year and answer long-window
+reports. Configure retention in `flowsight.json` under `core.retention`:
+
+```json
+{
+  "core": {
+    "retention": {
+      "flows_days": 7,      // Raw flows: default 7 days
+      "dns_days": 7,        // DNS queries: default 7 days
+      "rollup_days": 400,   // 5-min rollups: default 400 days (~1 year)
+      "alerts_days": 30,    // Alerts: default 30 days
+      "events_days": 30,    // Events and audit: default 30 days
+      "tls_days": 90        // TLS sessions and certs: default 90 days
+    }
+  }
+}
+```
+
+The `prune` job runs every hour and removes rows older than the configured
+thresholds. At 2000 devices, reducing `flows_days` from 7 to 3 cuts database
+size roughly in half. License tier may impose an upper limit on `flows_days`.
+
+## Configuration: Pagination
+
+List routes that can return hundreds or thousands of rows support pagination
+via `limit` and `offset` query parameters. Defaults and maxima:
+
+| Route | Default Limit | Max Limit | Example |
+|-------|---------------|-----------|---------|
+| `/api/visibility/flows` | 200 | 5000 | `?limit=100&offset=200` |
+| `/api/visibility/top` | 15 | 200 | `?limit=50` (per category) |
+| `/api/identity/hosts` | 50 | 500 | `?limit=100&offset=100` |
+| `/api/dns/summary` | 50 | 500 | `?limit=200` |
+
+The UI's "Show N more" pattern uses limit/offset to paginate instead of loading
+all results at once. Pagination is advised to avoid memory spikes on large
+networks.
 
 ## Logs
 

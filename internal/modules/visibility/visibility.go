@@ -777,7 +777,7 @@ func (m *Module) apiAbroad(r *core.Req) (any, error) {
 		q += ` AND src_ip=?`
 		args = append(args, ip)
 	}
-	q += ` GROUP BY src_ip, cc, dst_ip ORDER BY sessions DESC LIMIT 5000`
+	q += ` GROUP BY src_ip, cc, dst_ip ORDER BY sessions DESC`
 	rows, err := m.ctx.Store.Rows(q, args...)
 	if err != nil {
 		return nil, err

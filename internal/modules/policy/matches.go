@@ -123,16 +123,6 @@ func (m *Module) apiMatches(r *core.Req) (any, error) {
 	if except && home != "" {
 		allow[home] = true
 	}
-	denied := func(cc string) bool {
-		cc = strings.ToUpper(cc)
-		if cc == "" || cc == "-" {
-			return false
-		}
-		if except {
-			return !allow[cc]
-		}
-		return deny[cc]
-	}
 	countryRule := except || len(deny) > 0
 
 	out := map[string]any{"policy": pol.Name, "action": pol.Action, "hours": hours, "since": since, "home_country": home,
@@ -148,64 +138,133 @@ func (m *Module) apiMatches(r *core.Req) (any, error) {
 		return ""
 	}
 	if countryRule && len(nets) > 0 {
-		// Aggregate flows in SQL by (src_ip, dst_ip, dst_port, app, domain, country).
-		// This eliminates the LIMIT 60000 truncation and pushes aggregation to SQL.
-		rows, err := m.ctx.Store.Rows(`SELECT src_ip, dst_ip, dst_port, app, domain, upper(country) AS cc,
-			COUNT(*) AS sessions, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out, MAX(COALESCE(end_ts,ts)) AS seen
-			FROM flows WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-' AND COALESCE(anycast,0)=0
-			GROUP BY src_ip, dst_ip, dst_port, app, domain, cc
-			ORDER BY src_ip, sessions DESC`, since)
-		if err != nil {
-			return nil, err
+		// Build member address set from CIDRs: /32 and /128 as single IPs, broader via hosts table.
+		memberIPs := make(map[string]bool)
+		var broadCIDRs []*net.IPNet
+		for _, n := range nets {
+			ones, bits := n.Mask.Size()
+			if ones == bits {
+				// /32 or /128: extract single IP
+				memberIPs[n.IP.String()] = true
+			} else {
+				// Broader CIDR: filter hosts in Go
+				broadCIDRs = append(broadCIDRs, n)
+			}
 		}
-		memberMemo := map[string]bool{}
-		for _, row := range rows {
-			src, _ := row["src_ip"].(string)
-			cc, _ := row["cc"].(string)
-			if !denied(cc) {
-				continue
+
+		// For broader CIDRs, query local hosts and test membership once.
+		if len(broadCIDRs) > 0 {
+			if hrows, err := m.ctx.Store.Rows(`SELECT ip FROM hosts WHERE COALESCE(is_local,1)=1`, nil); err == nil {
+				for _, h := range hrows {
+					if ip, ok := h["ip"].(string); ok && inMembers(ip) {
+						memberIPs[ip] = true
+					}
+				}
 			}
-			ok, seen := memberMemo[src]
-			if !seen {
-				ok = inMembers(src)
-				memberMemo[src] = ok
+		}
+
+		// Convert member IPs to slice for IN clause, chunk at 500.
+		memberIPList := make([]string, 0, len(memberIPs))
+		for ip := range memberIPs {
+			memberIPList = append(memberIPList, ip)
+		}
+
+		const chunkSize = 500
+		// Process in chunks to avoid huge IN() lists.
+		for chunk := 0; chunk*chunkSize < len(memberIPList); chunk++ {
+			start := chunk * chunkSize
+			end := start + chunkSize
+			if end > len(memberIPList) {
+				end = len(memberIPList)
 			}
-			if !ok {
-				continue
+			ipChunk := memberIPList[start:end]
+
+			// Build country WHERE clause.
+			var countryArgs []any
+			var countryWhere string
+			if except {
+				// NOT IN (allowed countries)
+				ph := strings.TrimSuffix(strings.Repeat("?,", len(allow)), ",")
+				countryWhere = ` AND upper(country) NOT IN (` + ph + `)`
+				for c := range allow {
+					countryArgs = append(countryArgs, c)
+				}
+			} else {
+				// IN (denied countries)
+				ph := strings.TrimSuffix(strings.Repeat("?,", len(deny)), ",")
+				countryWhere = ` AND upper(country) IN (` + ph + `)`
+				for c := range deny {
+					countryArgs = append(countryArgs, c)
+				}
 			}
-			mac := ""
-			if identity != nil {
-				mac = identity.MAC(src)
+
+			// Build src_ip IN clause for this chunk.
+			ipPh := strings.TrimSuffix(strings.Repeat("?,", len(ipChunk)), ",")
+			srcWhere := ` AND src_ip IN (` + ipPh + `)`
+			for _, ip := range ipChunk {
+				countryArgs = append(countryArgs, ip)
 			}
-			key := src
-			if mac != "" {
-				key = mac
+
+			// SQL aggregation: GROUP BY (src_ip, dst_ip, dst_port, app, domain, country).
+			q := `SELECT src_ip, dst_ip, COALESCE(dst_port,0) AS dst_port, app, domain, upper(country) AS cc,
+				COUNT(*) AS sessions, SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out,
+				MAX(COALESCE(end_ts,ts)) AS seen
+				FROM flows
+				WHERE COALESCE(end_ts,ts)>=? AND country<>'' AND country<>'-' AND COALESCE(anycast,0)=0` +
+				countryWhere + srcWhere + `
+				GROUP BY src_ip, dst_ip, dst_port, app, domain, cc`
+
+			args := []any{since}
+			args = append(args, countryArgs...)
+
+			rows, err := m.ctx.Store.Rows(q, args...)
+			if err != nil {
+				return nil, err
 			}
-			d := devs[key]
-			if d == nil {
-				d = &matchDevice{IP: src, Name: nameOf(src), MAC: mac, byDest: map[string]*matchDest{}, byCC: map[string]int64{}}
-				devs[key] = d
-				order = append(order, key)
+
+			// Light Go pass: fold SQL aggregation by MAC device, organize by country.
+			for _, row := range rows {
+				src, _ := row["src_ip"].(string)
+				cc, _ := row["cc"].(string)
+				sessions := toI(row["sessions"])
+				bytesIn := toI(row["bytes_in"])
+				bytesOut := toI(row["bytes_out"])
+
+				mac := ""
+				if identity != nil {
+					mac = identity.MAC(src)
+				}
+				key := src
+				if mac != "" {
+					key = mac
+				}
+				d := devs[key]
+				if d == nil {
+					d = &matchDevice{IP: src, Name: nameOf(src), MAC: mac, byDest: map[string]*matchDest{}, byCC: map[string]int64{}}
+					devs[key] = d
+					order = append(order, key)
+				}
+				dst, _ := row["dst_ip"].(string)
+				port := int(toI(row["dst_port"]))
+				x := d.byDest[dst]
+				if x == nil {
+					dom, _ := row["domain"].(string)
+					app, _ := row["app"].(string)
+					x = &matchDest{IP: dst, Name: nameOf(dst), Domain: dom, Country: cc, Port: port, App: app}
+					d.byDest[dst] = x
+					d.Dests = append(d.Dests, x)
+				}
+				// Add pre-aggregated sessions count from SQL
+				x.Sessions += sessions
+				x.BytesIn += bytesIn
+				x.BytesOut += bytesOut
+				if s := toI(row["seen"]); s > x.LastSeen {
+					x.LastSeen = s
+				}
+				d.Sessions += sessions
+				d.BytesOut += bytesOut
+				d.byCC[cc] += sessions
 			}
-			dst, _ := row["dst_ip"].(string)
-			port := int(toI(row["dst_port"]))
-			x := d.byDest[dst]
-			if x == nil {
-				dom, _ := row["domain"].(string)
-				app, _ := row["app"].(string)
-				x = &matchDest{IP: dst, Name: nameOf(dst), Domain: dom, Country: cc, Port: port, App: app}
-				d.byDest[dst] = x
-				d.Dests = append(d.Dests, x)
-			}
-			x.Sessions += toI(row["sessions"])
-			x.BytesIn += toI(row["bytes_in"])
-			x.BytesOut += toI(row["bytes_out"])
-			if s := toI(row["seen"]); s > x.LastSeen {
-				x.LastSeen = s
-			}
-			d.Sessions += toI(row["sessions"])
-			d.BytesOut += toI(row["bytes_out"])
-			d.byCC[cc] += toI(row["sessions"])
 		}
 	}
 	devices := make([]*matchDevice, 0, len(order))
