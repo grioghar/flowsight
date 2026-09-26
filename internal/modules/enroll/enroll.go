@@ -136,9 +136,12 @@ type Zone struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
-	Subnet      string    `json:"subnet"`  // CIDR
-	Gateway     string    `json:"gateway"` // IP
-	Range       [2]string `json:"range"`   // start, end IPs
+	Subnet      string    `json:"subnet"`             // IPv4 CIDR
+	Subnet6     string    `json:"subnet6,omitempty"`  // IPv6 CIDR (optional)
+	Gateway     string    `json:"gateway"`            // IPv4
+	Gateway6    string    `json:"gateway6,omitempty"` // IPv6 (optional)
+	Range       [2]string `json:"range"`              // IPv4 start, end IPs
+	Range6      [2]string `json:"range6,omitempty"`   // IPv6 start, end (optional)
 	DNS         []string  `json:"dns"`
 	Internet    bool      `json:"internet"`
 	Captive     bool      `json:"captive"`

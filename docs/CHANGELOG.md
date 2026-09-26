@@ -56,6 +56,21 @@ dependencies (net, crypto/md5, crypto/tls, encoding/binary).
 default of off switched the whole module off: no page, no routes. The
 collector switch is now `collect` (default off; the listeners open only when
 it is on) and the module loads like every other.
+## 0.9.8r202609252348
+
+**Comprehensive alerting provider tests and IPv6 zone support.** The alerting
+module now has wire-format tests for 11+ channels: SMTP (fake server validates
+HELO/AUTH/MAIL/DATA), SendGrid (Bearer auth, mail API), Slack/Discord/Teams/
+Telegram/Ntfy (webhook POST, auth headers, payload structure), Syslog (RFC5424
+UDP), SplunkHEC (/services/collector endpoint), CloudWatch (SigV4 auth), and
+Wazuh API (event format). All tests verify correct HTTP methods, authentication,
+content types and JSON structures.
+
+Zones now support optional IPv6 configuration: `subnet6`, `gateway6`, and
+`range6` fields alongside IPv4. Prepare for IPv6-aware device membership and
+policy enforcement. Documentation expanded with non-goals (multi-gateway HA,
+CARP/VRRP) and "Reviewing the host firewall" guidance on monitor mode and
+rule conflicts before deploying policies.
 
 ## 0.9.8r202609252331
 

@@ -185,6 +185,29 @@ Addresses are named from what FlowSight already holds, the server name in a
 handshake and the answer to a DNS query. No external service is consulted to
 name a destination.
 
+## Reviewing the host firewall
+
+FlowSight's own review scope covers:
+
+- **Daemon process and listeners**: TCP on loopback for the API; listening only on 127.0.0.1 and [::1] unless explicitly bound elsewhere
+- **Anchors and pf tables**: FlowSight creates named anchors (e.g., `flowsight-dns`, `flowsight-web`) and populates tables; these are added alongside existing rules and do not replace them
+- **Proxy configuration**: Squid configuration is generated and validated; every operator-typed entry is checked before being written
+- **Resolver configuration**: DNS configuration is applied to dnsmasq and system resolvers
+
+**OPNsense firewall ruleset review**: The Firewall Analysis Engine (FAE) in FlowSight provides read-only visibility into the OPNsense ruleset through the OPNsense API. To audit and review the base firewall configuration with FAE:
+
+- Request a **read-only API key** from OPNsense (System › API › Create Token, select "Administrators in read-only mode")
+- FlowSight will read `System › Firewall › Rules`, `NAT › Port Forward`, and state table information
+- FAE detects shadowed rules, permissive rules, and redundancies without modifying anything
+- API key should be placed in FlowSight settings (Administration › API Credentials or via CLI)
+
+FlowSight enforces policy only on traffic the OPNsense ruleset already forwards. Because FlowSight's anchors are added alongside existing rules (not replacing them), you can:
+
+- Remove FlowSight from the gateway without reboot and without affecting rules already in place
+- Roll back to an older policy by reverting `policy.json` and restarting the daemon
+- Run FlowSight in monitor mode indefinitely; it will not drop any traffic
+- Review FlowSight's own configuration changes in the audit log (Events › Audit)
+
 ## Hardening checklist
 
 - Keep the daemon on loopback; reach it through the OPNsense GUI or a
