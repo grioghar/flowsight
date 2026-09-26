@@ -119,12 +119,33 @@ func (m *Module) Setup(ctx *core.Context) error {
 	hours := core.Int(ctx.Settings(), "update_hours", 24)
 	ctx.Every("update", time.Duration(hours)*time.Hour, m.updateAll, core.Delayed())
 	ctx.Every("bootstrap", 24*time.Hour, m.bootstrap)
-	ctx.Route("GET", "/api/categories", m.apiList, core.Doc("Categories, sizes and feed status"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("POST", "/api/categories/update", m.apiUpdate, core.Write(), core.Doc("Refresh one or all feeds now"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/categories/lookup", m.apiLookup, core.Doc("Categories a domain belongs to"),
-		core.Params("domain", "name"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("POST", "/api/categories/custom", m.apiCustom, core.Write(), core.Doc("Create or replace a custom category"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("DELETE", "/api/categories/{name}", m.apiDeleteCategoryByName, core.Write(), core.Doc("Delete a custom category"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/categories", m.apiList, core.Doc("List all category feeds with their domain counts and update status"),
+		core.Returns("Category list with statistics", map[string]any{
+			"categories": []map[string]any{
+				{"name": "ads", "domains": 50000, "updated": 1790376243, "source": "https://blocklistproject.github.io/Lists/ads.txt", "error": "", "description": "Advertisement servers", "classified": true},
+			},
+			"indexed_domains": 250000,
+		}))
+	ctx.Route("POST", "/api/categories/update", m.apiUpdate, core.Write(), core.Doc("Refresh one or all feed sources now in the background"),
+		core.Body(
+			core.Fld("category", "string", false, "Specific category to refresh; omit to refresh all", "ads"),
+		),
+		core.Returns("Background refresh initiated", map[string]any{"ok": true, "note": "refreshing 1 feed(s) in the background"}))
+	ctx.Route("GET", "/api/categories/lookup", m.apiLookup, core.Doc("Look up which categories a domain belongs to"),
+		core.Query("domain", "string", "Domain name to classify", true, "example.com"),
+		core.Returns("Domain classification results", map[string]any{
+			"domain": "example.com", "categories": []string{"ads", "tracking"},
+		}))
+	ctx.Route("POST", "/api/categories/custom", m.apiCustom, core.Write(), core.Doc("Create or replace a custom category with a domain list"),
+		core.Body(
+			core.Fld("name", "string", true, "Category name (lowercase, letters/digits/dashes)", "my-block-list"),
+			core.Fld("domains", "array", false, "List of domains to block", []string{"bad.example.com"}),
+			core.Fld("delete", "boolean", false, "Remove the category instead of creating it", false),
+		),
+		core.Returns("Category saved successfully", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/categories/{name}", m.apiDeleteCategoryByName, core.Write(), core.Doc("Delete a custom category by name"),
+		core.PathParam("name", "string", "Custom category name to delete", "my-block-list"),
+		core.Returns("Category deleted successfully", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "categories", Title: "Categories", Group: "Protect", Order: 120, Icon: "categories"})
 	return nil
 }

@@ -133,16 +133,55 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Provider(&provider{m: m})
 	ctx.Every("tail", 3*time.Second, m.pollLog)
 	ctx.Every("supervise", 20*time.Second, m.supervise)
-	ctx.Route("GET", "/api/web/summary", m.apiSummary, core.Doc("Web activity: top sites, categories, blocked requests"),
-		core.Params("hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/web/log", m.apiLog, core.Doc("Recent web requests"),
-		core.Params("ip", "client", "domain", "substring", "blocked", "only blocked", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/web/status", m.apiStatus, core.Doc("Proxy process state and configuration"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/web/pinned", m.apiPinned, core.Doc("Names whose clients pin their certificate and are therefore relayed without inspection"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/web/summary", m.apiSummary, core.Doc("Get summary of web traffic: top sites, categories, blocked requests and TLS modes"),
+		core.Query("hours", "integer", "Time window in hours (default 24)", false, 24),
+		core.Query("limit", "integer", "Top N results for sites/categories/clients (default 15)", false, 15),
+		core.Returns("Web activity summary", map[string]any{
+			"sites":      []map[string]any{{"domain": "example.com", "category": "Business", "requests": 500, "bytes_in": 1000000, "bytes_out": 500000, "hosts": 25}},
+			"categories": []map[string]any{{"category": "Business", "requests": 2000, "bytes_in": 5000000}},
+			"blocked":    []map[string]any{{"domain": "ads.example.com", "requests": 100, "hosts": 10}},
+			"clients":    []map[string]any{{"ip": "192.168.1.10", "name": "office-ap", "requests": 1000, "bytes_in": 2000000, "blocked": 50}},
+			"totals":     map[string]any{"requests": 10000, "blocked": 500, "domains": 250, "clients": 50},
+			"tls_modes":  []map[string]any{{"mode": "bump", "sessions": 3000}, {"mode": "pass", "sessions": 7000}},
+			"hours":      24, "running": true, "intercepting": true,
+		}))
+	ctx.Route("GET", "/api/web/log", m.apiLog, core.Doc("Get recent web requests with optional filtering by client IP or domain"),
+		core.Query("ip", "string", "Filter by source IP address", false, "192.168.1.10"),
+		core.Query("domain", "string", "Filter by domain (substring match)", false, "example"),
+		core.Query("blocked", "string", "Return only blocked requests", false, "true"),
+		core.Query("decrypted", "string", "Return only inspected (decrypted) requests", false, "true"),
+		core.Query("limit", "integer", "Maximum results to return (default 200)", false, 200),
+		core.Returns("Web request log", map[string]any{
+			"requests": []map[string]any{
+				{"ts": 1790376243, "src_ip": "192.168.1.10", "src_name": "office-ap", "dst_ip": "203.0.113.1", "dst_port": 443, "proto": "tcp", "domain": "example.com", "category": "Business", "bytes_in": 1000, "bytes_out": 5000, "duration": 2.5, "verdict": "allowed", "policy": "default", "tls_version": "TLSv1.3", "url": "/api/data", "method": "GET", "status": "200"},
+			},
+		}))
+	ctx.Route("GET", "/api/web/status", m.apiStatus, core.Doc("Get web proxy process state, configuration, and operational statistics"),
+		core.Returns("Proxy status and configuration", map[string]any{
+			"running": true, "intercepting": true, "config": "[squid configuration content]", "files": []string{"squid.conf", "acl.conf"},
+			"block_page": "http://localhost:8082", "block_page_hits": map[string]int{"default": 45}, "error": "", "squid": "/usr/local/sbin/squid", "certgen": "/usr/local/libexec/squid/security_file_certgen",
+		}))
+	ctx.Route("GET", "/api/web/pinned", m.apiPinned, core.Doc("List certificate-pinned sites that are relayed without TLS inspection"),
+		core.Returns("Pinned sites list", map[string]any{
+			"pinned": []map[string]any{
+				{"name": "example.com", "manual": true, "first": 1790376243, "last": 1790376243},
+			},
+			"auto_bypass": true,
+			"note":        "A pinned client refuses any certificate but the one it expects, so these names cannot be decrypted by any proxy. FlowSight relays them untouched; server name, timing and volume are still recorded.",
+		}))
 	ctx.Route("POST", "/api/web/pinned", m.apiPinnedSet, core.Write(), core.Needs("tls.inspect"),
-		core.Doc("Add a name to the pinned list, or remove one ({name, remove})"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Add a name to the pinned list or remove it from TLS inspection bypass"),
+		core.Body(
+			core.Fld("name", "string", true, "Domain name to pin or unpin", "example.com"),
+			core.Fld("remove", "boolean", false, "Remove the name from the pinned list", false),
+		),
+		core.Returns("Pinned list updated", map[string]any{
+			"ok": true, "pinned": []string{"example.com"},
+		}))
 	ctx.Route("DELETE", "/api/web/pinned/{name}", m.apiDeletePinnedName, core.Write(), core.Needs("tls.inspect"),
-		core.Doc("Delete a pinned TLS name"), core.Returns("Success", map[string]any{"ok": true}))
+		core.Doc("Remove a domain from the pinned (certificate-pinned) bypass list"),
+		core.PathParam("name", "string", "Domain name to remove from pinned list", "example.com"),
+		core.Returns("Pinned domain removed", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "web", Title: "Web", Group: "Monitor", Order: 45, Icon: "web"})
 	m.startBlockPage()
 	return nil

@@ -124,7 +124,13 @@ func (m *Module) Setup(ctx *core.Context) error {
 	m.identity = identity
 
 	ctx.Route("GET", "/api/netflow/status", m.apiStatus,
-		core.Doc("Per-exporter status: protocol, records, flows, drops, templates, last seen, bytes"))
+		core.Doc("Get per-exporter flow collection statistics including protocol, records, flows, and template counts"),
+		core.Returns("Netflow collector status", map[string]any{
+			"collecting": true,
+			"exporters": []map[string]any{
+				{"address": "192.168.1.1:12345", "protocol": "netflow9", "records_total": 1000000, "flows_total": 50000, "drops_total": 100, "templates": 5, "last_seen": 1790376243},
+			},
+		}))
 
 	ctx.Panel(core.Panel{ID: "flowsources", Title: "Flow sources", Group: "Monitor", Order: 35, Icon: "flows"})
 

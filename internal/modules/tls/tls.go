@@ -77,16 +77,53 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Publish("ca", m)
 	ctx.Every("findings", 15*time.Minute, m.findings, core.Delayed())
 	ctx.Every("probe", 15*time.Minute, m.probeCerts, core.Delayed())
-	ctx.Route("GET", "/api/tls/ca", m.apiCA, core.Doc("The inspection CA: subject, fingerprint, validity, whether it exists"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("POST", "/api/tls/ca/create", m.apiCreate, core.Write(), core.Needs("tls.inspect"), core.Doc("Create (or replace) the inspection CA"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("POST", "/api/tls/ca/delete", m.apiDelete, core.Write(), core.Doc("Delete the inspection CA; inspection stops"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/tls/ca/download", m.apiDownload, core.Doc("The CA certificate in PEM (or DER with ?format=der) for installing on devices"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/tls/certs", m.apiCerts, core.Doc("Certificates seen on the network"),
-		core.Params("hours", "window", "q", "search subject/issuer/sni", "limit", "rows", "problem", "only problematic"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/tls/summary", m.apiSummary, core.Doc("TLS versions, bump modes, issuers, problems"),
-		core.Params("hours", "window"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/tls/sessions", m.apiSessions, core.Doc("Recent TLS sessions"),
-		core.Params("ip", "client", "sni", "substring", "limit", "rows"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/tls/ca", m.apiCA, core.Doc("Get the inspection CA certificate: subject, fingerprint, validity, and download link"),
+		core.Returns("CA certificate information or absence", map[string]any{
+			"exists": true, "subject": "CN=FlowSight Inspection CA", "not_before": 1790376243, "not_after": 2400000000, "fingerprint_sha256": "a1b2c3d4e5f6...", "serial": "123456789", "squid_ready": true, "download": "/api/tls/ca/download",
+		}))
+	ctx.Route("POST", "/api/tls/ca/create", m.apiCreate, core.Write(), core.Needs("tls.inspect"), core.Doc("Create or replace the TLS inspection certificate authority"),
+		core.Body(
+			core.Fld("name", "string", false, "CA certificate common name (max 64 chars)", "FlowSight Inspection CA"),
+			core.Fld("years", "integer", false, "CA certificate validity in years", 10),
+			core.Fld("replace", "boolean", false, "Replace existing CA (every device must trust new cert)", false),
+		),
+		core.Returns("Created CA certificate information", map[string]any{
+			"exists": true, "subject": "CN=FlowSight Inspection CA", "not_before": 1790376243, "not_after": 2400000000, "fingerprint_sha256": "a1b2c3d4e5f6...", "squid_ready": true,
+		}))
+	ctx.Route("POST", "/api/tls/ca/delete", m.apiDelete, core.Write(), core.Doc("Delete the inspection CA; TLS inspection will stop"),
+		core.Returns("CA deleted successfully", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/tls/ca/download", m.apiDownload, core.Doc("Download the inspection CA certificate in PEM or DER format for device installation"),
+		core.Query("format", "string", "Certificate format: 'pem' (default) or 'der'", false, "pem"),
+		core.Returns("CA certificate file for download", map[string]any{"content_type": "application/x-pem-file"}))
+	ctx.Route("GET", "/api/tls/certs", m.apiCerts, core.Doc("List TLS certificates seen on the network with optional filtering and search"),
+		core.Query("q", "string", "Search subject, issuer, or SNI names", false, "example.com"),
+		core.Query("problem", "string", "Filter to only problematic certificates (self-signed, expired)", false, "true"),
+		core.Query("hours", "integer", "Time window in hours (default 168=1 week)", false, 168),
+		core.Query("limit", "integer", "Maximum results to return (default 200)", false, 200),
+		core.Returns("List of observed certificates", map[string]any{
+			"certificates": []map[string]any{
+				{"subject": "CN=example.com", "issuer": "CN=CA Authority", "not_after": 1800000000, "self_signed": false, "seen": 150},
+			},
+		}))
+	ctx.Route("GET", "/api/tls/summary", m.apiSummary, core.Doc("Get summary statistics on TLS versions, bump modes, issuers, and certificate problems"),
+		core.Query("hours", "integer", "Time window in hours (default 24)", false, 24),
+		core.Returns("TLS summary with statistics", map[string]any{
+			"versions":             []map[string]any{{"version": "TLSv1.3", "sessions": 5000}},
+			"modes":                []map[string]any{{"mode": "pass", "sessions": 4000}, {"mode": "bump", "sessions": 1000}},
+			"issuers":              []map[string]any{{"issuer": "Let's Encrypt", "certificates": 250, "seen": 5000}},
+			"names":                []map[string]any{{"sni": "example.com", "sessions": 150, "clients": 25}},
+			"totals":               map[string]any{"sessions": 5000, "names": 500, "clients": 100, "inspected": 1000},
+			"problem_certificates": 5, "hours": 24,
+		}))
+	ctx.Route("GET", "/api/tls/sessions", m.apiSessions, core.Doc("Get recent TLS sessions with optional filtering by IP or SNI"),
+		core.Query("ip", "string", "Filter by source IP address", false, "192.168.1.10"),
+		core.Query("sni", "string", "Filter by server name (substring match)", false, "example"),
+		core.Query("limit", "integer", "Maximum results to return (default 100)", false, 100),
+		core.Returns("Recent TLS session list", map[string]any{
+			"sessions": []map[string]any{
+				{"src_ip": "192.168.1.10", "sni": "example.com", "version": "TLSv1.3", "mode": "bump", "ts": 1790376243},
+			},
+		}))
 	ctx.Panel(core.Panel{ID: "tls", Title: "TLS", Group: "Protect", Order: 70, Icon: "tls"})
 	return nil
 }

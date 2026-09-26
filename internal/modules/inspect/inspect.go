@@ -262,21 +262,112 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 
 	// Register API routes
-	ctx.Route("GET", "/api/inspect/states", m.apiStates, core.Doc("Get firewall states summary"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/states/summary", m.apiStatesSummary, core.Doc("Get states statistics"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/rules", m.apiRules, core.Doc("Get rule counters"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("POST", "/api/inspect/capture/start", m.apiCaptureStart, core.Write(), core.Doc("Start packet capture"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("POST", "/api/inspect/capture/stop", m.apiCaptureStop, core.Write(), core.Doc("Stop running capture"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/captures", m.apiCaptures, core.Doc("List all captures"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/capture/{id}", m.apiCaptureDetail, core.Doc("Get capture analysis"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/capture/{id}/conversations", m.apiCaptureConversations, core.Doc("Get capture conversations"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/capture/{id}/dns", m.apiCaptureDNS, core.Doc("Get DNS records from capture"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/capture/{id}/tls", m.apiCaptureTLS, core.Doc("Get TLS handshakes from capture"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/capture/{id}/http", m.apiCaptureHTTP, core.Doc("Get HTTP requests from capture"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/capture/{id}/expert", m.apiCaptureExpert, core.Doc("Get expert notes from capture"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/capture/{id}/download", m.apiCaptureDownload, core.Doc("Download capture as pcap"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("DELETE", "/api/inspect/capture/{id}", m.apiCaptureDelete, core.Write(), core.Doc("Delete capture"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/inspect/live", m.apiLiveStream, core.Doc("Stream live packet summaries"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/inspect/states", m.apiStates,
+		core.Doc("Get firewall connection states with optional filtering by host, protocol, or state"),
+		core.Query("host", "string", "Filter by source or destination IP address", false, "192.168.1.10"),
+		core.Query("proto", "string", "Filter by protocol (tcp, udp, icmp, etc.)", false, "tcp"),
+		core.Query("state", "string", "Filter by state (ESTABLISHED, SYN_SENT, etc.)", false, "ESTABLISHED"),
+		core.Query("limit", "integer", "Maximum results to return (default 100)", false, 100),
+		core.Returns("Firewall states list", map[string]any{
+			"states": []map[string]any{
+				{"proto": "tcp", "direction": "in", "src": "203.0.113.1", "dst": "192.168.1.10", "src_port": 443, "dst_port": 54321, "state": "ESTABLISHED", "age": 120, "expires": 7680, "pkts_src": 150, "bytes_src": 65432, "pkts_dst": 180, "bytes_dst": 98765, "rule_id": 0, "interface": "em0", "timestamp": 1790376243, "hostname": "external.example.com"},
+			},
+			"count": 1,
+		}))
+	ctx.Route("GET", "/api/inspect/states/summary", m.apiStatesSummary,
+		core.Doc("Get aggregated statistics on firewall states by protocol and state"),
+		core.Returns("States summary statistics", map[string]any{
+			"total_states": 45, "by_proto": map[string]int{"tcp": 40, "udp": 5}, "by_state": map[string]int{"ESTABLISHED": 42, "SYN_SENT": 3}, "half_open_count": 3, "table_util_pct": 12.5, "new_states_per_sec": 0.5,
+		}))
+	ctx.Route("GET", "/api/inspect/rules", m.apiRules,
+		core.Doc("Get rule evaluation counters and matches from the firewall"),
+		core.Returns("Rule counters and statistics", map[string]any{
+			"rules": []map[string]any{
+				{"rule_id": 1, "name": "Allow SSH", "evaluations": 5000, "matches": 150, "bytes": 1024000},
+			},
+		}))
+	ctx.Route("POST", "/api/inspect/capture/start", m.apiCaptureStart, core.Write(),
+		core.Doc("Start a new packet capture on a network interface with optional BPF filter"),
+		core.Body(
+			core.Fld("iface", "string", true, "Network interface name (em0, em1, etc.)", "em0"),
+			core.Fld("filter", "string", false, "BPF filter expression (tcpdump syntax)", "tcp port 443"),
+			core.Fld("seconds", "integer", false, "Capture duration in seconds", 60),
+			core.Fld("snaplen", "integer", false, "Bytes to capture per packet (96=headers, 65535=full)", 96),
+			core.Fld("payload", "boolean", false, "Include full packet payload (security sensitive)", false),
+		),
+		core.Returns("Capture started successfully", map[string]any{
+			"id": "cap_1790376243", "status": "started", "iface": "em0", "filter": "tcp port 443", "seconds": 60,
+		}))
+	ctx.Route("POST", "/api/inspect/capture/stop", m.apiCaptureStop, core.Write(),
+		core.Doc("Stop the currently running packet capture session"),
+		core.Returns("Capture stop initiated", map[string]any{"status": "stopping"}))
+	ctx.Route("GET", "/api/inspect/captures", m.apiCaptures,
+		core.Doc("List all saved packet capture sessions with metadata"),
+		core.Returns("List of capture sessions", map[string]any{
+			"captures": []map[string]any{{"id": "cap_123", "iface": "em0", "packets": 5000}},
+		}))
+	ctx.Route("GET", "/api/inspect/capture/{id}", m.apiCaptureDetail,
+		core.Doc("Get detailed analysis of a specific packet capture"),
+		core.PathParam("id", "string", "Capture session ID", "cap_1790376243"),
+		core.Returns("Capture analysis with insights", map[string]any{
+			"id": "cap_1790376243", "iface": "em0", "filter": "tcp port 443", "started": 1790376243, "packets": 5000, "bytes": 1000000, "analysis": map[string]any{"packet_count": 5000, "byte_count": 1000000},
+		}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/conversations", m.apiCaptureConversations,
+		core.Doc("Get bidirectional conversations extracted from the captured traffic"),
+		core.PathParam("id", "string", "Capture session ID", "cap_1790376243"),
+		core.Returns("List of network conversations", map[string]any{
+			"conversations": []map[string]any{
+				{"five_tuple": "192.168.1.10:54321>203.0.113.1:443", "proto": "tcp", "src": "192.168.1.10", "src_port": 54321, "dst": "203.0.113.1", "dst_port": 443, "pkts_fwd": 150, "bytes_fwd": 65432, "pkts_rev": 180, "bytes_rev": 98765, "first_seen": 1790376243, "last_seen": 1790376303},
+			},
+		}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/dns", m.apiCaptureDNS,
+		core.Doc("Get DNS queries and responses from the captured traffic"),
+		core.PathParam("id", "string", "Capture session ID", "cap_1790376243"),
+		core.Returns("DNS records from capture", map[string]any{
+			"dns_queries": []map[string]any{
+				{"query": "example.com", "type": "A", "answers": []string{"203.0.113.1"}, "src": "192.168.1.10", "dst": "8.8.8.8", "timestamp": 1790376243},
+			},
+		}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/tls", m.apiCaptureTLS,
+		core.Doc("Get TLS handshakes and certificate information from captured traffic"),
+		core.PathParam("id", "string", "Capture session ID", "cap_1790376243"),
+		core.Returns("TLS handshake details", map[string]any{
+			"tls_handshakes": []map[string]any{
+				{"sni": "example.com", "ja3": "12345abcde...", "src": "192.168.1.10", "dst": "203.0.113.1", "cert_cn": "example.com", "cert_san": []string{"*.example.com"}, "ech": false, "timestamp": 1790376243},
+			},
+		}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/http", m.apiCaptureHTTP,
+		core.Doc("Get HTTP requests extracted from unencrypted traffic in the capture"),
+		core.PathParam("id", "string", "Capture session ID", "cap_1790376243"),
+		core.Returns("HTTP requests from capture", map[string]any{
+			"http_requests": []map[string]any{
+				{"method": "GET", "host": "example.com", "path": "/api/data", "user_agent": "Mozilla/5.0", "src": "192.168.1.10", "dst": "203.0.113.1", "timestamp": 1790376243},
+			},
+		}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/expert", m.apiCaptureExpert,
+		core.Doc("Get expert analysis notes on potential network issues in the capture"),
+		core.PathParam("id", "string", "Capture session ID", "cap_1790376243"),
+		core.Returns("Expert analysis notes", map[string]any{
+			"expert_notes": []map[string]any{
+				{"type": "retransmission", "src": "192.168.1.10", "dst": "203.0.113.1", "detail": "TCP retransmissions detected", "severity": "warn", "timestamp": 1790376243},
+			},
+		}))
+	ctx.Route("GET", "/api/inspect/capture/{id}/download", m.apiCaptureDownload,
+		core.Doc("Download the packet capture file in standard tcpdump PCAP format"),
+		core.PathParam("id", "string", "Capture session ID", "cap_1790376243"),
+		core.Returns("PCAP file data for download", map[string]any{"content_type": "application/vnd.tcpdump.pcap"}))
+	ctx.Route("DELETE", "/api/inspect/capture/{id}", m.apiCaptureDelete, core.Write(),
+		core.Doc("Delete a saved packet capture and its associated files"),
+		core.PathParam("id", "string", "Capture session ID", "cap_1790376243"),
+		core.Returns("Capture deleted successfully", map[string]any{"status": "deleted"}))
+	ctx.Route("GET", "/api/inspect/live", m.apiLiveStream,
+		core.Doc("Stream live packet summaries from a network interface as text lines"),
+		core.Query("iface", "string", "Network interface to capture from", true, "em0"),
+		core.Query("filter", "string", "Optional BPF filter expression", false, "tcp port 443"),
+		core.Query("seconds", "integer", "Stream duration in seconds (default 10)", false, 10),
+		core.Returns("Live packet stream data", map[string]any{
+			"status": "completed", "lines": []string{"10:15:30.123456 IP 192.168.1.10.54321 > 203.0.113.1.443: Flags [S], seq 0"}, "count": 1,
+		}))
 
 	// Register panel
 	ctx.Panel(core.Panel{

@@ -164,11 +164,44 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 
 	// Publish API routes
-	ctx.Route("GET", "/api/baseline/anomalies", m.apiAnomalies, core.Doc("Open anomalies for all devices"))
-	ctx.Route("GET", "/api/baseline/profile", m.apiProfile, core.Doc("Device baseline profile"),
-		core.Params("ip", "IP address", "mac", "MAC address"))
-	ctx.Route("POST", "/api/baseline/ack", m.apiAck, core.Write(), core.Doc("Acknowledge an anomaly"))
-	ctx.Route("GET", "/api/baseline/status", m.apiStatus, core.Doc("Module status and settings"))
+	ctx.Route("GET", "/api/baseline/anomalies", m.apiAnomalies, core.Doc("Get all unresolved baseline anomalies detected across devices"),
+		core.Returns("List of baseline anomalies", map[string]any{
+			"anomalies": []map[string]any{
+				{"id": 1, "ts": 1790376243, "device": "client-laptop", "mac": "aa:bb:cc:dd:ee:ff", "kind": "new_country", "severity": "info", "title": "New country detected", "detail": "Traffic to Russia (RU)", "acked": 0},
+			},
+		}))
+	ctx.Route("GET", "/api/baseline/profile", m.apiProfile, core.Doc("Get the learned baseline profile for a device including countries, ports, and destinations"),
+		core.Query("ip", "string", "Device IP address (either ip or mac required)", false, "192.168.1.10"),
+		core.Query("mac", "string", "Device MAC address (either ip or mac required)", false, "aa:bb:cc:dd:ee:ff"),
+		core.Returns("Device baseline profile", map[string]any{
+			"profile": map[string]any{
+				"mac":          "aa:bb:cc:dd:ee:ff",
+				"first_seen":   1790376243,
+				"countries":    map[string]any{"US": map[string]any{"first_seen": 1790376243, "last_seen": 1790376343, "count": 100, "bytes": 1000000}},
+				"ports":        map[string]any{"tcp:443": map[string]any{"first_seen": 1790376243, "count": 50, "bytes": 500000}},
+				"destinations": map[string]any{"example.com": map[string]any{"first_seen": 1790376243, "count": 25, "bytes": 250000}},
+			},
+		}))
+	ctx.Route("POST", "/api/baseline/ack", m.apiAck, core.Write(), core.Doc("Mark a baseline anomaly as acknowledged by the user"),
+		core.Body(
+			core.Fld("id", "integer", true, "Anomaly ID to acknowledge", 1),
+		),
+		core.Returns("Acknowledgment successful", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/baseline/status", m.apiStatus, core.Doc("Get module status: learning progress, device count, and detection settings"),
+		core.Returns("Baseline module status", map[string]any{
+			"devices": 15,
+			"settings": map[string]any{
+				"learning_days":          7,
+				"max_destinations":       50,
+				"bytes_multiplier":       2.0,
+				"beaconing_min_sessions": 5,
+				"beaconing_cv_threshold": 0.2,
+				"dns_tunnel_min_length":  20,
+				"dns_tunnel_min_entropy": 5.0,
+				"dns_tunnel_min_rate":    0.3,
+				"cooldown_minutes":       60,
+			},
+		}))
 
 	// Register panel
 	ctx.Panel(core.Panel{ID: "anomalies", Title: "Anomalies", Group: "Protect", Order: 30, Icon: "alert"})

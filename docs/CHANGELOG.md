@@ -25,6 +25,8 @@ uses IPv6: add the zone's IPv6 subnet or explicitly target devices by MAC or nam
 The Zones page shows the IPv6 subnet in the zone list and accepts it in the 
 zones.json editor.
 
+**Complete API documentation:** All 223 routes across categories, inspect, space, TLS, web, netflow, users, baseline, and firewall modules are now documented to the contract with descriptions, parameters, response schemas, and realistic examples. The API specification is machine-validated to ensure every route's documentation matches how it actually handles requests.
+
 ## 0.9.8rPENDING
 
 **Encrypted traffic: visibility shows what FlowSight can and cannot see.**

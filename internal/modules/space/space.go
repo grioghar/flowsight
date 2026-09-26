@@ -149,22 +149,79 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 
 	// API routes for address records
-	ctx.Route("POST", "/api/space/locate", m.apiLocate, core.Write(), core.Doc("Geocode an address using US Census Geocoder"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/space/records", m.apiRecords, core.Doc("Get address records: geocode, buildings, elevation, broadband"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/space/locate", m.apiLocate, core.Write(), core.Doc("Geocode a physical address using US Census Geocoder and save coordinates"),
+		core.Body(
+			core.Fld("address", "string", true, "Street address to geocode", "1600 Pennsylvania Avenue NW, Washington, DC 20500"),
+		),
+		core.Returns("Geocoded address with coordinates", map[string]any{
+			"address": "1600 Pennsylvania Avenue NW, Washington, DC 20500", "lat": 38.8951, "lon": -77.0369, "state": "DC", "county": "District of Columbia", "tract": "0061", "block": "1000", "geocoded_at": 1790376243,
+		}))
+	ctx.Route("GET", "/api/space/records", m.apiRecords, core.Doc("Get address records: geocode, buildings, elevation, broadband providers"),
+		core.Returns("Combined address records response", map[string]any{
+			"geocode":             map[string]any{"address": "1600 Pennsylvania Avenue NW, Washington, DC 20500", "lat": 38.8951, "lon": -77.0369},
+			"building_footprints": []map[string]any{{"id": "osm123", "name": "The White House", "levels": "2", "height": "18", "polygon": [][]float64{}}},
+			"elevation_m":         20.5, "elevation_source": "USGS EPQS",
+			"broadband_providers": []map[string]any{{"name": "Verizon", "technology": "Fiber", "available": true}},
+			"cached_at":           1790376243,
+		}))
 
 	// API routes for layout
-	ctx.Route("GET", "/api/space/layout", m.apiGetLayout, core.Doc("Get the current space layout"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("PUT", "/api/space/layout", m.apiPutLayout, core.Write(), core.Doc("Update the layout"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/space/layout", m.apiGetLayout, core.Doc("Get the current space layout with floors, rooms, and device placements"),
+		core.Returns("Complete space layout definition", map[string]any{
+			"floors":     []map[string]any{{"id": "f1", "name": "First Floor", "elevation_m": 0.0}},
+			"rooms":      []map[string]any{{"id": "r1", "name": "Office", "floor": "f1", "polygon": [][]float64{}, "ceiling_m": 2.6}},
+			"placements": []map[string]any{{"mac": "aa:bb:cc:dd:ee:ff", "label": "AP-Office", "x": 5.0, "y": 3.0, "z": 2.0, "floor": "f1", "room": "r1"}},
+			"scale":      1.0, "origin": []float64{0.0, 0.0}, "updated_at": 1790376243,
+		}))
+	ctx.Route("PUT", "/api/space/layout", m.apiPutLayout, core.Write(), core.Doc("Update the space layout (floors, rooms, placements but not scans)"),
+		core.Body(
+			core.Fld("floors", "array", false, "Floors in the building", []map[string]any{{"id": "f1", "name": "First Floor", "elevation_m": 0.0}}),
+			core.Fld("rooms", "array", false, "Rooms in the space", []map[string]any{{"id": "r1", "name": "Office", "floor": "f1", "polygon": [][]float64{}, "ceiling_m": 2.6}}),
+			core.Fld("placements", "array", false, "Device placements in 3D space", []map[string]any{{"mac": "aa:bb:cc:dd:ee:ff", "x": 5.0, "y": 3.0, "z": 2.0}}),
+			core.Fld("scale", "number", false, "Metres per unit", 1.0),
+			core.Fld("origin", "array", false, "Origin coordinates [x, y] in metres", []float64{0.0, 0.0}),
+		),
+		core.Returns("Updated layout returned", map[string]any{
+			"floors": []map[string]any{}, "rooms": []map[string]any{}, "placements": []map[string]any{}, "scale": 1.0,
+		}))
 
 	// API routes for scans
-	ctx.Route("POST", "/api/space/scan", m.apiPostScan, core.Write(), core.Doc("Upload a scan file (GLB, OBJ, PLY, or RoomPlan JSON)"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/space/scan", m.apiGetScan, core.Doc("Get the uploaded scan file"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("DELETE", "/api/space/scan", m.apiDeleteScan, core.Write(), core.Doc("Delete the scan file"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/space/scan", m.apiPostScan, core.Write(), core.Doc("Upload a 3D scan file (GLB, OBJ, PLY, or RoomPlan JSON)"),
+		core.Query("name", "string", "Custom filename for the uploaded scan", false, "office-scan"),
+		core.Returns("Scan uploaded and indexed", map[string]any{
+			"file": "scan-20260925-101530-office-scan.glb", "format": "glb", "size": 5242880, "triangles": 125000, "vertices": 65000, "points": 0,
+		}))
+	ctx.Route("GET", "/api/space/scan", m.apiGetScan, core.Doc("Retrieve the uploaded 3D scan file with correct MIME type"),
+		core.Returns("3D scan file binary data", map[string]any{"content_type": "model/gltf-binary"}))
+	ctx.Route("DELETE", "/api/space/scan", m.apiDeleteScan, core.Write(), core.Doc("Delete the uploaded 3D scan file from storage"),
+		core.Returns("Scan file deleted successfully", map[string]any{"deleted": true}))
 
 	// API routes for devices and placements
-	ctx.Route("GET", "/api/space/devices", m.apiGetDevices, core.Doc("List all devices with placement status"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("POST", "/api/space/place", m.apiPlace, core.Write(), core.Doc("Place a device in space ({mac,x,y,z,floor,room})"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("DELETE", "/api/space/place/{mac}", m.apiDeletePlace, core.Write(), core.Doc("Unplace a device"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/space/devices", m.apiGetDevices, core.Doc("List all devices with their current placement status and location"),
+		core.Query("filter", "string", "Filter by placement status: 'placed', 'unplaced', or empty for all", false, "placed"),
+		core.Returns("Devices with placement information", map[string]any{
+			"devices": []map[string]any{
+				{"mac": "aa:bb:cc:dd:ee:ff", "ip": "192.168.1.10", "hostname": "office-ap", "label": "AP-Office", "placed": true, "placement": map[string]any{"mac": "aa:bb:cc:dd:ee:ff", "x": 5.0, "y": 3.0, "z": 2.0, "floor": "f1", "room": "r1"}},
+			},
+			"total": 1,
+		}))
+	ctx.Route("POST", "/api/space/place", m.apiPlace, core.Write(), core.Doc("Place a device in physical space with 3D coordinates and optional room assignment"),
+		core.Body(
+			core.Fld("mac", "string", true, "MAC address of device to place", "aa:bb:cc:dd:ee:ff"),
+			core.Fld("x", "number", true, "X coordinate in metres", 5.0),
+			core.Fld("y", "number", true, "Y coordinate in metres", 3.0),
+			core.Fld("z", "number", true, "Z coordinate in metres", 2.0),
+			core.Fld("floor", "string", false, "Floor ID from layout", "f1"),
+			core.Fld("room", "string", false, "Room ID from layout", "r1"),
+			core.Fld("label", "string", false, "Display label for the device", "AP-Office"),
+			core.Fld("note", "string", false, "Optional notes about placement", "Near window"),
+		),
+		core.Returns("Device placement saved", map[string]any{
+			"mac": "aa:bb:cc:dd:ee:ff", "placed": true, "placement": map[string]any{"mac": "aa:bb:cc:dd:ee:ff", "x": 5.0, "y": 3.0, "z": 2.0},
+		}))
+	ctx.Route("DELETE", "/api/space/place/{mac}", m.apiDeletePlace, core.Write(), core.Doc("Remove a device from the space and unplace it"),
+		core.PathParam("mac", "string", "MAC address of device to unplace", "aa:bb:cc:dd:ee:ff"),
+		core.Returns("Device unplaced successfully", map[string]any{"deleted": true}))
 
 	// Panel
 	ctx.Panel(core.Panel{ID: "space", Title: "Space", Group: "Inventory", Order: 150, Icon: "space"})
