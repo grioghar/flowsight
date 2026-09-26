@@ -1177,13 +1177,15 @@ func (m *Module) apiSetZones(r *core.Req) (any, error) {
 		return nil, err
 	}
 
-	// Validate Subnet6 for each zone
+	// Validate and normalize Subnet6 for each zone
 	for _, z := range zones.Zones {
 		if z.Subnet6 != "" {
-			_, _, err := net.ParseCIDR(z.Subnet6)
+			_, ipnet, err := net.ParseCIDR(z.Subnet6)
 			if err != nil {
 				return nil, core.BadRequest("zone %q: subnet6 must be a valid IPv6 CIDR: %v", z.ID, err)
 			}
+			// Normalize to network form (e.g., fd00::1/64 becomes fd00::/64)
+			z.Subnet6 = ipnet.String()
 		}
 	}
 

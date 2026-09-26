@@ -38,12 +38,14 @@ func (m *Module) apiUpdateZoneByID(r *core.Req) (any, error) {
 		return nil, err
 	}
 
-	// Validate Subnet6 if provided
+	// Validate and normalize Subnet6 if provided
 	if in.Zone.Subnet6 != "" {
-		_, _, err := net.ParseCIDR(in.Zone.Subnet6)
+		_, ipnet, err := net.ParseCIDR(in.Zone.Subnet6)
 		if err != nil {
 			return nil, core.BadRequest("subnet6 must be a valid IPv6 CIDR: %v", err)
 		}
+		// Normalize to network form (e.g., fd00::1/64 becomes fd00::/64)
+		in.Zone.Subnet6 = ipnet.String()
 	}
 
 	m.mu.Lock()
