@@ -176,26 +176,51 @@ func (m *Module) loadSettings() {
 
 func (m *Module) registerRoutes() {
 	m.ctx.Route("GET", "/api/users", m.apiListUsers,
-		core.Doc("Active users and their current sessions"),
-		core.Params("user", "filter by username"))
+		core.Doc("List all active users with their most recent session and device information"),
+		core.Query("user", "string", "Filter by username (optional)", false, "alice"),
+		core.Returns("List of active users", map[string]any{
+			"users": []map[string]any{
+				{"user": "alice", "source": "radius", "ipv4": "192.168.1.10", "ipv6": "", "mac": "aa:bb:cc:dd:ee:ff", "start_ts": 1790376243, "last_seen": 1790376343, "active": true},
+			},
+			"count": 1,
+		}))
 
 	m.ctx.Route("GET", "/api/users/{name}", m.apiGetUser,
-		core.Doc("User details and session history"))
+		core.Doc("Get user details including all sessions and group memberships"),
+		core.PathParam("name", "string", "Username to retrieve details for", "alice"),
+		core.Returns("User details and session history", map[string]any{
+			"user": "alice",
+			"sessions": []map[string]any{
+				{"user": "alice", "source": "radius", "ipv4": "192.168.1.10", "start_ts": 1790376243, "active": true},
+			},
+			"groups": []string{"Finance", "Staff"},
+		}))
 
 	m.ctx.Route("GET", "/api/users/status", m.apiStatus,
-		core.Doc("Module status and configuration"),
-		core.Params("detail", "include LDAP cache status if true"))
+		core.Doc("Get module status including RADIUS, LDAP, and active session counts"),
+		core.Query("detail", "string", "Include LDAP cache statistics when set to 'true'", false, "false"),
+		core.Returns("Users module status", map[string]any{
+			"active_sessions": 5, "active_users": 3, "radius_enabled": true, "radius_addr": "127.0.0.1:1813", "ldap_enabled": true, "ldap_server": "ldap.example.com:389", "ldap_cache_size": 12,
+		}))
 
-	m.ctx.Route("POST", "/api/users/session", m.apiAddSession,
-		core.Write(),
-		core.Doc("Record a user session (for captive portals, scripts)"),
-		core.Params("user", "username", "ipv4", "IPv4 address", "ipv6", "IPv6 address or prefix",
-			"mac", "MAC address", "nas_ip", "NAS IP", "nas_id", "NAS identifier"))
+	m.ctx.Route("POST", "/api/users/session", m.apiAddSession, core.Write(),
+		core.Doc("Manually record a user session (for captive portals or external sources)"),
+		core.Query("user", "string", "Username starting the session", true, "alice"),
+		core.Query("ipv4", "string", "IPv4 address for the session", false, "192.168.1.10"),
+		core.Query("ipv6", "string", "IPv6 address or prefix for the session", false, "fd00::1"),
+		core.Query("mac", "string", "MAC address of the device", false, "aa:bb:cc:dd:ee:ff"),
+		core.Query("nas_ip", "string", "NAS IP address that authenticated the user", false, "10.0.0.1"),
+		core.Query("nas_id", "string", "NAS identifier or name", false, "access-point-1"),
+		core.Returns("Session recorded successfully", map[string]any{
+			"status": "created", "user": "alice",
+		}))
 
-	m.ctx.Route("POST", "/api/users/ldap/test", m.apiTestLDAP,
-		core.Write(),
-		core.Doc("Test LDAP connection and user lookup (non-persistent)"),
-		core.Params("user", "username to test"))
+	m.ctx.Route("POST", "/api/users/ldap/test", m.apiTestLDAP, core.Write(),
+		core.Doc("Test LDAP connection and retrieve group memberships for a user (non-persistent)"),
+		core.Query("user", "string", "Username to test with LDAP", true, "alice"),
+		core.Returns("LDAP test result for user", map[string]any{
+			"user": "alice", "groups": []string{"Finance", "Staff"},
+		}))
 }
 
 // loadSessions loads sessions from the database, filtering for active ones.

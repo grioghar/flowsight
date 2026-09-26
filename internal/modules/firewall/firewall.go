@@ -138,11 +138,47 @@ func (m *Module) Setup(ctx *core.Context) error {
 		ctx.Every("filter-log", 10*time.Second, m.readLog)
 		ctx.Every("hits-prune", time.Hour, m.pruneHits, core.Delayed())
 	}
-	ctx.Route("GET", "/api/firewall/hits", m.apiHits, core.Params("policy", "only this policy's rules", "hours", "window, default 24", "limit", "rows, default 500"),
-		core.Doc("Packets the policy rules matched, from the firewall's own log: when, which policy, from where to where"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/firewall/status", m.apiStatus, core.Doc("Anchor state, tables and rule counters"), core.Returns("Success", map[string]any{"ok": true}))
-	ctx.Route("GET", "/api/firewall/table", m.apiTable, core.Params("name", "table in the policy anchor (fs_geo_<cc>, fs_geox_<policy>, fs_app_<policy>)", "ip", "optional address to test for membership"),
-		core.Doc("What the kernel holds for one policy table: address count, and whether a given address is in it"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/firewall/hits", m.apiHits,
+		core.Doc("Get policy rule matches from the firewall log: when matched, which policy, source and destination"),
+		core.Query("policy", "string", "Filter to only this policy's rule matches", false, "default"),
+		core.Query("hours", "integer", "Time window in hours (default 24, max 168)", false, 24),
+		core.Query("limit", "integer", "Maximum rows to return (default 500, max 5000)", false, 500),
+		core.Query("debug", "string", "Include raw log tail and rule labels when set", false, "false"),
+		core.Returns("Policy rule matches from firewall log", map[string]any{
+			"hits": []map[string]any{
+				{"ts": 1790376243, "policy": "default", "label": "block-ads", "action": "block", "dir": "out", "iface": "em0", "proto": "tcp", "src_ip": "192.168.1.10", "src_port": 54321, "dst_ip": "203.0.113.1", "dst_port": 443},
+			},
+			"log":   map[string]any{"lines": 1000, "offset": 5000, "size": 100000},
+			"since": 1790289843,
+		}))
+	ctx.Route("GET", "/api/firewall/status", m.apiStatus,
+		core.Doc("Get firewall status: anchors loaded, rule counters, geo table state, and kernel reference"),
+		core.Returns("Firewall module status", map[string]any{
+			"available": true,
+			"anchors":   []string{"policy", "proxy"},
+			"counters": map[string]any{
+				"policy": []map[string]any{
+					{"rule": "pass", "label": "allow-web", "evaluations": 50000, "packets": 1000, "bytes": 5000000, "states": 45},
+				},
+			},
+			"referenced": true,
+			"geo_tables": []map[string]any{
+				{"name": "fs_geo_us", "countries": []string{"US"}, "prefixes": 12345, "kernel_addresses": 12340, "epoch": 1790376243},
+			},
+			"geo_filling": false,
+		}))
+	ctx.Route("GET", "/api/firewall/table", m.apiTable,
+		core.Doc("Query a policy table: count of addresses loaded in kernel and membership test for a single IP"),
+		core.Query("name", "string", "Table name to query (fs_geo_<cc>, fs_geox_<policy>, fs_app_<policy>)", true, "fs_geo_us"),
+		core.Query("ip", "string", "Test whether this IP address is in the table", false, "203.0.113.1"),
+		core.Query("debug", "string", "Include raw pfctl output when set", false, "false"),
+		core.Returns("Table information and membership status", map[string]any{
+			"name":             "fs_geo_us",
+			"kernel_addresses": 12340,
+			"ip":               "203.0.113.1",
+			"in_table":         true,
+			"detail":           "203.0.113.1 match",
+		}))
 	return nil
 }
 

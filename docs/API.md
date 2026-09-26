@@ -86,6 +86,43 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 |---|---|---|---|
 | GET | `/api/appcontrol/status` | Retrieve active application control rules with current block counts and enforcement status | none |
 
+### baseline
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/baseline/anomalies` | Get all unresolved baseline anomalies detected across devices | none |
+
+**Other operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| POST | `/api/baseline/ack` | Mark a baseline anomaly as acknowledged by the user | none |
+| GET | `/api/baseline/profile` | Get the learned baseline profile for a device including countries, ports, and destinations | ip, mac |
+| GET | `/api/baseline/status` | Get module status: learning progress, device count, and detection settings | none |
+
+### categories
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/categories` | List all category feeds with their domain counts and update status | none |
+
+**Create operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| POST | `/api/categories/custom` | Create or replace a custom category with a domain list | none |
+
+**Delete operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| DELETE | `/api/categories/{name}` | Delete a custom category by name | name |
+
+**Other operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/categories/lookup` | Look up which categories a domain belongs to | domain |
+| POST | `/api/categories/update` | Refresh one or all feed sources now in the background | none |
+
 ### dns
 
 **Other operations**
@@ -158,6 +195,15 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/enroll/zones` | Retrieve all enrollment zones with their rules and captive portal settings | none |
 | GET | `/api/enroll/zones/{id}` | Retrieve a specific enrollment zone by its ID with detailed configuration | id |
 
+### firewall
+
+**Other operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/firewall/hits` | Get policy rule matches from the firewall log: when matched, which policy, source and destination | policy, hours, limit, debug |
+| GET | `/api/firewall/status` | Get firewall status: anchors loaded, rule counters, geo table state, and kernel reference | none |
+| GET | `/api/firewall/table` | Query a policy table: count of addresses loaded in kernel and membership test for a single IP | name, ip, debug |
+
 ### identity
 
 **List operations**
@@ -186,6 +232,35 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | POST | `/api/ids/alerts/ack` | Acknowledge one or multiple IDS alerts to mark them as reviewed | none |
 | GET | `/api/ids/summary` | Get summary of IDS alerts grouped by severity, category, signature and source host | hours |
 
+### inspect
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/inspect/captures` | List all saved packet capture sessions with metadata | none |
+
+**Delete operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| DELETE | `/api/inspect/capture/{id}` | Delete a saved packet capture and its associated files | id |
+
+**Other operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| POST | `/api/inspect/capture/start` | Start a new packet capture on a network interface with optional BPF filter | none |
+| POST | `/api/inspect/capture/stop` | Stop the currently running packet capture session | none |
+| GET | `/api/inspect/capture/{id}` | Get detailed analysis of a specific packet capture | id |
+| GET | `/api/inspect/capture/{id}/conversations` | Get bidirectional conversations extracted from the captured traffic | id |
+| GET | `/api/inspect/capture/{id}/dns` | Get DNS queries and responses from the captured traffic | id |
+| GET | `/api/inspect/capture/{id}/download` | Download the packet capture file in standard tcpdump PCAP format | id |
+| GET | `/api/inspect/capture/{id}/expert` | Get expert analysis notes on potential network issues in the capture | id |
+| GET | `/api/inspect/capture/{id}/http` | Get HTTP requests extracted from unencrypted traffic in the capture | id |
+| GET | `/api/inspect/capture/{id}/tls` | Get TLS handshakes and certificate information from captured traffic | id |
+| GET | `/api/inspect/live` | Stream live packet summaries from a network interface as text lines | iface, filter, seconds |
+| GET | `/api/inspect/rules` | Get rule evaluation counters and matches from the firewall | none |
+| GET | `/api/inspect/states` | Get firewall connection states with optional filtering by host, protocol, or state | host, proto, state, limit |
+| GET | `/api/inspect/states/summary` | Get aggregated statistics on firewall states by protocol and state | none |
+
 ### license
 
 **List operations**
@@ -209,6 +284,13 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 |---|---|---|---|
 | GET | `/api/mitm/requests` | Retrieve recent decrypted HTTPS requests with headers, methods and hostnames | limit, q |
 | GET | `/api/mitm/status` | Check if deep packet inspection is listening and retrieve decoded traffic statistics | none |
+
+### netflow
+
+**Other operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/netflow/status` | Get per-exporter flow collection statistics including protocol, records, flows, and template counts | none |
 
 ### paths
 
@@ -407,6 +489,59 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/setup/state` | Get current setup wizard state and auto-detected network configuration facts | none |
 | POST | `/api/setup/test` | Test and validate configuration values provided in the current setup step | none |
 
+### space
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/space/devices` | List all devices with their current placement status and location | filter |
+
+**Update operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| PUT | `/api/space/layout` | Update the space layout (floors, rooms, placements but not scans) | none |
+
+**Delete operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| DELETE | `/api/space/scan` | Delete the uploaded 3D scan file from storage | none |
+
+**Other operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/space/layout` | Get the current space layout with floors, rooms, and device placements | none |
+| POST | `/api/space/locate` | Geocode a physical address using US Census Geocoder and save coordinates | none |
+| POST | `/api/space/place` | Place a device in physical space with 3D coordinates and optional room assignment | none |
+| DELETE | `/api/space/place/{mac}` | Remove a device from the space and unplace it | mac |
+| GET | `/api/space/records` | Get address records: geocode, buildings, elevation, broadband providers | none |
+| GET | `/api/space/scan` | Retrieve the uploaded 3D scan file with correct MIME type | none |
+| POST | `/api/space/scan` | Upload a 3D scan file (GLB, OBJ, PLY, or RoomPlan JSON) | name |
+
+### tls
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/tls/certs` | List TLS certificates seen on the network with optional filtering and search | q, problem, hours, limit |
+
+**Create operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| POST | `/api/tls/ca/create` | Create or replace the TLS inspection certificate authority | none |
+
+**Delete operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| POST | `/api/tls/ca/delete` | Delete the inspection CA; TLS inspection will stop | none |
+
+**Other operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/tls/ca` | Get the inspection CA certificate: subject, fingerprint, validity, and download link | none |
+| GET | `/api/tls/ca/download` | Download the inspection CA certificate in PEM or DER format for device installation | format |
+| GET | `/api/tls/sessions` | Get recent TLS sessions with optional filtering by IP or SNI | ip, sni, limit |
+| GET | `/api/tls/summary` | Get summary statistics on TLS versions, bump modes, issuers, and certificate problems | hours |
+
 ### ui
 
 **Other operations**
@@ -424,13 +559,28 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | POST | `/api/updater/rollback` | Revert to the previous application version if current update has issues | none |
 | GET | `/api/updater/status` | Get current application version, latest available version and update readiness status | none |
 
+### users
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/users` | List all active users with their most recent session and device information | user |
+
+**Other operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| POST | `/api/users/ldap/test` | Test LDAP connection and retrieve group memberships for a user (non-persistent) | user |
+| POST | `/api/users/session` | Manually record a user session (for captive portals or external sources) | user, ipv4, ipv6, mac, nas_ip, nas_id |
+| GET | `/api/users/status` | Get module status including RADIUS, LDAP, and active session counts | detail |
+| GET | `/api/users/{name}` | Get user details including all sessions and group memberships | name |
+
 ### visibility
 
 **List operations**
 | Method | Path | What | Parameters |
 |---|---|---|---|
 | GET | `/api/visibility/catalog` | List all known applications and content categories available for filtering and classification | none |
-| GET | `/api/visibility/flows` | List recent network flows with detailed source, destination and application information | minutes, ip, app, limit, country, abroad, blocked, anycast |
+| GET | `/api/visibility/flows` | List recent network flows with detailed source, destination and application information | minutes, ip, app, limit, country, abroad, blocked, anycast, source, visibility |
 
 **Other operations**
 | Method | Path | What | Parameters |
@@ -441,6 +591,23 @@ Download the full OpenAPI 3.0 specification at `GET /api/openapi.json` for use w
 | GET | `/api/visibility/summary` | Get current network statistics including throughput, active flow count, and connected hosts | none |
 | GET | `/api/visibility/timeseries` | Fetch metric time series data for building charts and analyzing traffic trends | hours, metric, step |
 | GET | `/api/visibility/top` | Top hosts, applications, categories and destinations ranked by traffic volume | hours, limit |
+| GET | `/api/visibility/visibility` | What FlowSight could see of one device's sessions over the window: counts per readability value | ip, hours |
+
+### web
+
+**List operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/web/pinned` | List certificate-pinned sites that are relayed without TLS inspection | none |
+
+**Other operations**
+| Method | Path | What | Parameters |
+|---|---|---|---|
+| GET | `/api/web/log` | Get recent web requests with optional filtering by client IP or domain | ip, domain, blocked, decrypted, limit |
+| POST | `/api/web/pinned` | Add a name to the pinned list or remove it from TLS inspection bypass | none |
+| DELETE | `/api/web/pinned/{name}` | Remove a domain from the pinned (certificate-pinned) bypass list | name |
+| GET | `/api/web/status` | Get web proxy process state, configuration, and operational statistics | none |
+| GET | `/api/web/summary` | Get summary of web traffic: top sites, categories, blocked requests and TLS modes | hours, limit |
 
 ## Authentication
 
