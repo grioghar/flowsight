@@ -106,12 +106,43 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("apply", 60*time.Second, m.reconcile)
 	ctx.Every("resolve", 120*time.Second, m.resolve)
 	ctx.Route("GET", "/api/qos/status", m.apiStatus, core.Needs("qos.shape"),
-		core.Doc("Whether shaping is on, the pipes in force, the rules and what each queue is holding"))
+		core.Doc("Get current traffic shaping status including enabled pipes, rules and queue statistics"),
+		core.Returns("QoS status", map[string]any{
+			"enabled": true,
+			"pipes": []map[string]any{
+				{"name": "download", "bandwidth_mbps": 100, "queue_bytes": 50000},
+			},
+			"rules": 5,
+		}))
 	ctx.Route("GET", "/api/qos/preview", m.apiPreview, core.Needs("qos.shape"),
-		core.Doc("The firewall rules the current settings would produce, without applying them"))
-	ctx.Route("GET", "/api/qos/rules", m.apiGetRules, core.Doc("List all traffic shaping rules"))
-	ctx.Route("POST", "/api/qos/rules", m.apiCreateRule, core.Write(), core.Doc("Create a new traffic shaping rule"))
-	ctx.Route("DELETE", "/api/qos/rules/{id}", m.apiDeleteRule, core.Write(), core.Doc("Delete a traffic shaping rule"))
+		core.Doc("Preview firewall rules that would be generated from current QoS settings without applying them"),
+		core.Returns("Rules preview", map[string]any{
+			"rules": []map[string]any{
+				{"priority": 1, "action": "queue", "pipe": "download"},
+			},
+		}))
+	ctx.Route("GET", "/api/qos/rules", m.apiGetRules,
+		core.Doc("List all configured traffic shaping rules with their criteria and priority order"),
+		core.Returns("QoS rules list", map[string]any{
+			"rules": []map[string]any{
+				{"id": "rule-1", "name": "Video Streaming", "priority": 1, "enabled": true},
+			},
+		}))
+	ctx.Route("POST", "/api/qos/rules", m.apiCreateRule, core.Write(),
+		core.Doc("Create a new traffic shaping rule to prioritize or limit specific network traffic"),
+		core.Body(
+			core.Fld("name", "string", true, "Rule name", "Video Streaming"),
+			core.Fld("priority", "integer", true, "Priority (lower=higher)", 1),
+			core.Fld("criteria", "object", true, "Match criteria (protocol, ports, etc)", map[string]any{}),
+		),
+		core.Returns("Created rule", map[string]any{
+			"id": "rule-1",
+			"ok": true,
+		}))
+	ctx.Route("DELETE", "/api/qos/rules/{id}", m.apiDeleteRule, core.Write(),
+		core.PathParam("id", "string", "QoS rule ID", "rule-1"),
+		core.Doc("Delete a traffic shaping rule and recalculate policy priority"),
+		core.Returns("Deletion result", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "qos", Title: "Priority", Group: "Protect", Order: 105, Icon: "qos", Feature: "qos.shape"})
 	return nil
 }

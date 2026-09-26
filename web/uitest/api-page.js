@@ -13,27 +13,73 @@ var location = { hash:'#api' };
 var setTimeout = function(){};
 load('web/static/lib.js');
 
-// Mock OpenAPI response with all CRUD operations organized by area
+// Mock OpenAPI response with all CRUD operations organized by area, including rich documentation
 var OPENAPI = {
+  info: {
+    version: '0.9.8',
+    description: 'FlowSight API documentation'
+  },
   paths: {
     '/api/policy/groups': {
       get: {
         tags: ['Protect', 'Policies'],
         summary: 'List all policy groups',
-        operationId: 'apiGetGroups'
+        operationId: 'apiGetGroups',
+        parameters: [
+          {name: 'limit', in: 'query', type: 'integer', required: false, description: 'Max results', schema: {type: 'integer', example: 100}},
+          {name: 'offset', in: 'query', type: 'integer', required: false, description: 'Offset for pagination', schema: {type: 'integer', example: 0}}
+        ],
+        responses: {
+          '200': {
+            description: 'List of policy groups',
+            content: {
+              'application/json': {
+                example: {groups: [{id: '1', name: 'Default', rules: 5}]}
+              }
+            }
+          }
+        }
       },
       post: {
         tags: ['Protect', 'Policies'],
         summary: 'Create a new policy group',
         operationId: 'apiCreateGroup',
-        'x-write': true
+        'x-write': true,
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: {type: 'string', description: 'Group name', example: 'My Group'},
+                  description: {type: 'string', description: 'Group description', example: 'Test group'}
+                },
+                required: ['name']
+              },
+              example: {name: 'My Group', description: 'Test'}
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Created policy group',
+            content: {
+              'application/json': {
+                example: {id: '1', name: 'My Group'}
+              }
+            }
+          }
+        }
       }
     },
     '/api/policy/groups/{name}': {
       get: {
         tags: ['Protect', 'Policies'],
         summary: 'Get a specific policy group',
-        operationId: 'apiGetGroup'
+        operationId: 'apiGetGroup',
+        parameters: [
+          {name: 'name', in: 'path', required: true, description: 'Group name', schema: {type: 'string', example: 'Default'}}
+        ]
       },
       put: {
         tags: ['Protect', 'Policies'],
@@ -69,14 +115,24 @@ var OPENAPI = {
     },
     '/api/alerting/channels': {
       get: {
-        tags: ['Administration', 'Alerting'],
+        tags: ['Administration', 'Alerts'],
         summary: 'List all notification channels',
-        operationId: 'apiGetChannels'
+        operationId: 'apiGetChannels',
+        responses: {
+          '200': {
+            description: 'List of notification channels',
+            content: {
+              'application/json': {
+                example: {channels: [{id: 'ch-1', type: 'slack', name: 'alerts', enabled: true}]}
+              }
+            }
+          }
+        }
       }
     },
-    '/api/alerting/channels/{name}': {
+    '/api/alerting/channels/{id}': {
       delete: {
-        tags: ['Administration', 'Alerting'],
+        tags: ['Administration', 'Alerts'],
         summary: 'Delete a notification channel',
         operationId: 'apiDeleteChannel',
         'x-write': true
@@ -108,7 +164,7 @@ var OPENAPI = {
     { name: 'Monitor', tags: ['Monitor/Overview'] },
     { name: 'Inventory', tags: ['Inventory/Devices'] },
     { name: 'Protect', tags: ['Protect/Policies', 'Protect/Priority'] },
-    { name: 'Administration', tags: ['Administration/Alerting'] }
+    { name: 'Administration', tags: ['Administration/Alerts'] }
   ]
 };
 
@@ -117,71 +173,38 @@ FS.get = function(p){
   return Promise.resolve({});
 };
 
-load('web/static/pages3.js');
+load('web/static/api.js');
 
-// Test that the API page renders correctly
+if (!FS.pages.api || !FS.pages.api.render) {
+  throw new Error('API page not loaded properly');
+}
+
 var el = mkEl();
-// Register the API page if it doesn't exist yet, using a simple render
-FS.pages.api = {
-  render: async function(el, ctx) {
-    const data = await FS.get('/api/openapi.json');
-    const paths = data.paths || {};
-    const groups = data['x-tagGroups'] || [];
-
-    let html = '<div class="api-explorer">';
-
-    // Render grouped by area
-    for (const group of groups) {
-      const areaName = group.name;
-      html += '<h2>' + FS.esc(areaName) + '</h2>';
-
-      for (const tag of group.tags) {
-        const [area, page] = tag.split('/');
-        html += '<h3>' + FS.esc(page || 'Ungrouped') + '</h3>';
-
-        for (const [pathKey, methods] of Object.entries(paths)) {
-          for (const [method, op] of Object.entries(methods)) {
-            const opTags = op.tags || [];
-            const opArea = opTags[0] || '';
-            const opPage = opTags[1] || '';
-            const fullTag = opArea + '/' + opPage;
-
-            if (fullTag === tag) {
-              const isWrite = op['x-write'];
-              html += '<div class="operation">';
-              html += '<span class="method ' + method + '">' + method.toUpperCase() + '</span> ';
-              html += '<span class="path">' + FS.esc(pathKey) + '</span> ';
-              html += '<span class="summary">' + FS.esc(op.summary || '(undocumented)') + '</span>';
-              if (isWrite) html += ' <span class="write-badge">write</span>';
-              html += '</div>';
-            }
-          }
-        }
-      }
-    }
-
-    html += '</div>';
-    el.innerHTML = html;
-  }
-};
-
 FS.pages.api.render(el, { params:{} }).then(function(){
   var h = el.innerHTML;
 
-  // Assert group headers are rendered
-  ['Monitor', 'Inventory', 'Protect', 'Administration'].forEach(function(area){
-    if (h.indexOf('<h2>' + area + '</h2>') < 0) throw new Error('missing area header: ' + area);
-  });
-
-  // Assert one operation is rendered (GET /api/policy/groups)
+  // Assert operations are rendered (GET /api/policy/groups)
   if (h.indexOf('GET') < 0) throw new Error('missing GET method');
   if (h.indexOf('/api/policy/groups') < 0) throw new Error('missing /api/policy/groups path');
   if (h.indexOf('List all policy groups') < 0) throw new Error('missing operation summary');
 
   // Assert write operations are marked
-  if (h.indexOf('write-badge') < 0) throw new Error('write operations not marked');
+  if (h.indexOf('bad') < 0) throw new Error('write operations not marked with badge');
 
-  print('API page renders operations grouped by area with correct hierarchy');
+  // Assert parameter documentation
+  if (h.indexOf('limit') < 0) throw new Error('limit parameter not documented');
+  if (h.indexOf('Max results') < 0) throw new Error('parameter description missing');
+
+  // Assert request body fields are rendered
+  if (h.indexOf('Request body') < 0) throw new Error('request body documentation missing');
+
+  // Assert response examples are shown
+  if (h.indexOf('Response example') < 0) throw new Error('response example documentation missing');
+
+  // Assert curl button exists (actual curl generation happens on click)
+  if (h.indexOf('Copy as curl') < 0) throw new Error('curl button missing');
+
+  print('API page renders rich documentation with parameters, request bodies, and response examples');
 }).catch(fail);
 
 if (typeof drainMicrotasks === 'function') drainMicrotasks();

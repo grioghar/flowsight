@@ -94,29 +94,99 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// API routes
 	ctx.Route("GET", "/api/reports/definitions", m.apiGetDefinitions,
-		core.Doc("List all report definitions"))
+		core.Doc("List all configured report definitions with their schedules and settings"),
+		core.Returns("Report definitions list", map[string]any{
+			"definitions": []map[string]any{
+				{"id": "def-1", "name": "Daily Summary", "schedule": "0 8 * * *", "enabled": true},
+			},
+		}))
 	ctx.Route("POST", "/api/reports/definitions", m.apiCreateDefinition,
-		core.Write(), core.Doc("Create a custom report definition"))
+		core.Write(),
+		core.Doc("Create a new report definition with name, queries and delivery settings"),
+		core.Body(
+			core.Fld("name", "string", true, "Report definition name", "Daily Report"),
+			core.Fld("query", "object", true, "Query criteria for the report", map[string]any{}),
+			core.Fld("schedule", "string", false, "Cron expression for automatic delivery", "0 8 * * *"),
+		),
+		core.Returns("Created definition", map[string]any{
+			"id":      "def-1",
+			"name":    "Daily Report",
+			"enabled": true,
+		}))
 	ctx.Route("GET", "/api/reports/definitions/{id}", m.apiGetDefinition,
-		core.Doc("Get a report definition"))
+		core.PathParam("id", "string", "Report definition ID", "def-1"),
+		core.Doc("Retrieve a specific report definition with all its settings and query criteria"),
+		core.Returns("Report definition details", map[string]any{
+			"id":       "def-1",
+			"name":     "Daily Summary",
+			"query":    map[string]any{},
+			"schedule": "0 8 * * *",
+		}))
 	ctx.Route("PUT", "/api/reports/definitions/{id}", m.apiUpdateDefinition,
-		core.Write(), core.Doc("Update a report definition"))
+		core.PathParam("id", "string", "Report definition ID", "def-1"),
+		core.Write(),
+		core.Doc("Update an existing report definition with modified query or delivery settings"),
+		core.Body(
+			core.Fld("name", "string", false, "Updated report name", "Daily Report"),
+			core.Fld("query", "object", false, "Updated query criteria", map[string]any{}),
+		),
+		core.Returns("Update confirmation", map[string]any{"ok": true}))
 	ctx.Route("DELETE", "/api/reports/definitions/{id}", m.apiDeleteDefinition,
-		core.Write(), core.Doc("Delete a report definition"))
-
+		core.PathParam("id", "string", "Report definition ID", "def-1"),
+		core.Write(),
+		core.Doc("Delete a report definition and all associated scheduled runs"),
+		core.Returns("Deletion confirmation", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/reports/preview", m.apiPreview,
-		core.Write(), core.Doc("Generate and preview a report"))
+		core.Write(),
+		core.Doc("Generate a test report with current data to preview before running scheduled"),
+		core.Body(
+			core.Fld("query", "object", true, "Query definition to preview", map[string]any{}),
+			core.Fld("limit", "integer", false, "Maximum rows to include in preview", 100),
+		),
+		core.Returns("Preview data", map[string]any{
+			"data": []map[string]any{},
+			"rows": 0,
+		}))
 	ctx.Route("POST", "/api/reports/run/{id}", m.apiRunReport,
-		core.Write(), core.Doc("Execute a report definition"))
+		core.PathParam("id", "string", "Report definition ID", "def-1"),
+		core.Write(),
+		core.Doc("Execute a report definition immediately and schedule generation of output"),
+		core.Body(),
+		core.Returns("Execution result", map[string]any{
+			"ok":     true,
+			"run_id": "run-123",
+		}))
 	ctx.Route("GET", "/api/reports/runs", m.apiListRuns,
-		core.Doc("List recent report runs"))
+		core.Query("definition", "string", "Filter runs by report definition ID", false, "def-1"),
+		core.Doc("List all generated report runs with execution status and download information"),
+		core.Returns("Report runs list", map[string]any{
+			"runs": []map[string]any{
+				{"id": "run-1", "definition": "def-1", "status": "completed", "created": 1790376243},
+			},
+		}))
 	ctx.Route("GET", "/api/reports/runs/{run}", m.apiGetRun,
-		core.Doc("Get report run details"))
+		core.PathParam("run", "string", "Report run ID", "run-1"),
+		core.Doc("Retrieve details and status of a specific report run including metrics"),
+		core.Returns("Report run details", map[string]any{
+			"id":         "run-1",
+			"definition": "def-1",
+			"status":     "completed",
+			"created":    1790376243,
+			"rows":       1000,
+		}))
 	ctx.Route("GET", "/api/reports/runs/{run}/download", m.apiDownloadRun,
-		core.Doc("Download report in specified format"))
+		core.PathParam("run", "string", "Report run ID", "run-1"),
+		core.Query("format", "string", "Output format: html, pdf, csv (default html)", false, "html"),
+		core.Doc("Download a generated report in the requested format (HTML, PDF, or CSV)"),
+		core.Returns("Report file download", map[string]any{
+			"content_type": "text/html",
+			"filename":     "report-run-1.html",
+		}))
 	ctx.Route("DELETE", "/api/reports/runs/{run}", m.apiDeleteRun,
-		core.Write(), core.Doc("Delete a report run"))
-
+		core.PathParam("run", "string", "Report run ID", "run-1"),
+		core.Write(),
+		core.Doc("Delete a generated report run and free associated storage resources"),
+		core.Returns("Deletion confirmation", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "reports", Title: "Reports", Group: "Administration", Order: 180, Icon: "reports"})
 
 	ctx.Log.Info("reports module ready", slog.String("data_dir", m.dataDir))

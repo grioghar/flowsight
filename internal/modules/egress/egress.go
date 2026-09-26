@@ -171,13 +171,38 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("watch", every, m.sweep)
 	ctx.Every("names", 60*time.Second, m.refreshNames)
 	ctx.Route("GET", "/api/egress/live", m.apiLive, core.Needs("egress.watch"),
-		core.Doc("Connections carrying data right now, newest sample"), core.Params("group", "filter", "min_kb", "floor"))
+		core.Doc("Show live connections carrying data with rates and traffic totals by device"),
+		core.Query("group", "string", "Filter by destination group name", false, "workload"),
+		core.Query("min_kb", "integer", "Minimum traffic in kilobytes to show", false, 0),
+		core.Returns("Live transfers", map[string]any{
+			"transfers": []map[string]any{
+				{"local": "192.168.1.10", "group": "workload", "out": 1000000, "in": 500000, "rate_out": 100.5},
+			},
+			"sampled": 1790376243, "error": "",
+		}))
 	ctx.Route("GET", "/api/egress/summary", m.apiSummary, core.Needs("egress.watch"),
-		core.Doc("What is leaving now, totalled by device and by destination group"))
+		core.Doc("Total outbound traffic aggregated by device and destination group"),
+		core.Returns("Egress summary", map[string]any{
+			"devices":   []map[string]any{{"key": "192.168.1.10", "name": "MacBook", "out": 5000000}},
+			"groups":    []map[string]any{{"key": "workload", "title": "Work", "out": 5000000}},
+			"total_out": 5000000, "total_in": 2500000, "rate_out": 250.0,
+		}))
 	ctx.Route("GET", "/api/egress/events", m.apiEvents, core.Needs("egress.watch"),
-		core.Doc("Transfers that crossed a threshold, most recent first"), core.Params("limit", "rows"))
+		core.Doc("Connection lifecycle events from the firewall connection table"),
+		core.Query("limit", "integer", "Maximum results to return", false, 200),
+		core.Returns("Connection events", map[string]any{
+			"events": []map[string]any{
+				{"ts": 1790376243, "type": "start", "local": "192.168.1.10", "remote": "8.8.8.8", "bytes": 100000},
+			},
+		}))
 	ctx.Route("POST", "/api/egress/stop", m.apiStop, core.Write(), core.Needs("egress.watch"),
-		core.Doc("Drop a transfer that is running ({local, peer, port}); the connection is killed at the firewall"))
+		core.Doc("Terminate an active outbound transfer connection at the firewall gateway"),
+		core.Body(
+			core.Fld("local", "string", true, "Local source IP address", "192.168.1.10"),
+			core.Fld("peer", "string", true, "Remote peer IP address", "8.8.8.8"),
+			core.Fld("port", "integer", true, "Remote port number", 443),
+		),
+		core.Returns("Stop result", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "egress", Title: "DLP", Group: "Protect", Order: 72, Icon: "egress", Feature: "egress.watch"})
 	ctx.Publish("egress", m)
 	return nil

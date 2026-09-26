@@ -27,7 +27,12 @@ func (m *Module) Info() core.ModuleInfo {
 
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
-	ctx.Route("GET", "/api/ui/prefs", m.apiPrefs, core.Doc("Interface preferences the front end applies at start (theme)"))
+	ctx.Route("GET", "/api/ui/prefs", m.apiPrefs,
+		core.Doc("Get user interface preferences and display settings applied at front-end startup"),
+		core.Returns("UI preferences", map[string]any{
+			"theme":    "auto",
+			"language": "en",
+		}))
 	ctx.Panel(core.Panel{ID: "api", Title: "API", Group: "Administration", Order: 200, Icon: "api"})
 	return nil
 }

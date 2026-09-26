@@ -88,14 +88,34 @@ func (m *Module) Setup(ctx *core.Context) error {
 		ctx.Every("ensure-logging", 10*time.Minute, m.ensureLogging)
 	}
 	ctx.Provider(&provider{m: m})
-	ctx.Route("GET", "/api/dns/summary", m.apiSummary, core.Doc("Query volumes, block rate, top domains and clients"),
-		core.Params("hours", "window"))
-	ctx.Route("GET", "/api/dns/log", m.apiLog, core.Doc("Recent queries"),
-		core.Params("client", "filter", "domain", "substring", "blocked", "only blocked", "limit", "rows"))
-	ctx.Route("GET", "/api/dns/lookup", m.apiLookup, core.Doc("Names the resolver handed out for an address"),
-		core.Params("ip", "address"))
-	ctx.Route("GET", "/api/dns/timeseries", m.apiTimeseries, core.Doc("Queries and blocks over time"),
-		core.Params("hours", "window"))
+	ctx.Route("GET", "/api/dns/summary", m.apiSummary, core.Doc("Query summary with volumes, block rates, top domains, clients and lists"),
+		core.Query("hours", "integer", "Time window in hours", false, 24),
+		core.Query("limit", "integer", "Max results per category", false, 15),
+		core.Returns("DNS summary", map[string]any{
+			"totals":  map[string]any{"queries": 10000, "blocked": 234, "clients": 5, "domains": 50},
+			"live":    map[string]any{"queries": 100, "blocked": 2, "avg_ms": 25},
+			"top":     []map[string]any{{"domain": "google.com", "queries": 500, "clients": 3}},
+			"blocked": []map[string]any{{"domain": "ads.com", "queries": 50, "list": "adblock"}},
+		}))
+	ctx.Route("GET", "/api/dns/log", m.apiLog, core.Doc("Historical DNS query log with optional filtering by domain or client"),
+		core.Query("client", "string", "Filter by client IP address", false, "192.168.1.10"),
+		core.Query("domain", "string", "Filter domain by substring match", false, "google.com"),
+		core.Query("blocked", "boolean", "Show only blocked queries", false, false),
+		core.Query("limit", "integer", "Maximum results to return", false, 200),
+		core.Returns("Query log", map[string]any{
+			"queries": []map[string]any{{"ts": 1790376243, "client": "192.168.1.10", "domain": "google.com", "action": "pass"}},
+		}))
+	ctx.Route("GET", "/api/dns/lookup", m.apiLookup, core.Doc("Retrieve hostname assignments given to a specific IP address"),
+		core.Query("ip", "string", "IP address to look up", true, "192.168.1.10"),
+		core.Returns("Address lookup", map[string]any{
+			"ip": "192.168.1.10", "name": map[string]any{"name": "gateway", "ts": 1790376243},
+		}))
+	ctx.Route("GET", "/api/dns/timeseries", m.apiTimeseries, core.Doc("Time series of DNS queries and blocks with automatic step adjustment"),
+		core.Query("hours", "integer", "Time window in hours", false, 24),
+		core.Returns("Time series data", map[string]any{
+			"series": []map[string]any{{"t": 1790376243, "queries": 100, "blocked": 2}},
+			"step":   300,
+		}))
 	ctx.Panel(core.Panel{ID: "dns", Title: "DNS", Group: "Monitor", Order: 50, Icon: "dns"})
 	return nil
 }

@@ -47,16 +47,88 @@ type session struct {
 	expires time.Time
 }
 
+// Field describes a single field in a request/response schema.
+type Field struct {
+	Name        string
+	Type        string // "string", "integer", "boolean", "object", "array", "number"
+	Required    bool
+	Description string
+	Example     any
+	Items       *Field // for array items
+	Properties  map[string]*Field
+}
+
+// Fld is a shorthand constructor for Field.
+func Fld(name, typ string, required bool, desc string, example any) *Field {
+	return &Field{
+		Name:        name,
+		Type:        typ,
+		Required:    required,
+		Description: desc,
+		Example:     example,
+	}
+}
+
+// FldObj creates an object Field with the given properties.
+func FldObj(name string, required bool, desc string, props ...*Field) *Field {
+	f := &Field{
+		Name:        name,
+		Type:        "object",
+		Required:    required,
+		Description: desc,
+		Properties:  make(map[string]*Field),
+	}
+	for _, p := range props {
+		f.Properties[p.Name] = p
+	}
+	return f
+}
+
+// FldArr creates an array Field with the given item type.
+func FldArr(name string, required bool, desc string, items *Field) *Field {
+	return &Field{
+		Name:        name,
+		Type:        "array",
+		Required:    required,
+		Description: desc,
+		Items:       items,
+	}
+}
+
+// ParameterInfo describes a query or path parameter.
+type ParameterInfo struct {
+	Name        string
+	In          string // "query" or "path"
+	Type        string // OpenAPI type: string, integer, boolean, etc.
+	Required    bool
+	Description string
+	Example     any
+}
+
+// ResponseInfo describes the response body.
+type ResponseInfo struct {
+	Description string
+	Schema      any // Can be Field, or a struct value for auto-generation
+	Example     any
+}
+
 type Route struct {
 	Method, Path, Module string
 	Handler              Handler
 	Description          string
 	Write                bool
-	Feature              string // tier feature this route belongs to ("" = free)
-	Params               map[string]string
-	Tags                 []string // OpenAPI tags for grouping
-	OperationId          string   // unique operation identifier
-	RequestBodyType      string   // describes the request body for docs
+	Feature              string            // tier feature this route belongs to ("" = free)
+	Params               map[string]string // Legacy: query param descriptions
+	Tags                 []string          // OpenAPI tags for grouping
+	OperationId          string            // unique operation identifier
+	RequestBodyType      string            // describes the request body for docs
+
+	// New rich documentation fields
+	Parameters     []*ParameterInfo
+	RequestBody    *Field            // Request body schema
+	RequestExample any               // Request body example
+	Response       *ResponseInfo     // Response documentation
+	Examples       map[string]string // Named curl examples
 }
 
 type RouteOption func(*Route)
@@ -78,6 +150,91 @@ func Tags(tags ...string) RouteOption {
 func OperationId(id string) RouteOption {
 	return func(r *Route) {
 		r.OperationId = id
+	}
+}
+
+// PathParam documents a {path} parameter.
+func PathParam(name, typ, desc string, example any) RouteOption {
+	return func(r *Route) {
+		if r.Parameters == nil {
+			r.Parameters = []*ParameterInfo{}
+		}
+		r.Parameters = append(r.Parameters, &ParameterInfo{
+			Name: name, In: "path", Type: typ, Required: true,
+			Description: desc, Example: example,
+		})
+	}
+}
+
+// Query documents a query parameter.
+func Query(name, typ, desc string, required bool, example any) RouteOption {
+	return func(r *Route) {
+		if r.Parameters == nil {
+			r.Parameters = []*ParameterInfo{}
+		}
+		r.Parameters = append(r.Parameters, &ParameterInfo{
+			Name: name, In: "query", Type: typ, Required: required,
+			Description: desc, Example: example,
+		})
+	}
+}
+
+// Body documents the request body as individual fields.
+func Body(fields ...*Field) RouteOption {
+	return func(r *Route) {
+		r.RequestBody = &Field{
+			Type:       "object",
+			Properties: make(map[string]*Field),
+		}
+		for _, f := range fields {
+			r.RequestBody.Properties[f.Name] = f
+		}
+	}
+}
+
+// BodySchema documents the request body as a single complex schema.
+func BodySchema(schema *Field) RouteOption {
+	return func(r *Route) {
+		r.RequestBody = schema
+	}
+}
+
+// BodyExample sets the example for the request body.
+func BodyExample(example any) RouteOption {
+	return func(r *Route) {
+		r.RequestExample = example
+	}
+}
+
+// Returns documents the response with description and example.
+func Returns(desc string, example any) RouteOption {
+	return func(r *Route) {
+		r.Response = &ResponseInfo{
+			Description: desc,
+			Example:     example,
+		}
+	}
+}
+
+// ReturnsType documents the response by extracting schema from a struct type.
+// Pass a zero value or pointer: ReturnsType("description", &MyType{})
+func ReturnsType(desc string, example any) RouteOption {
+	return func(r *Route) {
+		r.Response = &ResponseInfo{
+			Description: desc,
+			Schema:      example, // Will be converted to OpenAPI schema during generation
+			Example:     example,
+		}
+	}
+}
+
+// Example adds a named curl example.
+func Example(name, curlish string) RouteOption {
+	return func(r *Route) {
+		if r.Examples == nil {
+			r.Examples = make(map[string]string)
+		}
+		r.Examples[name] = curlish
 	}
 }
 
@@ -194,7 +351,15 @@ func NewAPI(core *Core, static fs.FS, log *slog.Logger) *API {
 
 func (a *API) Add(method, p string, h Handler, module string, opts ...RouteOption) {
 	method = strings.ToUpper(method)
-	r := &Route{Method: method, Path: p, Handler: h, Module: module, Params: map[string]string{}}
+	r := &Route{
+		Method:     method,
+		Path:       p,
+		Handler:    h,
+		Module:     module,
+		Params:     map[string]string{},
+		Parameters: []*ParameterInfo{},
+		Examples:   make(map[string]string),
+	}
 	for _, o := range opts {
 		o(r)
 	}
@@ -204,6 +369,43 @@ func (a *API) Add(method, p string, h Handler, module string, opts ...RouteOptio
 	a.mu.Lock()
 	a.routes[method+" "+p] = r
 	a.mu.Unlock()
+}
+
+// fieldToOpenAPISchema converts a Field to an OpenAPI schema object.
+func fieldToOpenAPISchema(f *Field) map[string]any {
+	if f == nil {
+		return map[string]any{"type": "object"}
+	}
+
+	schema := map[string]any{}
+	if f.Type != "" {
+		schema["type"] = f.Type
+	}
+	if f.Description != "" {
+		schema["description"] = f.Description
+	}
+	if f.Example != nil {
+		schema["example"] = f.Example
+	}
+	if f.Items != nil && f.Type == "array" {
+		schema["items"] = fieldToOpenAPISchema(f.Items)
+	}
+	if len(f.Properties) > 0 {
+		props := make(map[string]any)
+		required := []string{}
+		for name, prop := range f.Properties {
+			props[name] = fieldToOpenAPISchema(prop)
+			if prop.Required {
+				required = append(required, name)
+			}
+		}
+		sort.Strings(required)
+		schema["properties"] = props
+		if len(required) > 0 {
+			schema["required"] = required
+		}
+	}
+	return schema
 }
 
 // OpenAPI generates the reference from the route table, so it can never
@@ -261,30 +463,119 @@ func (a *API) OpenAPI() map[string]any {
 			"summary":     r.Description,
 			"tags":        tags,
 			"operationId": opId,
-			"responses":   map[string]any{"200": map[string]any{"description": "JSON object"}},
 		}
 
 		if r.Description == "" {
 			op["summary"] = "(undocumented)"
 		}
-		if len(r.Params) > 0 {
-			var ps []map[string]any
+
+		// Build parameters from both legacy Params and new Parameters
+		var ps []map[string]any
+
+		// Add rich parameters first
+		for _, p := range r.Parameters {
+			param := map[string]any{
+				"name":     p.Name,
+				"in":       p.In,
+				"required": p.Required,
+			}
+			if p.Description != "" {
+				param["description"] = p.Description
+			}
+			schema := map[string]any{"type": p.Type}
+			if p.Example != nil {
+				schema["example"] = p.Example
+			}
+			param["schema"] = schema
+			ps = append(ps, param)
+		}
+
+		// Add legacy Params (query parameters) if no Parameters defined
+		if len(r.Parameters) == 0 && len(r.Params) > 0 {
 			pk := make([]string, 0, len(r.Params))
 			for n := range r.Params {
 				pk = append(pk, n)
 			}
 			sort.Strings(pk)
 			for _, n := range pk {
-				ps = append(ps, map[string]any{"name": n, "in": "query", "description": r.Params[n],
-					"schema": map[string]any{"type": "string"}})
+				ps = append(ps, map[string]any{
+					"name":        n,
+					"in":          "query",
+					"description": r.Params[n],
+					"schema":      map[string]any{"type": "string"},
+				})
 			}
+		}
+
+		if len(ps) > 0 {
 			op["parameters"] = ps
 		}
-		if r.Write {
-			op["requestBody"] = map[string]any{"content": map[string]any{
-				"application/json": map[string]any{"schema": map[string]any{"type": "object"}}}}
+
+		// Build request body
+		if r.Write || r.RequestBody != nil {
+			rb := map[string]any{
+				"content": map[string]any{
+					"application/json": map[string]any{},
+				},
+			}
+			ajson := rb["content"].(map[string]any)["application/json"].(map[string]any)
+
+			if r.RequestBody != nil {
+				ajson["schema"] = fieldToOpenAPISchema(r.RequestBody)
+			} else {
+				ajson["schema"] = map[string]any{"type": "object"}
+			}
+
+			if r.RequestExample != nil {
+				ajson["example"] = r.RequestExample
+			}
+
+			op["requestBody"] = rb
 			op["x-write"] = true
 		}
+
+		// Build response
+		resp := map[string]any{"description": "Success"}
+		if r.Response != nil {
+			if r.Response.Description != "" {
+				resp["description"] = r.Response.Description
+			}
+			if r.Response.Example != nil || r.Response.Schema != nil {
+				content := map[string]any{}
+				ajson := map[string]any{}
+
+				if r.Response.Schema != nil {
+					if f, ok := r.Response.Schema.(*Field); ok {
+						ajson["schema"] = fieldToOpenAPISchema(f)
+					} else {
+						// For other types, use example as schema hint
+						ajson["schema"] = map[string]any{"type": "object"}
+					}
+				} else {
+					ajson["schema"] = map[string]any{"type": "object"}
+				}
+
+				if r.Response.Example != nil {
+					ajson["example"] = r.Response.Example
+				}
+				content["application/json"] = ajson
+				resp["content"] = content
+			}
+		} else {
+			resp["content"] = map[string]any{
+				"application/json": map[string]any{
+					"schema": map[string]any{"type": "object"},
+				},
+			}
+		}
+
+		op["responses"] = map[string]any{"200": resp}
+
+		// Store examples if any
+		if len(r.Examples) > 0 {
+			op["x-examples"] = r.Examples
+		}
+
 		if paths[r.Path] == nil {
 			paths[r.Path] = map[string]any{}
 		}
@@ -303,29 +594,53 @@ func (a *API) OpenAPI() map[string]any {
 			})
 		}
 	}
-	// Add API tag to Administration if not present
-	if len(tagGroups) > 0 && tagGroups[len(tagGroups)-1]["name"] == "Administration" {
-		adminTags := tagGroups[len(tagGroups)-1]["tags"].([]string)
-		hasApi := false
-		for _, t := range adminTags {
-			if t == "Administration/API" {
-				hasApi = true
-				break
-			}
-		}
-		if !hasApi {
-			adminTags = append(adminTags, "Administration/API")
-			sort.Strings(adminTags)
-			tagGroups[len(tagGroups)-1]["tags"] = adminTags
-		}
+
+	info := map[string]any{
+		"title":   "FlowSight API",
+		"version": a.core.Version,
+		"description": `Complete REST API for FlowSight network monitoring and policy.
+
+**Authentication:**
+- Token-based: Send X-Flowsight-Token header with your API token, or use Bearer scheme in Authorization header
+- Session-based: POST to /api/login with token, receive fs_session cookie
+- Loopback (127.0.0.1, ::1) with no token: trusted for local integration
+
+**Query Windows:**
+Use 'hours' and 'minutes' parameters to specify time windows for historical data (default varies by endpoint).
+
+**Error Format:**
+All errors return JSON: {"error": "description"}
+
+**Write Operations:**
+Use X-Requested-With: Flowsight header for security when calling from browsers, or provide X-Flowsight-Token / Bearer token.
+`,
 	}
 
 	return map[string]any{
 		"openapi":     "3.0.3",
-		"info":        map[string]any{"title": "FlowSight API", "version": a.core.Version},
+		"info":        info,
 		"servers":     []map[string]any{{"url": "/"}},
 		"paths":       paths,
 		"x-tagGroups": tagGroups,
+	}
+}
+
+// IterateRoutes calls fn for each registered route.
+func (a *API) IterateRoutes(fn func(method, path string, route *Route)) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	keys := make([]string, 0, len(a.routes))
+	for k := range a.routes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		parts := strings.Fields(k)
+		if len(parts) != 2 {
+			continue
+		}
+		method, path := parts[0], parts[1]
+		fn(method, path, a.routes[k])
 	}
 }
 

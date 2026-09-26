@@ -169,14 +169,80 @@ func (m *Module) Setup(ctx *core.Context) error {
 	_ = m.ctx.Store.KVGet("proxmox.inventory", m.inventory)
 
 	// Register routes
-	ctx.Route("GET", "/api/proxmox/inventory", m.apiInventory, core.Doc("Nodes and guests"))
-	ctx.Route("GET", "/api/proxmox/status", m.apiStatus, core.Doc("Connection status and last poll"))
-	ctx.Route("POST", "/api/proxmox/poll", m.apiPoll, core.Write(), core.Doc("Poll now"))
-	ctx.Route("GET", "/api/proxmox/guest", m.apiGuest, core.Doc("Guest by VMID and node"))
-	ctx.Route("GET", "/api/proxmox/notes/preview", m.apiNotesPreview, core.Doc("Preview notes block"))
-	ctx.Route("POST", "/api/proxmox/notes/write", m.apiNotesWrite, core.Write(), core.Doc("Write notes"))
-	ctx.Route("GET", "/api/proxmox/map", m.apiMap, core.Doc("Dependency map"))
-	ctx.Route("GET", "/api/proxmox/requirements", m.apiRequirements, core.Doc("Guest requirements"))
+	ctx.Route("GET", "/api/proxmox/inventory", m.apiInventory,
+		core.Doc("List all Proxmox nodes and virtual machines with their status and configuration"),
+		core.Returns("Proxmox inventory", map[string]any{
+			"nodes": []map[string]any{
+				{"name": "pve1", "status": "online", "uptime": 86400},
+			},
+			"guests": []map[string]any{
+				{"vmid": 100, "name": "container1", "node": "pve1", "status": "running"},
+			},
+		}))
+	ctx.Route("GET", "/api/proxmox/status", m.apiStatus,
+		core.Doc("Check Proxmox connection status and display timestamp of last successful poll"),
+		core.Returns("Connection status", map[string]any{
+			"connected": true,
+			"last_poll": 1790376243,
+			"error":     "",
+		}))
+	ctx.Route("POST", "/api/proxmox/poll", m.apiPoll, core.Write(),
+		core.Doc("Trigger an immediate poll of Proxmox API for latest node and VM status"),
+		core.Body(),
+		core.Returns("Poll result", map[string]any{
+			"ok":      true,
+			"message": "Poll completed",
+		}))
+	ctx.Route("GET", "/api/proxmox/guest", m.apiGuest,
+		core.Query("vmid", "integer", "Virtual machine ID or LXC container ID", true, 100),
+		core.Query("node", "string", "Proxmox node name where guest resides", true, "pve1"),
+		core.Doc("Retrieve detailed configuration and status for a specific virtual machine or container"),
+		core.Returns("Guest details", map[string]any{
+			"vmid":   100,
+			"name":   "container1",
+			"node":   "pve1",
+			"status": "running",
+			"cpu":    4,
+			"memory": 2048,
+		}))
+	ctx.Route("GET", "/api/proxmox/notes/preview", m.apiNotesPreview,
+		core.Query("vmid", "integer", "Virtual machine ID", true, 100),
+		core.Query("node", "string", "Proxmox node name", true, "pve1"),
+		core.Doc("Preview the formatted notes section for a guest container or virtual machine"),
+		core.Returns("Notes preview", map[string]any{
+			"content": "Guest notes here",
+			"html":    "<p>Guest notes here</p>",
+		}))
+	ctx.Route("POST", "/api/proxmox/notes/write", m.apiNotesWrite, core.Write(),
+		core.Doc("Update the notes section for a Proxmox guest with new content and formatting"),
+		core.Body(
+			core.Fld("vmid", "integer", true, "Virtual machine or container ID", 100),
+			core.Fld("node", "string", true, "Proxmox node name", "pve1"),
+			core.Fld("description", "string", true, "New notes content", "Updated notes"),
+		),
+		core.Returns("Write result", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/proxmox/map", m.apiMap,
+		core.Query("hours", "integer", "Time window in hours for network traffic analysis (default 24)", false, 24),
+		core.Doc("Show network dependencies and traffic patterns between guests and external destinations"),
+		core.Returns("Network dependency map", map[string]any{
+			"nodes": []map[string]any{
+				{"name": "container1", "type": "guest"},
+			},
+			"edges": []map[string]any{
+				{"src": "container1", "dst": "external-host", "bytes": 100000},
+			},
+		}))
+	ctx.Route("GET", "/api/proxmox/requirements", m.apiRequirements,
+		core.Query("vmid", "integer", "Virtual machine ID to analyze", true, 100),
+		core.Query("node", "string", "Proxmox node name where guest resides", true, "pve1"),
+		core.Query("hours", "integer", "Time window in hours for metrics (default 24)", false, 24),
+		core.Doc("Analyze a guest's resource requirements based on historical usage patterns and current load"),
+		core.Returns("Resource requirements analysis", map[string]any{
+			"vmid":                  100,
+			"cpu_cores_needed":      4,
+			"memory_mb_needed":      2048,
+			"network_capacity_mbps": 100,
+		}))
 
 	// Register panel
 	ctx.Panel(core.Panel{

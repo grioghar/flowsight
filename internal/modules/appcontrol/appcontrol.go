@@ -85,9 +85,21 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 	ctx.Every("refresh-rules", 30*time.Second, m.refresh)
 	ctx.Every("expire", 10*time.Minute, m.expire, core.Delayed())
-	ctx.Route("GET", "/api/appcontrol/status", m.apiStatus, core.Doc("Active application rules and what they have blocked"))
-	ctx.Route("GET", "/api/appcontrol/blocked", m.apiBlocked, core.Doc("Recent application blocks"),
-		core.Params("hours", "window", "limit", "rows"))
+	ctx.Route("GET", "/api/appcontrol/status", m.apiStatus, core.Doc("Retrieve active application control rules with current block counts and enforcement status"),
+		core.Returns("Application control status", map[string]any{
+			"rules": []map[string]any{
+				{"policy": "block", "table": "apps-1", "apps": []string{"Chrome", "Safari"}, "blocked_addresses": 42},
+			},
+			"matches": 42, "error": "", "enforcing": true,
+		}))
+	ctx.Route("GET", "/api/appcontrol/blocked", m.apiBlocked, core.Doc("List recent application blocks with timestamps and details"),
+		core.Query("hours", "integer", "Time window in hours", false, 24),
+		core.Query("limit", "integer", "Maximum results to return", false, 200),
+		core.Returns("Application blocks", map[string]any{
+			"blocks": []map[string]any{
+				{"ts": 1790376243, "source": "appcontrol", "app": "Chrome", "blocked": true},
+			},
+		}))
 	return nil
 }
 

@@ -144,9 +144,27 @@ func (m *Module) Setup(ctx *core.Context) error {
 	ctx.Every("geoip", 6*time.Hour, m.refreshGeo)
 	ctx.Every("prune", 1*time.Hour, m.prune, core.Delayed())
 	ctx.Route("POST", "/api/enrich/lookup", m.apiLookup, core.Write(),
-		core.Doc("Names and countries for a list of addresses (up to 500); unknown names are resolved in the background and answered on the next call"))
-	ctx.Route("GET", "/api/enrich/status", m.apiStatus, core.Doc("What is enabled, cache size, country database state"))
-	ctx.Route("GET", "/api/enrich/countries", m.apiCountries, core.Doc("Countries available in the GeoIP database"))
+		core.Doc("Batch lookup of DNS names and geolocation countries for IP addresses; unknown names are cached"),
+		core.Body(
+			core.Fld("ips", "array", true, "List of IP addresses to enrich (max 500)", []string{"8.8.8.8", "1.1.1.1"}),
+		),
+		core.Returns("Enrichment data", map[string]any{
+			"8.8.8.8": map[string]any{"name": "dns.google", "country": "US"},
+			"1.1.1.1": map[string]any{"name": "one.one.one.one", "country": "US"},
+		}))
+	ctx.Route("GET", "/api/enrich/status", m.apiStatus, core.Doc("Query what enrichment is enabled, cache size, and database state"),
+		core.Returns("Enrichment status", map[string]any{
+			"reverse_dns": true, "geoip": true, "cached_names": 150, "database": "maxmind_geolite",
+			"database_updated": 1790376243, "database_bytes": 10485760, "attribution": "IP geolocation by...",
+		}))
+	ctx.Route("GET", "/api/enrich/countries", m.apiCountries, core.Doc("List all countries available in the GeoIP database for location lookups"),
+		core.Returns("Country list", map[string]any{
+			"countries": []map[string]any{
+				{"code": "US", "name": "United States"},
+				{"code": "GB", "name": "United Kingdom"},
+			},
+			"epoch": 1790376243, "counted": true,
+		}))
 	return nil
 }
 

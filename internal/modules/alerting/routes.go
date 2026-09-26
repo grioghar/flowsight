@@ -94,74 +94,165 @@ func (m *Module) registerRoutes() {
 
 	// Channel type information
 	ctx.Route("GET", "/api/alerting/channel-types", m.apiChannelTypes,
-		core.Doc("List all channel types with schemas grouped by family"))
-
+		core.Doc("List all notification channel types grouped by family, with configuration schemas"),
+		core.Returns("Channel types by family", map[string]any{
+			"channel_types": map[string]any{
+				"Chat & Collaboration": []map[string]any{
+					{"type": "slack", "label": "Slack", "family": "Chat & Collaboration"},
+				},
+			},
+		}))
 	// Channel CRUD operations
 	ctx.Route("GET", "/api/alerting/channels", m.apiGetChannels,
-		core.Doc("List all notification channels"))
+		core.Doc("List all configured notification channels"),
+		core.Returns("List of notification channels", map[string]any{
+			"channels": []map[string]any{
+				{"id": "ch-1", "type": "slack", "name": "alerts", "enabled": true},
+			},
+		}))
+
 	ctx.Route("POST", "/api/alerting/channels", m.apiCreateChannel,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Create a new notification channel"))
+		core.Doc("Create a new notification channel"),
+		core.Body(
+			core.Fld("type", "string", true, "Channel type (slack, teams, email, etc.)", "slack"),
+			core.Fld("name", "string", true, "Display name for the channel", "My Slack"),
+			core.Fld("enabled", "boolean", false, "Whether channel is enabled", true),
+			core.Fld("config", "object", true, "Type-specific configuration", map[string]any{"webhook_url": "..."}),
+		),
+		core.Returns("Created channel", map[string]any{
+			"id": "ch-1", "type": "slack", "name": "alerts", "enabled": true,
+		}))
+
 	ctx.Route("GET", "/api/alerting/channels/{id}", m.apiGetChannel,
-		core.Doc("Get a specific notification channel"))
+		core.Doc("Get a specific notification channel"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("id", "string", "Channel ID", "ch-1"),
+		core.Returns("Notification channel", map[string]any{
+			"id": "ch-1", "type": "slack", "name": "alerts", "enabled": true,
+		}))
+
 	ctx.Route("PUT", "/api/alerting/channels/{id}", m.apiUpdateChannel,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Update a notification channel"))
+		core.Doc("Update a notification channel"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("id", "string", "Channel ID", "ch-1"),
+		core.Body(
+			core.Fld("name", "string", false, "Display name", "alerts"),
+			core.Fld("enabled", "boolean", false, "Whether enabled", true),
+			core.Fld("config", "object", false, "Updated configuration", map[string]any{}),
+		), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("DELETE", "/api/alerting/channels/{id}", m.apiDeleteChannel,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Delete a notification channel"))
+		core.Doc("Delete a notification channel"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("id", "string", "Channel ID", "ch-1"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/alerting/channels/{id}/test", m.apiTestChannel,
 		core.Write(),
-		core.Doc("Send a test message to a channel"))
+		core.Doc("Send a test message to a channel"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("id", "string", "Channel ID", "ch-1"),
+		core.Returns("Test result", map[string]any{
+			"success": true, "message": "Test message sent",
+		}))
 
 	// Rule CRUD operations
 	ctx.Route("GET", "/api/alerting/rules", m.apiGetRules,
-		core.Doc("List all alert rules"))
+		core.Doc("Retrieve all configured alert rules with their conditions and channels"),
+		core.Returns("List of alert rules", map[string]any{
+			"rules": []map[string]any{
+				{"id": "rule-1", "name": "High CPU", "enabled": true},
+			},
+		}))
+
 	ctx.Route("POST", "/api/alerting/rules", m.apiCreateRule,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Create a new alert rule"))
+		core.Doc("Create a new alert rule that evaluates conditions and sends notifications"),
+		core.Body(
+			core.Fld("name", "string", true, "Rule name", "High CPU Alert"),
+			core.Fld("condition", "string", true, "Alert condition", "cpu > 80"),
+			core.Fld("channels", "array", true, "Channel IDs to notify", []string{"ch-1"}),
+			core.Fld("enabled", "boolean", false, "Whether rule is enabled", true),
+		), core.Returns("Created rule", map[string]any{
+			"rule": map[string]any{"id": "rule-1", "name": "High CPU Alert", "enabled": true},
+		}))
 	ctx.Route("GET", "/api/alerting/rules/{id}", m.apiGetRule,
-		core.Doc("Get a specific alert rule"))
+		core.Doc("Retrieve details of a specific alert rule by ID"), core.PathParam("id", "string", "Rule ID", "rule-1"),
+		core.Returns("Alert rule details", map[string]any{
+			"rule": map[string]any{"id": "rule-1", "name": "High CPU Alert", "enabled": true},
+		}))
 	ctx.Route("PUT", "/api/alerting/rules/{id}", m.apiUpdateRule,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Update an alert rule"))
+		core.Doc("Update an existing alert rule with new conditions and settings"), core.PathParam("id", "string", "Rule ID", "rule-1"),
+		core.Body(
+			core.Fld("name", "string", false, "Updated rule name", "High CPU Alert"),
+			core.Fld("condition", "string", false, "Updated alert condition", "cpu > 80"),
+			core.Fld("enabled", "boolean", false, "Whether rule is enabled", true),
+		),
+		core.Returns("Updated rule", map[string]any{
+			"rule": map[string]any{"id": "rule-1", "name": "High CPU Alert", "enabled": true},
+		}))
 	ctx.Route("DELETE", "/api/alerting/rules/{id}", m.apiDeleteRule,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Delete an alert rule"))
-
+		core.Doc("Remove an alert rule permanently from the system"), core.PathParam("id", "string", "Rule ID", "rule-1"),
+		core.Returns("Success", map[string]any{"ok": true}))
 	// Delivery log
 	ctx.Route("GET", "/api/alerting/deliveries", m.apiGetDeliveries,
-		core.Doc("Get delivery log"),
-		core.Params("channel", "limit"))
+		core.Doc("Get notification delivery history"),
+		core.Query("channel", "string", "Filter by channel ID", false, "ch-1"),
+		core.Query("limit", "integer", "Maximum results to return", false, 50),
+		core.Returns("Delivery log", map[string]any{
+			"deliveries": []map[string]any{
+				{"id": "del-1", "channel": "ch-1", "status": "success", "timestamp": "2024-01-01T12:00:00Z"},
+			},
+		}))
 
 	// Alert acknowledgment and resolution
 	ctx.Route("POST", "/api/alerting/ack/{alert_key}", m.apiAckAlert,
 		core.Write(),
-		core.Doc("Acknowledge an alert"))
+		core.Doc("Acknowledge an active alert"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("alert_key", "string", "Alert key", "alert-123"),
+		core.Body(
+			core.Fld("comment", "string", false, "Acknowledgment comment", "investigating"),
+		), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/alerting/resolve/{alert_key}", m.apiResolveAlert,
 		core.Write(),
-		core.Doc("Resolve an alert"))
-
+		core.Doc("Resolve an acknowledged alert"), core.PathParam("id", "string", "Resource ID", "123"),
+		core.PathParam("alert_key", "string", "Alert key", "alert-123"),
+		core.Body(
+			core.Fld("comment", "string", false, "Resolution comment", "issue fixed"),
+		), core.Returns("Success", map[string]any{"ok": true}))
 	// Maintenance mode
 	ctx.Route("GET", "/api/alerting/maintenance", m.apiGetMaintenance,
-		core.Doc("Get maintenance mode status"))
+		core.Doc("Get current maintenance mode status"),
+		core.Returns("Maintenance status", map[string]any{
+			"enabled": false, "until": nil, "reason": "",
+		}))
+
 	ctx.Route("POST", "/api/alerting/maintenance", m.apiSetMaintenance,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Set maintenance mode"))
-
+		core.Doc("Enable or disable maintenance mode (suppresses alerts)"),
+		core.Body(
+			core.Fld("enabled", "boolean", true, "Enable maintenance mode", true),
+			core.Fld("duration", "integer", false, "Minutes to maintain mode (0 = indefinite)", 60),
+			core.Fld("reason", "string", false, "Reason for maintenance", "scheduled maintenance"),
+		), core.Returns("Success", map[string]any{"ok": true}))
 	// Simulation
 	ctx.Route("POST", "/api/alerting/simulate", m.apiSimulateAlert,
 		core.Write(),
-		core.Doc("Simulate an alert"))
-
+		core.Doc("Generate a test alert to verify rules"),
+		core.Body(
+			core.Fld("name", "string", true, "Alert name", "Test Alert"),
+			core.Fld("severity", "string", false, "Severity level", "high"),
+		), core.Returns("Success", map[string]any{"ok": true}))
 	// RSS feed (token-protected)
 	ctx.Route("GET", "/api/alerting/feed.xml", m.apiAlertFeed,
-		core.Doc("RSS feed of recent alerts (requires token)"))
-
+		core.Doc("RSS feed of recent alerts with token-based authorization"),
+		core.Returns("XML feed", map[string]any{"feed": "<?xml version=\"1.0\"?><rss><channel><item><title>Sample Alert</title></item></channel></rss>"}))
 	// Apprise URL import
 	ctx.Route("POST", "/api/alerting/import-apprise", m.apiImportApprise,
 		core.Write(), core.Needs("alerting.notify"),
-		core.Doc("Import Apprise URL"))
+		core.Doc("Import Apprise notification URL"),
+		core.Body(
+			core.Fld("name", "string", true, "Display name", "My Channel"),
+			core.Fld("url", "string", true, "Apprise URL", "slack://token@webhook"),
+		), core.Returns("Success", map[string]any{"ok": true}))
 }
 
 // apiChannelTypes returns all channel types grouped by family with their schemas

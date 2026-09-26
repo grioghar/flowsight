@@ -115,16 +115,42 @@ func (m *Module) Setup(ctx *core.Context) error {
 	}
 	ctx.Every("refresh", time.Duration(hours)*time.Hour, m.refreshJob, core.Delayed())
 
-	ctx.Route("GET", "/api/license", m.apiStatus, core.Doc("Current tier, license, features and limits"))
-	ctx.Route("GET", "/api/license/features", m.apiFeatures, core.Doc("The feature catalogue with what this installation has"))
+	ctx.Route("GET", "/api/license", m.apiStatus, core.Doc("Retrieve current license tier, key, limits, and refresh status"),
+		core.Returns("License status", map[string]any{
+			"tier": "Business", "installation": "inst-id-123", "verifiable": true,
+			"limits":     map[string]int{"flows": 1000000, "rules": 5000},
+			"last_error": "", "revoked": false, "key_hint": "FSI-****-****-****-WXYZ",
+		}))
+	ctx.Route("GET", "/api/license/features", m.apiFeatures, core.Doc("List all features with enabled status and limits by tier"),
+		core.Returns("Feature catalog", map[string]any{
+			"features": []map[string]any{
+				{"key": "deep.inspect", "name": "Deep Inspection", "included": true},
+			},
+			"tier": "Business",
+			"limits_by_tier": map[string]map[string]int{
+				"Community": {"flows": 100000},
+			},
+		}))
 	ctx.Route("POST", "/api/license/activate", m.apiActivate, core.Write(),
-		core.Doc("Activate an activation key against the license server"))
+		core.Doc("Activate an activation key or license code through the online license server"),
+		core.Body(
+			core.Fld("key", "string", true, "License activation key or code", "XXXX-XXXX-XXXX-XXXX"),
+		),
+		core.Returns("Activation result", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/install", m.apiInstall, core.Write(),
-		core.Doc("Install a signed license file (offline)"))
+		core.Doc("Install a signed offline license file for air-gapped deployments"),
+		core.Body(
+			core.Fld("license", "string", true, "Signed license file content", "-----BEGIN LICENSE-----..."),
+		),
+		core.Returns("Installation result", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/refresh", m.apiRefresh, core.Write(),
-		core.Doc("Refresh the online lease now"))
+		core.Doc("Refresh online license lease status with the license server immediately"),
+		core.Body(),
+		core.Returns("Refresh result", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/license/remove", m.apiRemove, core.Write(),
-		core.Doc("Remove the license and return to Community (tells the server, when it was an online activation)"))
+		core.Doc("Remove current license and revert to Community tier after notifying server"),
+		core.Body(),
+		core.Returns("Removal result", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "license", Title: "License", Group: "Administration", Order: 250, Icon: "license"})
 	return nil
 }

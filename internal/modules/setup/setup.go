@@ -66,13 +66,33 @@ type License struct {
 
 func (m *Module) Setup(ctx *core.Context) error {
 	m.ctx = ctx
-	ctx.Route("GET", "/api/setup/state", m.apiState, core.Doc("Wizard state and detected facts"))
+	ctx.Route("GET", "/api/setup/state", m.apiState,
+		core.Doc("Get current setup wizard state and auto-detected network configuration facts"),
+		core.Returns("Setup wizard state", map[string]any{
+			"step": 1,
+			"facts": map[string]any{
+				"gateway_ip": "192.168.1.1",
+				"hostname":   "flowsight",
+			},
+		}))
 	ctx.Route("POST", "/api/setup/apply", m.apiApply, core.Write(),
-		core.Doc("Apply one step's answers"))
+		core.Doc("Apply answers from the current setup wizard step and advance to the next"),
+		core.Body(
+			core.Fld("step", "integer", true, "Current step number", 1),
+			core.Fld("answers", "object", true, "Answers provided in this step", map[string]any{}),
+		),
+		core.Returns("Apply result", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/setup/test", m.apiTest, core.Write(),
-		core.Doc("Test a step's values"))
+		core.Doc("Test and validate configuration values provided in the current setup step"),
+		core.Body(
+			core.Fld("step", "integer", true, "Step number to test", 1),
+			core.Fld("values", "object", true, "Values to test for validity", map[string]any{}),
+		),
+		core.Returns("Test result", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/setup/reset", m.apiReset, core.Write(),
-		core.Doc("Reset the wizard progress"))
+		core.Doc("Reset setup wizard progress to initial state"),
+		core.Body(),
+		core.Returns("Reset result", map[string]any{"ok": true}))
 	ctx.Panel(core.Panel{ID: "setup", Title: "Setup wizard", Group: "Administration", Order: 195, Icon: "setup"})
 	return nil
 }

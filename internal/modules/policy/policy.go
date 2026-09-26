@@ -103,31 +103,191 @@ func (m *Module) Setup(ctx *core.Context) error {
 		every = 15 * time.Second
 	}
 	ctx.Every("reconcile", every, m.reconcile, core.Delayed())
-	ctx.Route("GET", "/api/policy", m.apiGet, core.Doc("The policy document, its status and the last plan"))
-	ctx.Route("POST", "/api/policy", m.apiPut, core.Write(), core.Doc("Replace the whole policy document (validated first)"))
-	ctx.Route("GET", "/api/policy/plan", m.apiPlan, core.Doc("Compile onto every provider and show what would change"))
-	ctx.Route("GET", "/api/policy/matches", m.apiMatches, core.Params("name", "policy name", "hours", "window, default 24"),
-		core.Doc("What a policy's country rule matches: per device, the far ends in denied countries from the session table (names, domains, bytes), and the packets the firewall's log recorded for the rule"))
-	ctx.Route("POST", "/api/policy/apply", m.apiApply, core.Write(), core.Doc("Apply the plan now (requires enforce)"))
-	ctx.Route("POST", "/api/policy/policy", m.apiSavePolicy, core.Write(), core.Doc("Create or update one policy"))
-	ctx.Route("POST", "/api/policy/policy/delete", m.apiDeletePolicy, core.Write(), core.Doc("Delete one policy"))
-	ctx.Route("POST", "/api/policy/policy/move", m.apiMovePolicy, core.Write(), core.Doc("Reorder a policy"))
-	ctx.Route("GET", "/api/policy/groups", m.apiGetGroups, core.Doc("List all groups"))
-	ctx.Route("GET", "/api/policy/groups/{name}", m.apiGetGroup, core.Doc("Get a group by name"))
-	ctx.Route("POST", "/api/policy/group", m.apiSaveGroup, core.Write(), core.Doc("Create or update a group"))
-	ctx.Route("PUT", "/api/policy/groups/{name}", m.apiUpdateGroup, core.Write(), core.Doc("Update a group"))
-	ctx.Route("POST", "/api/policy/group/delete", m.apiDeleteGroup, core.Write(), core.Doc("Delete a group"))
-	ctx.Route("DELETE", "/api/policy/groups/{name}", m.apiDeleteGroupByName, core.Write(), core.Doc("Delete a group by name"))
-	ctx.Route("GET", "/api/policy/schedules", m.apiGetSchedules, core.Doc("List all schedules"))
-	ctx.Route("GET", "/api/policy/schedules/{name}", m.apiGetSchedule, core.Doc("Get a schedule by name"))
-	ctx.Route("POST", "/api/policy/schedule", m.apiSaveSchedule, core.Write(), core.Doc("Create or update a schedule"))
-	ctx.Route("PUT", "/api/policy/schedules/{name}", m.apiUpdateSchedule, core.Write(), core.Doc("Update a schedule"))
-	ctx.Route("POST", "/api/policy/schedule/delete", m.apiDeleteSchedule, core.Write(), core.Doc("Delete a schedule"))
-	ctx.Route("DELETE", "/api/policy/schedules/{name}", m.apiDeleteScheduleByName, core.Write(), core.Doc("Delete a schedule by name"))
-	ctx.Route("POST", "/api/policy/exclusions", m.apiExclusions, core.Write(), core.Doc("Replace exclusions and options"))
-	ctx.Route("GET", "/api/policy/export", m.apiExport, core.Doc("The document as YAML"))
-	ctx.Route("POST", "/api/policy/import", m.apiImport, core.Write(), core.Doc("Replace the document from YAML or JSON text"))
-	ctx.Route("GET", "/api/policy/capabilities", m.apiCapabilities, core.Doc("Providers, capabilities and what each policy needs"))
+	ctx.Route("GET", "/api/policy", m.apiGet,
+		core.Doc("Retrieve the current policy document, its compilation status, plan, and enforcement state"),
+		core.Returns("Policy document with status", map[string]any{
+			"document": map[string]any{"version": 1, "policies": []any{}, "groups": map[string]any{}, "schedules": map[string]any{}},
+			"enforce":  true,
+			"error":    "",
+			"plan":     map[string]any{"at": 1790376243, "enforce": true, "changes": 0},
+			"path":     "/etc/flowsight/policy.json",
+		}))
+	ctx.Route("POST", "/api/policy", m.apiPut, core.Write(),
+		core.Doc("Replace the entire policy document after validation and preview compilation"),
+		core.Body(
+			core.Fld("version", "integer", true, "Document version", 1),
+			core.Fld("policies", "array", true, "List of policies", []map[string]any{}),
+			core.Fld("groups", "object", true, "Device groups keyed by name", map[string]any{}),
+			core.Fld("schedules", "object", true, "Schedule rules keyed by name", map[string]any{}),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/policy/plan", m.apiPlan,
+		core.Doc("Compile the policy onto every registered provider and show what would change without applying"),
+		core.Returns("Compilation plan across all providers", map[string]any{
+			"plan": map[string]any{
+				"at":      1790376243,
+				"enforce": true,
+				"changes": 2,
+				"providers": []map[string]any{
+					{"name": "firewall", "capabilities": []string{"country-block"}, "changed": true, "hash": "abc123"},
+				},
+				"policies": []map[string]any{
+					{"name": "block-ads", "enabled": true, "active": true, "members": 15},
+				},
+			},
+		}))
+	ctx.Route("GET", "/api/policy/matches", m.apiMatches,
+		core.Query("name", "string", "Policy name to inspect for matches", true, "block-ads"),
+		core.Query("hours", "integer", "Time window in hours for match analysis", false, 24),
+		core.Doc("Analyze which devices and far-ends match a specific policy rule, with session details and firewall log records"),
+		core.Returns("Policy match analysis", map[string]any{
+			"devices": []map[string]any{
+				{"name": "MacBookPro", "ip": "192.168.1.10", "matches": 42},
+			},
+		}))
+	ctx.Route("POST", "/api/policy/apply", m.apiApply, core.Write(),
+		core.Doc("Apply the current plan immediately to all providers (requires enforcement to be enabled)"),
+		core.Returns("Apply result with plan", map[string]any{
+			"ok":    true,
+			"plan":  map[string]any{"changes": 2, "errors": []string{}},
+			"error": "",
+		}))
+	ctx.Route("POST", "/api/policy/policy", m.apiSavePolicy, core.Write(),
+		core.Doc("Create a new policy or update an existing one with validation and compilation"),
+		core.Body(
+			core.Fld("original", "string", false, "Previous policy name when editing", ""),
+			core.Fld("policy", "object", true, "Policy definition with name, action, and match rules", map[string]any{}),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/policy/policy/delete", m.apiDeletePolicy, core.Write(),
+		core.Doc("Delete a policy from the document by name with validation and recompilation"),
+		core.Body(
+			core.Fld("name", "string", true, "Name of the policy to delete", "block-ads"),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/policy/policy/move", m.apiMovePolicy, core.Write(),
+		core.Doc("Reorder policies in the document list for evaluation priority and display order"),
+		core.Body(
+			core.Fld("name", "string", true, "Policy name to move", "block-ads"),
+			core.Fld("direction", "string", true, "Direction to move: 'up' or 'down'", "up"),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/policy/groups", m.apiGetGroups,
+		core.Doc("List all device groups defined in the policy with their member counts"),
+		core.Returns("All groups with definitions", map[string]any{
+			"groups": map[string]any{
+				"office": map[string]any{"members": 12},
+			},
+		}))
+	ctx.Route("GET", "/api/policy/groups/{name}", m.apiGetGroup,
+		core.PathParam("name", "string", "Device group name", "office"),
+		core.Doc("Retrieve a specific device group definition with its member list and tags"),
+		core.Returns("Device group definition", map[string]any{
+			"name":    "office",
+			"members": []string{"192.168.1.10", "192.168.1.11"},
+		}))
+	ctx.Route("POST", "/api/policy/group", m.apiSaveGroup, core.Write(),
+		core.Doc("Create a new device group or update an existing one with member definitions"),
+		core.Body(
+			core.Fld("original", "string", false, "Previous group name when editing", ""),
+			core.Fld("name", "string", true, "New or current group name", "office"),
+			core.Fld("group", "object", true, "Group definition with members and rules", map[string]any{}),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("PUT", "/api/policy/groups/{name}", m.apiUpdateGroup, core.Write(),
+		core.PathParam("name", "string", "Device group name", "office"),
+		core.Doc("Update an existing device group with new member definitions and properties"),
+		core.Body(
+			core.Fld("members", "array", false, "List of device identifiers", []string{"192.168.1.10"}),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/policy/group/delete", m.apiDeleteGroup, core.Write(),
+		core.Doc("Delete a device group from the policy document with validation against usage"),
+		core.Body(
+			core.Fld("name", "string", true, "Device group name to delete", "office"),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/policy/groups/{name}", m.apiDeleteGroupByName, core.Write(),
+		core.PathParam("name", "string", "Device group name", "office"),
+		core.Doc("Delete a device group via REST DELETE method with validation against usage"),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/policy/schedules", m.apiGetSchedules,
+		core.Doc("List all schedules defined in the policy with their time windows and rules"),
+		core.Returns("All schedules with definitions", map[string]any{
+			"schedules": map[string]any{
+				"business-hours": map[string]any{"start": "09:00", "end": "17:00"},
+			},
+		}))
+	ctx.Route("GET", "/api/policy/schedules/{name}", m.apiGetSchedule,
+		core.PathParam("name", "string", "Schedule name", "business-hours"),
+		core.Doc("Retrieve a specific schedule definition with its time windows and active days"),
+		core.Returns("Schedule definition", map[string]any{
+			"name":  "business-hours",
+			"start": "09:00",
+			"end":   "17:00",
+			"days":  []string{"Mon", "Tue", "Wed", "Thu", "Fri"},
+		}))
+	ctx.Route("POST", "/api/policy/schedule", m.apiSaveSchedule, core.Write(),
+		core.Doc("Create a new schedule or update an existing one for policy time-based enforcement"),
+		core.Body(
+			core.Fld("original", "string", false, "Previous schedule name when editing", ""),
+			core.Fld("name", "string", true, "Schedule name", "business-hours"),
+			core.Fld("schedule", "object", true, "Schedule definition with time windows", map[string]any{}),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("PUT", "/api/policy/schedules/{name}", m.apiUpdateSchedule, core.Write(),
+		core.PathParam("name", "string", "Schedule name", "business-hours"),
+		core.Doc("Update an existing schedule with new time windows and day-of-week rules"),
+		core.Body(
+			core.Fld("start", "string", false, "Start time in HH:MM format", "09:00"),
+			core.Fld("end", "string", false, "End time in HH:MM format", "17:00"),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/policy/schedule/delete", m.apiDeleteSchedule, core.Write(),
+		core.Doc("Delete a schedule from the policy document with validation against policy usage"),
+		core.Body(
+			core.Fld("name", "string", true, "Schedule name to delete", "business-hours"),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("DELETE", "/api/policy/schedules/{name}", m.apiDeleteScheduleByName, core.Write(),
+		core.PathParam("name", "string", "Schedule name", "business-hours"),
+		core.Doc("Delete a schedule via REST DELETE method with validation against policy usage"),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("POST", "/api/policy/exclusions", m.apiExclusions, core.Write(),
+		core.Doc("Replace the device exclusions list and global policy enforcement options"),
+		core.Body(
+			core.Fld("exclusions", "object", true, "Devices and CIDRs to exclude from policy", map[string]any{}),
+			core.Fld("options", "object", true, "Global policy options like even-excluded enforcement", map[string]any{}),
+		),
+		core.Returns("Success response", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/policy/export", m.apiExport,
+		core.Doc("Export the entire policy document in YAML format for version control or sharing"),
+		core.Returns("YAML-formatted policy document", map[string]any{
+			"content_type": "application/yaml",
+			"filename":     "flowsight-policy.yaml",
+		}))
+	ctx.Route("POST", "/api/policy/import", m.apiImport, core.Write(),
+		core.Doc("Replace the policy document from YAML or JSON text with validation and compilation"),
+		core.Body(
+			core.Fld("text", "string", true, "YAML or JSON policy document content", "version: 1\npolicies: []"),
+		),
+		core.Returns("Import result with policy count", map[string]any{
+			"ok":       true,
+			"policies": 5,
+		}))
+	ctx.Route("GET", "/api/policy/capabilities", m.apiCapabilities,
+		core.Doc("List all registered providers, their capabilities, and what policies require"),
+		core.Returns("Capabilities across all providers", map[string]any{
+			"providers": []map[string]any{
+				{"name": "firewall", "capabilities": []string{"country-block", "app-control"}},
+			},
+			"categories": []map[string]any{
+				{"name": "ads", "domains": 5000},
+			},
+			"apps": []map[string]any{
+				{"app": "netflix", "category": "streaming"},
+			},
+		}))
 	ctx.Panel(core.Panel{ID: "policy", Title: "Policies", Group: "Protect", Order: 100, Icon: "policy"})
 	ctx.Panel(core.Panel{ID: "groups", Title: "Groups & Schedules", Group: "Protect", Order: 110, Icon: "groups"})
 	return nil

@@ -161,18 +161,46 @@ func (m *Module) Setup(ctx *core.Context) error {
 
 	// Routes
 	ctx.Route("POST", "/api/scan/start", m.apiStart, core.Write(),
-		core.Doc("Start a scan on an IP or MAC"))
+		core.Doc("Start a network scan on a specific IP address or MAC address to detect services"),
+		core.Body(
+			core.Fld("ip", "string", false, "IP address to scan", "192.168.1.10"),
+			core.Fld("mac", "string", false, "MAC address to scan", "aa:bb:cc:dd:ee:ff"),
+		),
+		core.Returns("Scan started", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/scan/status", m.apiStatus,
-		core.Doc("Queue status, running jobs, last sweep"))
+		core.Doc("Get current scan queue status, running jobs and last automatic sweep time"),
+		core.Returns("Scan status", map[string]any{
+			"queue_size":   5,
+			"running_jobs": 2,
+			"last_sweep":   1790376243,
+		}))
 	ctx.Route("GET", "/api/scan/result", m.apiResult,
-		core.Doc("Latest result for an IP"))
+		core.Doc("Retrieve the latest scan result for a specific IP address with detected services"),
+		core.Returns("Scan result for IP", map[string]any{
+			"ip": "192.168.1.10",
+			"ports": []map[string]any{
+				{"port": 22, "service": "ssh", "state": "open"},
+			},
+			"timestamp": 1790376243,
+		}))
 	ctx.Route("GET", "/api/scan/results", m.apiResults,
-		core.Doc("Latest results for all IPs scanned recently"))
+		core.Doc("List the latest scan results for all recently scanned IP addresses and hosts"),
+		core.Returns("Recent scan results", map[string]any{
+			"results": []map[string]any{
+				{"ip": "192.168.1.10", "ports": 5, "last_scan": 1790376243},
+			},
+		}))
 	ctx.Route("POST", "/api/scan/cancel", m.apiCancel, core.Write(),
-		core.Doc("Cancel a scan job"))
+		core.Doc("Cancel a currently running or queued scan operation for an IP or MAC address"),
+		core.Body(
+			core.Fld("ip", "string", false, "IP address of scan to cancel", "192.168.1.10"),
+			core.Fld("mac", "string", false, "MAC address of scan to cancel", "aa:bb:cc:dd:ee:ff"),
+		),
+		core.Returns("Cancellation result", map[string]any{"ok": true}))
 	ctx.Route("POST", "/api/scan/sweep", m.apiSweep, core.Write(),
-		core.Doc("Start a sweep of all local devices"))
-
+		core.Doc("Start a comprehensive network sweep scanning all local devices for services"),
+		core.Body(),
+		core.Returns("Sweep started", map[string]any{"ok": true}))
 	// Panel
 	ctx.Panel(core.Panel{
 		ID:    "scan",

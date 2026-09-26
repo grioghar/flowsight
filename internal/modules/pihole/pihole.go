@@ -107,8 +107,13 @@ func (m *Module) Setup(ctx *core.Context) error {
 		every = 10 * time.Second
 	}
 	ctx.Every("pull", every, m.pull)
-	ctx.Route("GET", "/api/pihole/status", m.apiStatus, core.Doc("Per-server state: version, last pull, records imported, last error"))
-	ctx.Route("POST", "/api/pihole/pull", m.apiPull, core.Write(), core.Doc("Pull from every server now"))
+	ctx.Route("GET", "/api/pihole/status", m.apiStatus, core.Doc("Retrieve Pi-hole server status with pull history and error details"), core.Returns("Pi-hole server status", map[string]any{
+		"servers": []map[string]any{
+			{"url": "https://192.168.1.53", "host": "pihole.local", "version": "v6", "last_pull": 1790376243, "imported": 5000, "last_error": "", "watermark": 1790376243},
+		},
+		"configured": 1, "password_set": true,
+	}))
+	ctx.Route("POST", "/api/pihole/pull", m.apiPull, core.Write(), core.Doc("Pull from every server now"), core.Returns("Success", map[string]any{"ok": true}))
 	return nil
 }
 

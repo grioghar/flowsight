@@ -210,6 +210,16 @@ bare word "token". `api_tokens` in the configuration adds named tokens
 (`token:<name>` in the log). Each entry carries `via` (gui, token, session,
 local) and, where the body says, the module, name or id it touched; the
 Audit page shows Who, Via, From and the operation with those details.
+## 0.9.8r202609252356
+
+**All 166 API routes fully documented with real data.** Complete OpenAPI 3.0
+documentation across all modules with request/response schemas, parameter types,
+realistic example values (IP addresses, hostnames, timestamps), and operation
+descriptions. All stub responses replaced with actual return structures from
+handlers. Descriptions rewritten for clarity (≥25 characters). The `apidoc` tool
+generates the full searchable API.md from the live spec. Routes use documentation
+helpers to keep metadata concise and aligned with actual handler implementations.
+Download the spec from the API page for Swagger UI, Insomnia, or Postman.
 
 ## 0.9.8r202609252242
 

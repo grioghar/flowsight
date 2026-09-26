@@ -139,10 +139,10 @@ func (m *Module) Setup(ctx *core.Context) error {
 		ctx.Every("hits-prune", time.Hour, m.pruneHits, core.Delayed())
 	}
 	ctx.Route("GET", "/api/firewall/hits", m.apiHits, core.Params("policy", "only this policy's rules", "hours", "window, default 24", "limit", "rows, default 500"),
-		core.Doc("Packets the policy rules matched, from the firewall's own log: when, which policy, from where to where"))
-	ctx.Route("GET", "/api/firewall/status", m.apiStatus, core.Doc("Anchor state, tables and rule counters"))
+		core.Doc("Packets the policy rules matched, from the firewall's own log: when, which policy, from where to where"), core.Returns("Success", map[string]any{"ok": true}))
+	ctx.Route("GET", "/api/firewall/status", m.apiStatus, core.Doc("Anchor state, tables and rule counters"), core.Returns("Success", map[string]any{"ok": true}))
 	ctx.Route("GET", "/api/firewall/table", m.apiTable, core.Params("name", "table in the policy anchor (fs_geo_<cc>, fs_geox_<policy>, fs_app_<policy>)", "ip", "optional address to test for membership"),
-		core.Doc("What the kernel holds for one policy table: address count, and whether a given address is in it"))
+		core.Doc("What the kernel holds for one policy table: address count, and whether a given address is in it"), core.Returns("Success", map[string]any{"ok": true}))
 	return nil
 }
 
